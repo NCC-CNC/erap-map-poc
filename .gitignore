@@ -27,3 +27,12 @@ tmp/
 # Claude Code local overrides (personal, not shared)
 .claude/settings.local.json
 .claude/worktrees/
+
+# Pipeline data (input and generated tiles are not committed; small sample
+# fixtures live under pipeline/tests/fixtures/ instead)
+data/raw/*
+data/tiles/*
+!data/raw/.gitkeep
+!data/tiles/.gitkeep
+*.pmtiles
+*.mbtiles

@@ -12,7 +12,9 @@ The workflow is:
 
 ## Setup
 
-TODO: setup and local-run instructions once the stack is chosen. A good shape:
+TODO (milestone M1): setup and local-run instructions. Planned: Docker with
+Docker Compose is the only prerequisite; see the Commands section of
+`CLAUDE.md` for the planned commands. A good shape:
 
 - Prerequisites (tool and version).
 - A short block that installs, runs, and checks. Make its last line the

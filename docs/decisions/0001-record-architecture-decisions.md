@@ -15,7 +15,7 @@ re-litigated.
 
 Record such decisions as short Architecture Decision Records (ADRs) in
 `docs/decisions/`, one Markdown file per decision, named
-`YYYY-MM-DD_short-title.md`. See `docs/decisions/README.md` for the format.
+`NNNN-short-title.md`. See `docs/decisions/README.md` for the format.
 
 ## Consequences
 
