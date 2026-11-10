@@ -94,10 +94,12 @@ contract in `02_data_layers_and_popups.md`. It never reads `data/raw/`.
 ## Docker Compose
 
 - `web`: builds `web/Dockerfile`, publishes a local port (default 8080),
-  mounts `./data/tiles` read-only at nginx's `/tiles/` path, and passes
-  `CARTO_API_KEY` from `.env`, which the container writes into
-  `/config.json` at start (nginx template). Started with
-  `docker compose up web`.
+  mounts `./data/tiles` read-only at `/srv/tiles` (served at `/tiles/`),
+  and passes `CARTO_API_KEY` from `.env`. At start an entrypoint script
+  (`web/docker/40-write-config-json.sh`) writes it, JSON-escaped, to
+  `/tmp/erap-web/config.json`, which nginx serves as `/config.json`. A
+  plain envsubst template is not used because it would not escape the
+  value. Started with `docker compose up web`.
 - `pipeline`: builds `pipeline/Dockerfile`, mounts `./data/raw` read-only and
   `./data/tiles` read-write, under the `pipeline` profile so `docker compose
   up` does not start it. Run on demand with

@@ -7,6 +7,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Web image (`web/Dockerfile`): Node 26.13.0 build stage and unprivileged
+  nginx 1.30.6 runtime, both pinned by digest, listening on 8080;
+  `web/nginx.conf` serves the app with an `index.html` fallback for app
+  routes, `/tiles/` from `/srv/tiles` with range requests,
+  `application/vnd.pmtiles`, `no-cache` revalidation and plain 404s, and
+  year-long caching for `/assets/`; an entrypoint script writes
+  `/config.json` from `CARTO_API_KEY` at start, JSON-escaped.
 - Web app scaffold (`web/`): React, TypeScript and Vite, MapLibre GL JS with
   the `pmtiles` protocol, a placeholder OpenFreeMap basemap in `src/map/`, and
   a layer registry in `src/layers/` with the `sample` layer from
