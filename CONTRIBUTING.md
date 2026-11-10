@@ -40,10 +40,10 @@ same tools at the same versions as CI, all in Docker:
 export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
-# pipeline job: shellcheck, hadolint, bats (10 tests), runtime image
+# pipeline job: shellcheck, hadolint, bats (14 tests), runtime image
 docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
   pipeline/bin/run.sh pipeline/lib/*.sh pipeline/layers/*.env \
-  pipeline/tests/fixtures/make_sample.sh pipeline/tests/*.bats
+  pipeline/tests/fixtures/*.sh pipeline/tests/*.bats
 docker run --rm -v "$repo":/mnt -w /mnt hadolint/hadolint:v2.15.1 \
   hadolint --config .hadolint.yaml pipeline/Dockerfile web/Dockerfile
 docker build --target test -t erap-map-pipeline:test pipeline

@@ -101,6 +101,83 @@ assert_no_temp_files() {
   [ "$output" = "alpha,beta" ]
 }
 
+@test "points fixture matches its generator" {
+  run diff <("${PIPELINE_ROOT}/tests/fixtures/make_sample_points.sh") \
+    "${PIPELINE_ROOT}/tests/fixtures/sample_points.geojson"
+  [ "$status" -eq 0 ]
+}
+
+@test "builds sample_points.pmtiles with the layer, zooms and attributes" {
+  run "$RUN" sample_points
+  [ "$status" -eq 0 ]
+  local archive="${PIPELINE_OUTPUT_DIR}/sample_points.pmtiles"
+  [ -s "$archive" ]
+  assert_no_temp_files
+
+  run pmtiles show "$archive"
+  [ "$status" -eq 0 ]
+  [[ $output == *"min zoom: 0"* ]]
+  [[ $output == *"max zoom: 10"* ]]
+
+  local metadata
+  metadata=$(pmtiles show --metadata "$archive")
+
+  run jq -r '.vector_layers[].id' <<<"$metadata"
+  [ "$status" -eq 0 ]
+  [ "$output" = "sample_points" ]
+
+  # id is the tile feature id, so it is not repeated as a property.
+  run jq -r '.vector_layers[0].fields | to_entries
+    | map("\(.key):\(.value)") | join(",")' <<<"$metadata"
+  [ "$status" -eq 0 ]
+  [ "$output" = "category:String,count:Number,name:String" ]
+
+  run jq -r '.tilestats.layers[0].count' <<<"$metadata"
+  [ "$output" = "30" ]
+
+  # Categories are exactly alpha, beta and gamma; count stays in 1 to 500.
+  run jq -r '.tilestats.layers[0].attributes[] | select(.attribute == "category")
+    | .values | sort | join(",")' <<<"$metadata"
+  [ "$output" = "alpha,beta,gamma" ]
+  run jq -e '.tilestats.layers[0].attributes[] | select(.attribute == "count")
+    | .type == "number" and .min >= 1 and .max <= 500' <<<"$metadata"
+  [ "$status" -eq 0 ]
+}
+
+@test "sample_points keeps every point, with its feature id, at every zoom" {
+  run "$RUN" sample_points
+  [ "$status" -eq 0 ]
+
+  # Distinct feature ids per zoom across the whole archive: all 30 at each of
+  # z0 to z10, so no point is dropped at low zooms.
+  local decoded
+  decoded=$(tippecanoe-decode "${PIPELINE_OUTPUT_DIR}/sample_points.pmtiles")
+  run jq -r '[.features[] | {z: .properties.zoom, ids: [.features[].features[].id]}]
+    | group_by(.z)[]
+    | "\(.[0].z) \([.[].ids[]] | unique | map(tostring) | join(","))"' <<<"$decoded"
+  [ "$status" -eq 0 ]
+  [ "${#lines[@]}" -eq 11 ]
+  local z expected
+  expected=$(seq -s, 1 30)
+  for z in $(seq 0 10); do
+    [ "${lines[$z]}" = "$z $expected" ]
+  done
+}
+
+@test "no arguments builds sample and sample_points into one manifest" {
+  run "$RUN"
+  [ "$status" -eq 0 ]
+  [ -s "${PIPELINE_OUTPUT_DIR}/sample.pmtiles" ]
+  [ -s "${PIPELINE_OUTPUT_DIR}/sample_points.pmtiles" ]
+
+  run jq -e '
+    ([.layers[].name] == ["sample", "sample_points"])
+    and (.layers[1] | .file == "sample_points.pmtiles"
+         and .minzoom == 0 and .maxzoom == 10 and .feature_count == 30)' \
+    "${PIPELINE_OUTPUT_DIR}/manifest.json"
+  [ "$status" -eq 0 ]
+}
+
 @test "missing input fails and leaves no partial pmtiles" {
   make_layers_dir
   printf '%s\n' 'LAYER_INPUT=missing.geojson' 'LAYER_FIELDS=(id)' \
