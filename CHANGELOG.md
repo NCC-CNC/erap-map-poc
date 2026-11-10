@@ -7,6 +7,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `CONTRIBUTING.md` Setup: prerequisites (Git, Docker with Compose v2, Git
+  Bash on Windows), a run block, a Checks block with Docker-only local
+  equivalents of every CI job (`pipeline`, `web`, `compose`,
+  `repo-hygiene`) and their timings, and how auto-merge treats PRs. The
+  `CLAUDE.md` Commands section now lists the real run commands, the CI gates
+  and their local and CI timings, and Project status reflects M1 nearly done
+  and M2 blocked on #13. The README status line is updated to match.
 - CI stack jobs in `ci.yml`, gated on non-docs changes and required through
   `checks`: `pipeline` (shellcheck 0.11.0 and hadolint 2.15.1 from
   checksum-verified release binaries, the bats tests in the `test` image,
