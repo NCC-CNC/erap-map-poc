@@ -52,15 +52,14 @@ folder, so reload the page.
 
 Both folders are git-ignored apart from `.gitkeep`.
 
-### CARTO basemap key
+### Basemap and settings
 
-Copy `.env.example` to `.env` and set `CARTO_API_KEY` (ADR 0005). The `web`
-container writes it to `/config.json` when it starts, so after changing it run
-`docker compose up -d web` again. Without a key the map falls back to the
-keyless OpenFreeMap basemap. `.env` is optional and git-ignored. Compose
-strips the CR from a Windows (CRLF) `.env` line, but a key set in the shell
-with a stray CR or other control character makes the `web` container exit at
-start with an error in `docker compose logs web`.
+The basemap is OpenFreeMap's keyless Positron (light, the default) or Dark
+style, switchable in the map (ADR 0006). It needs no key or other setup, but
+the browser must reach `tiles.openfreemap.org`.
+
+The optional settings (host ports, Linux UIDs, dev server polling) can go in
+a git-ignored `.env` in the repo root; copy `.env.example` to start.
 
 ### Linux file ownership
 
@@ -81,8 +80,7 @@ nothing is needed there.
 The `web-dev` service (profile `dev`) runs the Vite dev server with hot
 reload in the pinned Node image, with `web/` bind-mounted and its Linux
 `node_modules` in a named volume, so no Node install is needed on the host.
-It serves `data/tiles/` at `/tiles/` and `/config.json` from `CARTO_API_KEY`
-(404 when the key is unset, so the app uses the keyless basemap).
+It serves `data/tiles/` at `/tiles/`.
 
 ```sh
 docker compose --profile dev up web-dev   # http://localhost:5173

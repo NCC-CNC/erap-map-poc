@@ -18,7 +18,7 @@ now; conservation planning staff more widely if it continues. See
 
 ## Project status
 
-M1 (skeleton end to end) is nearly done: the pipeline, web app, CARTO
+M1 (skeleton end to end) is nearly done: the pipeline, web app, OpenFreeMap
 basemaps, feature pop-ups, docker-compose and CI are merged, and the
 synthetic `sample` layer goes from raw file to clickable feature (the MapLibre
 worker fix, #26, is merged; a hands-on browser check is pending). Next is M2, real
@@ -42,16 +42,16 @@ design note in `docs/design/` or an ADR in `docs/decisions/`.
   custom image on a pinned `ghcr.io/osgeo/gdal` base. shellcheck and bats.
   See ADR 0002.
 - Web app (`web/`): React, TypeScript, Vite, MapLibre GL JS, `pmtiles`,
-  Chart.js, CARTO basemaps (ADR 0005); served by nginx. ESLint, `tsc`,
+  Chart.js, OpenFreeMap basemaps (ADR 0006); served by nginx. ESLint, `tsc`,
   vitest. See ADR 0003.
 - Runtime: one Dockerfile per component and a root `docker-compose.yml`; the
   pipeline writes `data/tiles/`, nginx serves it as static files with range
   requests. See ADR 0004.
 - Hard constraints: pin every tool and base image version; the web app reads
   only `data/tiles/` and the data contract in
-  `docs/design/02_data_layers_and_popups.md`, never `data/raw/`; secrets such
-  as `CARTO_API_KEY` come from `.env` at runtime, never committed or baked
-  into images; pipeline writes are atomic (temp file then move).
+  `docs/design/02_data_layers_and_popups.md`, never `data/raw/`; any secrets
+  come from `.env` at runtime, never committed or baked into images;
+  pipeline writes are atomic (temp file then move).
 
 ## Commands
 
@@ -65,7 +65,7 @@ block; keep it in step with this section.
   every layer into `data/tiles/`).
 - Web map: `docker compose up -d --build web` (<http://localhost:8080>,
   `WEB_PORT`). Dev server: `docker compose --profile dev up web-dev` (Vite
-  on :5173, `VITE_USE_POLLING`). `CARTO_API_KEY` comes from `.env`.
+  on :5173, `VITE_USE_POLLING`). Optional ports and UIDs come from `.env`.
 
 Gates: every CI job below feeds the one required status `checks`; a PR that
 touches only `docs/` and `*.md` runs just `repo-hygiene`.
