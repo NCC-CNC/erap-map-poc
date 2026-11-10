@@ -4,10 +4,12 @@ import { loadRuntimeConfig } from '../config';
 import { DEFAULT_BASEMAP_THEME, resolveBasemaps, warnIfFallback, type BasemapTheme, type Basemaps } from './basemap';
 import { BasemapToggle } from './BasemapToggle';
 import { createMap, setBasemapStyle } from './createMap';
+import { attachPopups } from './popups';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 /**
- * Full-page map with a basemap toggle. The runtime config is loaded first,
+ * Full-page map with a basemap toggle. Clicking a feature of a layer with a
+ * pop-up definition opens its pop-up. The runtime config is loaded first,
  * as it decides the basemap. MapLibre lives outside React's render tree:
  * the map is created once and removed on unmount.
  */
@@ -23,6 +25,7 @@ export function MapView() {
   useEffect(() => {
     const controller = new AbortController();
     let created: MapLibreMap | undefined;
+    let detachPopups: (() => void) | undefined;
 
     void loadRuntimeConfig({ signal: controller.signal })
       .then((config) => {
@@ -31,6 +34,7 @@ export function MapView() {
         warnIfFallback(resolved);
         const style = resolved.styles[initialTheme.current];
         created = createMap(container.current, { style, signal: controller.signal });
+        detachPopups = attachPopups(created);
         map.current = created;
         appliedStyle.current = style;
         setBasemaps(resolved);
@@ -41,6 +45,7 @@ export function MapView() {
 
     return () => {
       controller.abort();
+      detachPopups?.();
       created?.remove();
       map.current = null;
       appliedStyle.current = null;
