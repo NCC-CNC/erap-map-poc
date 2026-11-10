@@ -7,6 +7,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Second synthetic pipeline layer `sample_points` (#32): 30 made-up points
+  over Canada (`id` as the tile feature id; `name`, `category` of `alpha`,
+  `beta` or `gamma`, `count` 1 to 500), 8 of them inside `sample` polygons so
+  the layers overlap. Deterministic generator
+  `pipeline/tests/fixtures/make_sample_points.sh` and committed
+  `sample_points.geojson`, config `pipeline/layers/sample_points.env` (zooms
+  0 to 10, `--drop-rate=1` so every point is kept at every zoom), bats tests
+  for the fixture, layer, zooms, attributes, feature ids at every zoom and a
+  default run building both layers into one manifest, and a contract entry
+  in `docs/design/02_data_layers_and_popups.md`.
 - `CONTRIBUTING.md` Setup: prerequisites (Git, Docker with Compose v2, Git
   Bash on Windows), a run block, a Checks block with Docker-only local
   equivalents of every CI job (`pipeline`, `web`, `compose`,
