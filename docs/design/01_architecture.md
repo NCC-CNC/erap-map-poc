@@ -87,7 +87,10 @@ contract in `02_data_layers_and_popups.md`. It never reads `data/raw/`.
   bundle small, and destroy each chart instance when its pop-up closes.
 - Basemap: CARTO Positron by default, Dark Matter as a toggle (ADR 0005),
   behind one module in `src/map/`. The CARTO API key is read at runtime from
-  `/config.json`, never baked into the build.
+  `/config.json`, never baked into the build. With no key, the app uses
+  OpenFreeMap's keyless Positron and Dark styles and logs a warning. In
+  development the Vite dev server serves `/config.json` from `CARTO_API_KEY`
+  (the environment, or the repo root `.env`).
 - Tests: vitest for logic (stat formatting, layer registry), ESLint and
   `tsc --noEmit` as gates.
 

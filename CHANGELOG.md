@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- CARTO basemaps in the web app (ADR 0005): `src/map/basemap.ts` picks CARTO
+  Positron (default) or Dark Matter with the key from the runtime
+  `/config.json` (`src/config.ts`), or keyless OpenFreeMap Positron and Dark
+  with a console warning when there is no key; a light/dark basemap toggle;
+  data layers are re-added after a basemap switch; the Vite dev and preview
+  servers serve `/config.json` from `CARTO_API_KEY`.
 - Web app scaffold (`web/`): React, TypeScript and Vite, MapLibre GL JS with
   the `pmtiles` protocol, a placeholder OpenFreeMap basemap in `src/map/`, and
   a layer registry in `src/layers/` with the `sample` layer from
