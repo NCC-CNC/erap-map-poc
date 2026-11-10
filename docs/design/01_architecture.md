@@ -10,6 +10,7 @@ flowchart LR
     direction TB
     ogr[GDAL / OGR<br>validate, reproject, clean] --> stats[summary stats<br>per feature]
     stats --> tip[tippecanoe<br>build .pmtiles]
+    tip --> guard[drop guard<br>per-zoom check]
   end
   pipeline --> tiles[data/tiles/<br>*.pmtiles + sidecar JSON]
   tiles --> web
@@ -59,15 +60,29 @@ contract in `02_data_layers_and_popups.md`. It never reads `data/raw/`.
 - Per layer, the steps are:
   1. Validate and normalise the input with `ogr2ogr` (reproject to
      EPSG:4326, fix geometries, select and rename attributes) into an
-     intermediate GeoJSONSeq or FlatGeobuf in a scratch folder.
+     intermediate GeoJSONSeq in a scratch folder. Shapefiles without a
+     `.prj` or `.cpg` get a per-layer source CRS or encoding, and `.zip`
+     inputs are read in place through `/vsizip/` (see 02). No
+     simplification here: `ogr2ogr -simplify` works per feature and would
+     open gaps between neighbours.
   2. Compute summary stats (with OGR SQL or a small helper; TBC once the stats
      are known) and either join them as attributes or write sidecar JSON.
-  3. Run tippecanoe with the layer's flags to write
-     `data/tiles/<layer>.pmtiles` directly.
-  4. Write a `data/tiles/manifest.json` listing the layers built, their
-     bounds, zoom range, and build time, which the web app can read.
+  3. Measure each feature once for the drop guard: the area of its largest
+     polygon part in EPSG:3857 (`gdal vector pipeline`, `lib/guard.sh`).
+  4. Run tippecanoe with the layer's profile and flags (for example
+     `LAYER_PROFILE=coverage` for contiguous polygon coverages; see 02),
+     reading the GeoJSONSeq in parallel (`--read-parallel`), into a temp
+     archive.
+  5. Drop guard: read the archive zoom by zoom (GDAL's PMTiles driver, feature
+     ids only) and fail the build if any feature big enough to see at a zoom
+     (`LAYER_MIN_VISIBLE_PX`, default 1 screen pixel at 256 px tiles) is
+     missing there. Smaller missing features are only logged.
+  6. Move the archive to `data/tiles/<layer>.pmtiles` and write a
+     `data/tiles/manifest.json` listing the layers built, their bounds, zoom
+     range, build time and per-zoom stats, which the web app can read.
 - Builds write to a temp file and move it into place at the end, so a failed
-  run never leaves a half-written `.pmtiles` that the web app would serve.
+  run (including a failed drop guard) never leaves a half-written or
+  failed `.pmtiles` that the web app would serve.
 - `mb-util` is not installed until a step needs it (see the brief's open
   questions).
 

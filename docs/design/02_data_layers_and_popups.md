@@ -21,8 +21,10 @@ Copy this block for each layer.
 
 - Source: {{where it comes from, licence, update frequency}}.
 - Pipeline steps: {{filters, reprojection, simplification, joins}}.
-- Tile settings: zoom range {{min to max}}, tippecanoe flags
-  {{e.g. `--drop-densest-as-needed`}}.
+- Tile settings: zoom range {{min to max}}, profile {{`coverage` for a
+  contiguous polygon coverage, or none}}, tippecanoe flags
+  {{e.g. `--drop-densest-as-needed`}}, drop guard threshold
+  {{`LAYER_MIN_VISIBLE_PX`, default 1}}.
 - Feature id: {{attribute used as a stable id, needed for sidecar lookups and
   feature state}}.
 - Attributes kept in tiles: {{name, type, meaning}}.
@@ -54,9 +56,10 @@ against before real data arrives.
 - Pipeline steps: reproject to EPSG:4326, make geometries valid (feature 7 is
   a deliberate self-intersecting bow tie, which becomes a MultiPolygon),
   rename `NAME_EN` to `name`, drop `notes`.
-- Tile settings: zoom range 0 to 8, tippecanoe flags
-  `--drop-densest-as-needed`. Output `data/tiles/sample.pmtiles`, vector
-  layer `sample`.
+- Tile settings: zoom range 0 to 8, no profile (the polygons do not touch,
+  so it is not a coverage), tippecanoe flags `--drop-densest-as-needed`,
+  default drop guard threshold (every polygon is required at every zoom).
+  Output `data/tiles/sample.pmtiles`, vector layer `sample`.
 - Feature id: `id` (integer 1 to 15). Written as the vector tile feature id
   (`--use-attribute-for-id`), so it is `feature.id` in MapLibre and is not
   repeated as a property.
@@ -121,6 +124,144 @@ default for now (see #17).
     (label "Count", integer).
   - Plots: none.
 
+## Input options
+
+Set per layer in `pipeline/layers/<layer>.env` (every variable is described
+in `pipeline/lib/config.sh`). Real layers are expected to be shapefiles or
+similar, so:
+
+- `LAYER_INPUT` may be a `.zip` (for example a zipped shapefile), read in
+  place through GDAL's `/vsizip/`: `boundaries.zip` for a zip holding one
+  shapefile (or a GDAL `.shp.zip`), `boundaries.zip/folder/file.shp` for a
+  file inside it. Paths that already start with `/vsi` go to GDAL unchanged.
+- `LAYER_SOURCE_SRS` (for example `EPSG:3347`) sets the source CRS for inputs
+  without a usable one, such as a shapefile with no `.prj`. It is passed to
+  `ogr2ogr` as `-s_srs`. Without it such an input fails ("Use -s_srs to set
+  one").
+- `LAYER_ENCODING` (for example `ISO-8859-1`) sets the attribute encoding of
+  a shapefile without a `.cpg` (passed as the open option `ENCODING`).
+  Without it GDAL passes the bytes through unchanged, and tippecanoe rejects
+  anything that is not valid UTF-8.
+- Shapefile cuts field names to 10 characters. `LAYER_FIELDS` renames with
+  `src:dest`, so `descriptio:description` restores the full name in the
+  tiles.
+
+## Polygon coverages: tile profile and drop guard
+
+Real layers are expected to be contiguous coverages: polygons that tile an
+area with no overlaps and shared borders throughout. Requirements:
+
+- No gaps or slivers along shared borders, at any zoom.
+- Large features are never dropped or merged at a zoom where they are
+  visible.
+- Small features may be dropped or merged where they would not be visible
+  (sub-pixel or close to it), and their removal must not open visible holes.
+
+### `LAYER_PROFILE=coverage`
+
+A named set of tippecanoe flags for coverage layers (defined in
+`layer_profile_flags` in `pipeline/lib/config.sh`); a layer's own
+`LAYER_TIPPECANOE_FLAGS` are added after them. Checked against tippecanoe
+2.79.0 (its `--help` and README) and the gap test on the synthetic coverage
+fixture (`pipeline/tests/coverage.bats`):
+
+- `--no-simplification-of-shared-nodes`: keeps every node where rings meet
+  or part, and simplifies each border between those nodes identically in
+  both neighbours. Chosen over `--detect-shared-borders`, which the 2.79.0
+  README marks DEPRECATED ("Use `no-simplification-of-shared-nodes` instead,
+  which is faster and more correct"). On the fixture (z0 to z6, every tile
+  clipped to its extent, in tile units of 1/16 pixel), this flag leaves no
+  overlaps between visible polygons at any zoom and no gaps at all from z2
+  up. Without it, independent simplification of each ring opens gaps and
+  overlaps at every zoom (for example a gap of 193.5 and overlaps of 24.8 to
+  122 tile units squared) and the check fails at 6 of 7 zooms.
+  `--detect-shared-borders` passes six zooms but leaves a 13,670 unit squared
+  (53 pixel squared) hole at z5.
+- `--drop-smallest-as-needed`: when a tile is too big, drop the physically
+  smallest polygons first. `--drop-densest-as-needed` is not used: it thins
+  by spacing, so it can drop a large polygon in a dense area.
+- Tiny polygon reduction (the tippecanoe default) stays on. It only touches
+  rings under 4 square tile units, that is 1/64 of a screen pixel at the
+  default detail, and the drop guard confirms nothing visible goes.
+- No `--coalesce*`: merging changes feature ids and attributes, and
+  `--coalesce` disables the shared-node handling.
+
+Tile size is also kept down by keeping only the attributes needed (only
+`LAYER_FIELDS` reach the tiles), a sensible per-layer `LAYER_MIN_ZOOM`, and
+if needed a moderate `--maximum-tile-bytes` in `LAYER_TIPPECANOE_FLAGS`
+(default 500 KB).
+
+Not built yet, but the option for very detailed layers: a GDAL-generalised
+overview layer for low zooms (dissolved, or coverage-simplified with
+`gdal vector simplify-coverage`, which GDAL 3.13 has and which keeps shared
+borders shared), switched by zoom in the web app. GDAL 3.13 also has
+`gdal vector check-coverage` and `gdal vector clean-coverage` to check and
+repair an input coverage before tiling. Do not pre-simplify with
+`ogr2ogr -simplify`: it works per feature and opens gaps.
+
+The `sample` layer does not use the profile: its polygons do not touch, so
+it is not a coverage.
+
+### Drop guard and visibility threshold
+
+Every layer goes through the drop guard (`pipeline/lib/guard.sh`) after
+tiling and before the archive is moved into place:
+
+- Size: each feature's largest polygon part is measured once, in EPSG:3857
+  (the tiles' own projection), from the normalised GeoJSONSeq. The largest
+  part rather than the total, because a feature made only of sub-pixel parts
+  is not visible however many parts it has. Points and lines have no area
+  and are never required.
+- Required: at zoom z a feature is required when that part covers at least
+  `LAYER_MIN_VISIBLE_PX` screen pixels at 256 px tiles, that is
+  `area_m2 * (256 * 2^z / 40075016.686)^2 >= LAYER_MIN_VISIBLE_PX`.
+- Check: for every zoom from the layer's min zoom to its max zoom, the
+  feature ids in the archive are read (GDAL's PMTiles driver, `mvt_id` only).
+  A required feature missing from every tile of a zoom fails the build, and
+  the previous `<layer>.pmtiles` and manifest entry are kept. Missing smaller
+  features are logged ("not present (allowed)") and counted in the manifest.
+
+Default threshold: 1 pixel. Tippecanoe's own pixel is 1/256 of a tile, so
+this is the same unit as its `--buffer`. MapLibre draws a vector tile of zoom
+z across 512 CSS pixels (from its zoom z until z+1), so a 1 px feature here
+is at least 2 x 2 CSS pixels on screen, and less than that is too small to
+read as a shape or to show as a hole in a coverage. Tippecanoe's tiny
+polygon reduction works far below this (1/64 px), so the default flags never
+trip the guard; drop-as-needed under a tight tile size can, which is the
+point. Raise it per layer (for example `LAYER_MIN_VISIBLE_PX=4`) to give
+dropping more room, or set 0 to require every polygon at every zoom (which
+then also fails on tiny polygon reduction).
+
+Cost: one GDAL pass over the input for the sizes, then each zoom of the
+archive is read once for ids and once by `tippecanoe-decode --stats` for tile
+sizes. On the coverage fixture (1,058 polygons) the sizes take under 0.1 s and
+the guard 0.3 s for z0 to z6; at z0 to z11 (15,600 tiles, 0.7 MB) the guard
+takes 1.6 s against 1.3 s for tippecanoe itself, so expect it to roughly
+double the tile step on real data.
+
+### Tests
+
+`pipeline/tests/coverage.bats` builds a synthetic coverage (made-up, no real
+data) from `pipeline/tests/fixtures/make_coverage.sh`, generated at test time
+and not a built layer: a jittered lattice over -120..-100, 50..60 cut into
+18 large polygons, 40 medium ones and 1,000 tiny ones (about 1/100 pixel at
+z0), all sharing exact vertices along their borders. The tests check:
+
+- the gap check: every tile at z0 to z6, clipped to its extent, has no
+  overlaps between visible polygons, and per zoom the gaps add up to no more
+  than the area of the polygons too small to see (zero from z5, where every
+  polygon is visible); and that it fails without
+  `--no-simplification-of-shared-nodes`;
+- every large polygon at every zoom, tiny ones absent at z0 and all present
+  from z4;
+- the per-zoom manifest stats;
+- the guard failing the build, and keeping the previous archive, when
+  `--maximum-tile-bytes=1500` makes tippecanoe drop large polygons, and when
+  `LAYER_MIN_VISIBLE_PX=0` meets tiny polygon reduction.
+
+`pipeline/tests/inputs.bats` covers the input options with shapefiles made
+in the test by `ogr2ogr` (nothing binary is committed).
+
 ## Pipeline outputs
 
 Besides one `<layer>.pmtiles` per layer, the pipeline writes
@@ -138,7 +279,20 @@ Besides one `<layer>.pmtiles` per layer, the pipeline writes
       "bounds": [-125, 46, -66, 56],
       "center": [-108.98, 51.18, 8],
       "feature_count": 15,
-      "built_at": "2026-01-01T00:00:00Z"
+      "built_at": "2026-01-01T00:00:00Z",
+      "profile": null,
+      "min_visible_px": 1,
+      "max_tile_bytes": 833,
+      "zooms": [
+        {
+          "zoom": 0,
+          "input": 15,
+          "present": 15,
+          "required": 15,
+          "required_present": 15,
+          "max_tile_bytes": 813
+        }
+      ]
     }
   ]
 }
@@ -148,6 +302,18 @@ Besides one `<layer>.pmtiles` per layer, the pipeline writes
 both from the PMTiles header. Layers are sorted by name. Rebuilding one layer
 replaces its entry and keeps the others. Both files are written to a temp
 file and moved into place, so a failed run leaves the previous version.
+
+The fields from `name` to `built_at` are the ones the web app reads. The rest
+is the build report from the drop guard:
+
+- `profile`: the layer's `LAYER_PROFILE`, or `null` for none.
+- `min_visible_px`: the layer's `LAYER_MIN_VISIBLE_PX`.
+- `max_tile_bytes`: the largest stored (compressed) tile in the archive.
+- `zooms`: one entry per zoom from `minzoom` to `maxzoom` (only z0 is shown
+  above): `input` features in the normalised input, features `present` in at
+  least one tile, features `required` at that zoom (see the drop guard) and
+  how many of them are present (`required_present`, always equal to
+  `required` in a built layer), and that zoom's largest tile in bytes.
 
 ## Where pop-up data lives
 
