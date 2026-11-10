@@ -12,13 +12,15 @@ setup() {
   mkdir -p "$PIPELINE_INPUT_DIR"
 }
 
-# A layers dir holding copies of sample.env under the given names.
+# A layers dir holding copies of sample.env and sample.style.json under the
+# given names.
 make_layers_dir() {
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
   mkdir -p "$PIPELINE_LAYERS_DIR"
   local name
   for name in "$@"; do
     cp "${PIPELINE_ROOT}/layers/sample.env" "${PIPELINE_LAYERS_DIR}/${name}.env"
+    cp "${PIPELINE_ROOT}/layers/sample.style.json" "${PIPELINE_LAYERS_DIR}/${name}.style.json"
   done
 }
 

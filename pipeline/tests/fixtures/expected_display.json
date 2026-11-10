@@ -1,0 +1,225 @@
+{
+  "sample": {
+    "title": "Sample polygons",
+    "defaultVisible": true,
+    "order": 10,
+    "popup": {
+      "title": {
+        "attribute": "name"
+      },
+      "stats": [
+        {
+          "label": "ID",
+          "value": {
+            "featureId": true
+          }
+        },
+        {
+          "label": "Area",
+          "value": {
+            "attribute": "area_ha"
+          },
+          "format": {
+            "decimals": 1,
+            "suffix": "ha"
+          }
+        },
+        {
+          "label": "Score",
+          "value": {
+            "attribute": "score"
+          },
+          "format": {
+            "suffix": "/ 100"
+          }
+        }
+      ],
+      "charts": [
+        {
+          "type": "bar",
+          "title": "Value by year",
+          "valueLabel": "Value",
+          "points": [
+            {
+              "label": "2020",
+              "attribute": "v2020"
+            },
+            {
+              "label": "2021",
+              "attribute": "v2021"
+            },
+            {
+              "label": "2022",
+              "attribute": "v2022"
+            },
+            {
+              "label": "2023",
+              "attribute": "v2023"
+            },
+            {
+              "label": "2024",
+              "attribute": "v2024"
+            }
+          ]
+        }
+      ]
+    },
+    "layers": [
+      {
+        "id": "fill",
+        "type": "fill",
+        "paint": {
+          "fill-color": [
+            "case",
+            [
+              "==",
+              [
+                "typeof",
+                [
+                  "get",
+                  "score"
+                ]
+              ],
+              "number"
+            ],
+            [
+              "step",
+              [
+                "get",
+                "score"
+              ],
+              "#a1dab4",
+              25,
+              "#41b6c4",
+              50,
+              "#2c7fb8",
+              75,
+              "#253494"
+            ],
+            "#9e9e9e"
+          ],
+          "fill-opacity": 0.7
+        }
+      },
+      {
+        "id": "outline",
+        "type": "line",
+        "paint": {
+          "line-color": "#ffffff",
+          "line-width": 0.75
+        }
+      }
+    ],
+    "legend": {
+      "kind": "ramp",
+      "shape": "square",
+      "border": "#ffffff",
+      "opacity": 0.7,
+      "items": [
+        {
+          "color": "#a1dab4",
+          "label": "0 to 25"
+        },
+        {
+          "color": "#41b6c4",
+          "label": "25 to 50"
+        },
+        {
+          "color": "#2c7fb8",
+          "label": "50 to 75"
+        },
+        {
+          "color": "#253494",
+          "label": "75 to 100"
+        },
+        {
+          "color": "#9e9e9e",
+          "label": "No score"
+        }
+      ]
+    }
+  },
+  "sample_points": {
+    "title": "Sample points",
+    "defaultVisible": true,
+    "order": 20,
+    "popup": {
+      "title": {
+        "attribute": "name"
+      },
+      "stats": [
+        {
+          "label": "ID",
+          "value": {
+            "featureId": true
+          }
+        },
+        {
+          "label": "Category",
+          "value": {
+            "attribute": "category"
+          }
+        },
+        {
+          "label": "Count",
+          "value": {
+            "attribute": "count"
+          },
+          "format": {}
+        }
+      ]
+    },
+    "layers": [
+      {
+        "id": "circle",
+        "type": "circle",
+        "paint": {
+          "circle-color": [
+            "match",
+            [
+              "to-string",
+              [
+                "get",
+                "category"
+              ]
+            ],
+            "alpha",
+            "#e69f00",
+            "beta",
+            "#cc79a7",
+            "gamma",
+            "#d55e00",
+            "#9e9e9e"
+          ],
+          "circle-radius": 6,
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 1.5
+        }
+      }
+    ],
+    "legend": {
+      "kind": "categories",
+      "shape": "circle",
+      "border": "#ffffff",
+      "opacity": 1,
+      "items": [
+        {
+          "color": "#e69f00",
+          "label": "Alpha"
+        },
+        {
+          "color": "#cc79a7",
+          "label": "Beta"
+        },
+        {
+          "color": "#d55e00",
+          "label": "Gamma"
+        },
+        {
+          "color": "#9e9e9e",
+          "label": "Other"
+        }
+      ]
+    }
+  }
+}

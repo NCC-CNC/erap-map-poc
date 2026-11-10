@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # shellcheck source-path=SCRIPTDIR/..
 # Pipeline entry point: build vector tiles for every layer config in
-# pipeline/layers/, or only the layers named on the command line.
+# pipeline/layers/, or only the layers named on the command line. Each layer
+# is <layer>.env (processing) plus <layer>.style.json (display, ADR 0007).
 #
 # Usage: run.sh [-h|--help] [layer ...]
 #
 # Environment (defaults match the docker-compose mounts):
 #   PIPELINE_INPUT_DIR   source data, read only        (default /data/raw)
-#   PIPELINE_OUTPUT_DIR  .pmtiles and manifest.json    (default /data/tiles)
+#   PIPELINE_OUTPUT_DIR  .pmtiles, manifest.json and style.json
+#                                                      (default /data/tiles)
 #   PIPELINE_LAYERS_DIR  layer configs                 (default <pipeline>/layers)
 #   TMPDIR               parent of the scratch dir     (default /tmp)
 #
@@ -30,6 +32,8 @@ source "${PIPELINE_ROOT}/lib/tiles.sh"
 source "${PIPELINE_ROOT}/lib/guard.sh"
 # shellcheck source=lib/manifest.sh
 source "${PIPELINE_ROOT}/lib/manifest.sh"
+# shellcheck source=lib/display.sh
+source "${PIPELINE_ROOT}/lib/display.sh"
 
 PIPELINE_INPUT_DIR=${PIPELINE_INPUT_DIR:-/data/raw}
 PIPELINE_OUTPUT_DIR=${PIPELINE_OUTPUT_DIR:-/data/tiles}
@@ -61,6 +65,11 @@ build_layer() {
   ((count > 0)) || die "no features after normalising $LAYER_INPUT"
   log_info "$count features"
 
+  # The display config is checked before tiling, so a bad one costs nothing
+  # and leaves the previous archive and manifest entry in place.
+  local display="${layer_scratch}/display.json"
+  resolve_display "$name" "${PIPELINE_LAYERS_DIR}/${name}.style.json" "$normalised" "$display"
+
   local sizes="${layer_scratch}/sizes.tsv" stats="${layer_scratch}/zoom_stats.json"
   feature_sizes "$normalised" "$LAYER_FEATURE_ID" "$sizes"
 
@@ -69,7 +78,7 @@ build_layer() {
     check_layer_tiles "${LAYER_TIPPECANOE_FLAGS[@]}"
 
   manifest_update "$PIPELINE_OUTPUT_DIR" "$name" "$count" "$stats" \
-    "$LAYER_PROFILE" "$LAYER_MIN_VISIBLE_PX"
+    "$LAYER_PROFILE" "$LAYER_MIN_VISIBLE_PX" "$display"
 }
 
 # check_layer_tiles ARCHIVE: the drop guard, run by build_tiles from inside
@@ -97,7 +106,7 @@ main() {
   done
 
   local tool
-  for tool in gdal ogr2ogr ogrinfo tippecanoe tippecanoe-decode pmtiles jq; do
+  for tool in gdal ogr2ogr ogrinfo tippecanoe tippecanoe-decode pmtiles jq node; do
     command -v "$tool" >/dev/null || die "required tool not found: $tool"
   done
 
@@ -151,10 +160,18 @@ main() {
     fi
   done
 
+  # The combined style follows the manifest, including entries kept from
+  # earlier runs, so it is rewritten even when a layer failed.
+  set +e
+  (write_style "$PIPELINE_OUTPUT_DIR")
+  local style_status=$?
+  set -e
+
   if ((${#failed[@]} > 0)); then
     log_error "${#failed[@]} of ${#layers[@]} layer(s) failed: ${failed[*]}"
     return 1
   fi
+  ((style_status == 0)) || return 1
   log_info "all ${#layers[@]} layer(s) built"
 }
 

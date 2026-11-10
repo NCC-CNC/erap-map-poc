@@ -1,0 +1,17 @@
+{
+  "name": "erap-map-pipeline-style",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Validates and resolves the per-layer display configs (pipeline/layers/*.style.json).",
+  "type": "module",
+  "engines": {
+    "node": ">=26.13.0"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@maplibre/maplibre-gl-style-spec": "26.6.0",
+    "ajv": "8.17.1"
+  }
+}

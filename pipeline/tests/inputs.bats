@@ -14,13 +14,14 @@ setup() {
 }
 
 # write_config LAYER INPUT [LINE...]: a config for the sample fixture's
-# attributes, z0 to 4, plus any extra lines.
+# attributes, z0 to 4, plus any extra lines, and a minimal display config.
 write_config() {
   local layer=$1 input=$2
   shift 2
   printf '%s\n' "LAYER_INPUT=${input}" 'LAYER_FIELDS=(id NAME_EN:name score)' \
     'LAYER_FEATURE_ID=id' 'LAYER_MIN_ZOOM=0' 'LAYER_MAX_ZOOM=4' "$@" \
     >"${PIPELINE_LAYERS_DIR}/${layer}.env"
+  cp "${PIPELINE_ROOT}/tests/fixtures/minimal.style.json" "${PIPELINE_LAYERS_DIR}/${layer}.style.json"
 }
 
 # Decoded `name` of feature ID at z0 of LAYER.

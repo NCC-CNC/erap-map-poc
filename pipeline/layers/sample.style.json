@@ -1,0 +1,45 @@
+{
+  "$schema": "../schema/layer-style.schema.json",
+  "title": "Sample polygons",
+  "defaultVisible": true,
+  "order": 10,
+  "symbology": {
+    "geometry": "polygon",
+    "color": {
+      "type": "stepped",
+      "attribute": "score",
+      "stops": [
+        { "from": 0, "color": "#a1dab4" },
+        { "from": 25, "color": "#41b6c4" },
+        { "from": 50, "color": "#2c7fb8" },
+        { "from": 75, "color": "#253494" }
+      ],
+      "max": 100,
+      "fallback": { "color": "#9e9e9e", "label": "No score" }
+    },
+    "fillOpacity": 0.7,
+    "outline": { "color": "#ffffff", "width": 0.75 }
+  },
+  "popup": {
+    "title": { "attribute": "name" },
+    "stats": [
+      { "label": "ID", "value": { "featureId": true } },
+      { "label": "Area", "value": { "attribute": "area_ha" }, "format": { "decimals": 1, "suffix": "ha" } },
+      { "label": "Score", "value": { "attribute": "score" }, "format": { "suffix": "/ 100" } }
+    ],
+    "charts": [
+      {
+        "type": "bar",
+        "title": "Value by year",
+        "valueLabel": "Value",
+        "points": [
+          { "label": "2020", "attribute": "v2020" },
+          { "label": "2021", "attribute": "v2021" },
+          { "label": "2022", "attribute": "v2022" },
+          { "label": "2023", "attribute": "v2023" },
+          { "label": "2024", "attribute": "v2024" }
+        ]
+      }
+    ]
+  }
+}

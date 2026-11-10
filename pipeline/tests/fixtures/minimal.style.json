@@ -1,0 +1,10 @@
+{
+  "title": "Test layer",
+  "defaultVisible": true,
+  "symbology": {
+    "geometry": "polygon",
+    "color": { "type": "single", "color": "#2c7fb8" },
+    "fillOpacity": 0.7,
+    "outline": { "color": "#ffffff", "width": 0.5 }
+  }
+}
