@@ -42,7 +42,12 @@ Blocked on: confirmed source datasets.
 
 Blocked on: confirmed styling and pop-up content.
 
-- Per-layer styles and a legend / layer toggle.
+- Per-layer styles and a legend / layer toggle. The mechanism is in place
+  (#33): a layer panel with the basemap radio group and one checkbox per
+  layer, topmost first, with an inline legend generated from the same
+  `symbology` as the MapLibre paint; visibility survives a basemap switch.
+  The two sample layers use it. Real layers still need their confirmed
+  styling.
 - Pop-ups with summary stats and Chart.js charts.
 - Sidecar JSON for plot data where needed.
 

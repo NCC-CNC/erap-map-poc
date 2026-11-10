@@ -7,6 +7,26 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Web layer selector with inline legends (#33): a collapsible "Map layers"
+  panel (collapsed by default below 600 px wide) holding the existing Light
+  / Dark basemap radio group and a Layers list with one labelled checkbox
+  per data layer, topmost first, each with a legend of swatches and labels
+  (categories) or ramp steps with ranges. Layer definitions gain
+  `defaultVisible` and a typed `symbology` (polygon fill and outline, or
+  point circle and stroke; single colour, categorical `match` or stepped
+  `step` colouring) from which both the MapLibre paint and the legend are
+  generated (`web/src/layers/symbology.ts`). Visibility uses layout
+  `visibility`, is kept in React state and re-applied when the data layers
+  are re-added after a basemap switch; hidden layers are not queried for
+  pop-ups and an open pop-up closes when its layer is hidden. A layer whose
+  archive is missing is shown disabled with a short note. `sample` is
+  restyled with a four-class YlGnBu ramp on `score` and a thin white
+  outline; `sample_points` is added to the registry above it, as circles
+  coloured by `category` (Okabe-Ito orange, reddish purple, vermillion)
+  with a white stroke and a pop-up showing name, ID, Category and Count.
+  Vitest tests cover the paint expressions (validated with
+  `validateStyleMin`), legends, registry order and ids, and visibility
+  state.
 - Second synthetic pipeline layer `sample_points` (#32): 30 made-up points
   over Canada (`id` as the tile feature id; `name`, `category` of `alpha`,
   `beta` or `gamma`, `count` 1 to 500), 8 of them inside `sample` polygons so

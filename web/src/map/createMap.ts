@@ -1,6 +1,12 @@
 import { Map as MapLibreMap } from 'maplibre-gl';
 import { PMTiles } from 'pmtiles';
-import { layerRegistry, toMapLibre, type LayerDefinition, type MapLibreLayer } from '../layers';
+import {
+  layerRegistry,
+  toMapLibre,
+  visibilityUpdates,
+  type LayerDefinition,
+  type MapLibreLayer,
+} from '../layers';
 import { pmtilesProtocol } from './pmtiles';
 // Sets the MapLibre worker URL; must run before any map is created.
 import './worker';
@@ -14,6 +20,14 @@ export interface CreateMapOptions {
   tilesBaseUrl?: string;
   /** Aborting stops layers being added, for example after the map is removed. */
   signal?: AbortSignal;
+  /**
+   * Current visibility of a layer, read each time the data layers are
+   * added, so a basemap switch keeps what the user switched on or off.
+   * Defaults to the definition's `defaultVisible`.
+   */
+  isVisible?: (def: LayerDefinition) => boolean;
+  /** Called once with the ids of the layers whose archive could be read. */
+  onLayersChecked?: (available: ReadonlySet<string>) => void;
 }
 
 function defaultTilesBaseUrl(): string {
@@ -26,22 +40,26 @@ function defaultTilesBaseUrl(): string {
  * skipped with a console warning, so the basemap and the other layers still
  * show.
  */
-async function availableLayers(built: readonly MapLibreLayer[]): Promise<MapLibreLayer[]> {
+async function availableLayers(
+  defs: readonly LayerDefinition[],
+  tilesBaseUrl: string,
+): Promise<LayerDefinition[]> {
   const protocol = pmtilesProtocol();
   const available = await Promise.all(
-    built.map(async ({ sourceId, archiveUrl }) => {
+    defs.map(async (def) => {
+      const { archiveUrl } = toMapLibre(def, tilesBaseUrl);
       const archive = protocol.get(archiveUrl) ?? new PMTiles(archiveUrl);
       protocol.add(archive);
       try {
         await archive.getHeader();
         return true;
       } catch (error) {
-        console.warn(`Layer "${sourceId}" skipped: could not read ${archiveUrl}.`, error);
+        console.warn(`Layer "${def.id}" skipped: could not read ${archiveUrl}.`, error);
         return false;
       }
     }),
   );
-  return built.filter((_, i) => available[i]);
+  return defs.filter((_, i) => available[i]);
 }
 
 /** Adds data layers to the current style, in order, skipping any already there. */
@@ -55,11 +73,19 @@ function addDataLayers(map: MapLibreMap, layers: readonly MapLibreLayer[]): void
 
 /**
  * Creates the map in `container` with the given basemap style and the data
- * layers. The data layers are added on every `style.load`, so they survive
- * a basemap switch with `setBasemapStyle`.
+ * layers. The data layers are added on every `style.load`, each with its
+ * current visibility from `isVisible`, so they survive a basemap switch
+ * with `setBasemapStyle` as the user left them.
  */
 export function createMap(container: HTMLElement, options: CreateMapOptions): MapLibreMap {
-  const { style, layers = layerRegistry, tilesBaseUrl = defaultTilesBaseUrl(), signal } = options;
+  const {
+    style,
+    layers = layerRegistry,
+    tilesBaseUrl = defaultTilesBaseUrl(),
+    signal,
+    isVisible = (def) => def.defaultVisible,
+    onLayersChecked,
+  } = options;
 
   // MapLibre adds the attribution control by default; keep it, as the
   // basemap and data licences require attribution.
@@ -71,19 +97,43 @@ export function createMap(container: HTMLElement, options: CreateMapOptions): Ma
   });
 
   // Checked once; each later style reuses the result.
-  let available: Promise<MapLibreLayer[]> | undefined;
+  let available: Promise<LayerDefinition[]> | undefined;
 
   map.on('style.load', () => {
     const loadedStyle = map.style;
-    available ??= availableLayers(layers.map((def) => toMapLibre(def, tilesBaseUrl)));
+    if (!available) {
+      available = availableLayers(layers, tilesBaseUrl);
+      void available.then((ready) => {
+        if (!signal?.aborted) onLayersChecked?.(new Set(ready.map((def) => def.id)));
+      });
+    }
     void available.then((ready) => {
       // Skip if the map was removed or the style replaced while waiting.
       if (signal?.aborted || map.style !== loadedStyle) return;
-      addDataLayers(map, ready);
+      addDataLayers(
+        map,
+        ready.map((def) => toMapLibre(def, tilesBaseUrl, isVisible(def))),
+      );
     });
   });
 
   return map;
+}
+
+/**
+ * Shows or hides a data layer by setting the layout `visibility` of each of
+ * its style layers. Style layers not in the map yet (archive missing, or a
+ * new style still loading) are skipped; they pick up the current visibility
+ * from `isVisible` when they are added.
+ */
+export function setLayerVisibility(
+  map: MapLibreMap,
+  def: LayerDefinition,
+  visible: boolean,
+): void {
+  for (const [id, value] of visibilityUpdates(def, visible)) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', value);
+  }
 }
 
 /**

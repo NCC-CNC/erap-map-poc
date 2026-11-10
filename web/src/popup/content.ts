@@ -1,9 +1,10 @@
-import type {
-  LayerDefinition,
-  NumberFormat,
-  PopupChart,
-  PopupDefinition,
-  ValueSource,
+import {
+  styleLayerIds,
+  type LayerDefinition,
+  type NumberFormat,
+  type PopupChart,
+  type PopupDefinition,
+  type ValueSource,
 } from '../layers';
 
 /**
@@ -143,7 +144,7 @@ export function clickableLayers(
   for (const def of defs) {
     const { popup } = def;
     if (!popup) continue;
-    for (const layer of def.layers) result.set(layer.id, { ...def, popup });
+    for (const id of styleLayerIds(def.id, def.symbology)) result.set(id, { ...def, popup });
   }
   return result;
 }
