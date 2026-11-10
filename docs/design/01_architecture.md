@@ -96,21 +96,41 @@ contract in `02_data_layers_and_popups.md`. It never reads `data/raw/`.
 
 ## Docker Compose
 
-- `web`: builds `web/Dockerfile`, publishes a local port (default 8080),
+The root `docker-compose.yml` (project name `erap-map`) builds two local
+images from the Docker Hub org `natureconservancy`:
+`natureconservancy/erap-map-web` and `natureconservancy/erap-map-pipeline`.
+They are not pushed yet; that is a separate issue. Every variable has a
+default, so the git-ignored `.env` (documented in `.env.example`) is
+optional.
+
+- `web`: builds `web/Dockerfile`, publishes `${WEB_PORT:-8080}:8080`,
   mounts `./data/tiles` read-only at `/srv/tiles` (served at `/tiles/`),
-  and passes `CARTO_API_KEY` from `.env`. At start an entrypoint script
-  (`web/docker/40-write-config-json.sh`) writes it, JSON-escaped, to
-  `/tmp/erap-web/config.json`, which nginx serves as `/config.json`. A
-  plain envsubst template is not used because it would not escape the
-  value. Started with `docker compose up web`.
-- `pipeline`: builds `pipeline/Dockerfile`, mounts `./data/raw` read-only and
-  `./data/tiles` read-write, under the `pipeline` profile so `docker compose
-  up` does not start it. Run on demand with
-  `docker compose run --rm pipeline [layer ...]`.
-- For local frontend development, a dev workflow runs Vite's dev server with
-  hot reload against the same `data/tiles/` folder (either a `web-dev` compose
-  service under a `dev` profile, or `npm run dev` on the host). Decide in
-  milestone 1.
+  and passes `CARTO_API_KEY` from `.env` (empty when unset). At start an
+  entrypoint script (`web/docker/40-write-config-json.sh`) writes it,
+  JSON-escaped, to `/tmp/erap-web/config.json`, which nginx serves as
+  `/config.json`. A plain envsubst template is not used because it would not
+  escape the value; a key with control characters stops the container.
+  Runs with `read_only: true` and a tmpfs on `/tmp`, a healthcheck with the
+  image's busybox `wget`, and `restart: unless-stopped`. Started with
+  `docker compose up -d web`.
+- `pipeline`: builds the `runtime` target of `pipeline/Dockerfile`, mounts
+  `./data/raw` read-only and `./data/tiles` read-write, under the `pipeline`
+  profile so `docker compose up` does not start it. Run on demand with
+  `docker compose run --rm pipeline [layer ...]`. It runs as
+  `${PIPELINE_UID:-10001}:${PIPELINE_GID:-10001}`; on Linux set both to the
+  host user so the tiles are owned by them. Docker Desktop needs nothing.
+- `web-dev` (profile `dev`): the frontend dev workflow, decided in M1 as a
+  compose service rather than `npm run dev` on the host, so only Docker is
+  needed (ADR 0004). It runs Vite with hot reload in the same pinned Node
+  image the web build uses, with `./web` bind-mounted at `/repo/web`, its
+  Linux `node_modules` in the named volume `web-dev-node-modules` (`npm ci`
+  only when `package-lock.json` changed), and `./data/tiles` read-only at
+  `/repo/data/tiles`, where `vite.config.ts` looks by default. Port
+  `${WEB_DEV_PORT:-5173}`; `CARTO_API_KEY` is passed through to the dev
+  server's `/config.json`. File events do not reach the container from
+  Windows bind mounts, so `VITE_USE_POLLING` (default 1) turns on Vite's
+  polling watcher. `npm run dev` on the host still works for anyone with
+  Node 26.
 
 ## Serving PMTiles
 

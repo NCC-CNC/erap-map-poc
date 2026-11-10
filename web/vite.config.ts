@@ -21,6 +21,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), serveTiles(tilesDir), serveConfig(CARTO_API_KEY)],
+    server: {
+      // File events do not cross Windows bind mounts into a container, so
+      // the web-dev compose service sets VITE_USE_POLLING=1.
+      watch: { usePolling: process.env.VITE_USE_POLLING === '1' },
+    },
     build: {
       // maplibre-gl alone is about 1 MB minified, so the default 500 kB warning
       // would always fire. Revisit if the app code itself grows large.
