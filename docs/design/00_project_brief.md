@@ -45,7 +45,7 @@ The smallest version that proves the core idea:
    that turns at least one sample input layer into a `.pmtiles` file, driven
    by a per-layer config rather than hard-coded paths.
 2. A web map container (React, Vite, MapLibre GL JS, pmtiles protocol) that
-   displays that layer over a CARTO basemap (Positron, with Dark Matter as
+   displays that layer over an OpenFreeMap basemap (Positron, with Dark as
    an option) with basic styling.
 3. Click a feature to open a pop-up with summary stats and at least one
    Chart.js chart, using data produced by the pipeline.

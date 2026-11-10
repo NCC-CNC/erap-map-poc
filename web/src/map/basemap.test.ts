@@ -1,55 +1,16 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  CARTO_STYLES,
-  OPENFREEMAP_STYLES,
-  resolveBasemaps,
-  warnIfFallback,
-  withKey,
-} from './basemap';
+import { describe, expect, it } from 'vitest';
+import { BASEMAP_STYLES, BASEMAP_THEMES, DEFAULT_BASEMAP_THEME } from './basemap';
 
-describe('withKey', () => {
-  it('appends the key as ?key=', () => {
-    expect(withKey(CARTO_STYLES.light, 'abc')).toBe(
-      'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json?key=abc',
-    );
-  });
-
-  it('encodes the key', () => {
-    expect(withKey(CARTO_STYLES.dark, 'a b&c')).toBe(
-      'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json?key=a+b%26c',
-    );
-  });
-});
-
-describe('resolveBasemaps', () => {
-  it('uses CARTO Positron and Dark Matter with a key', () => {
-    expect(resolveBasemaps('abc')).toEqual({
-      provider: 'carto',
-      styles: {
-        light: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json?key=abc',
-        dark: 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json?key=abc',
-      },
+describe('basemap', () => {
+  it('uses the OpenFreeMap Positron and Dark styles', () => {
+    expect(BASEMAP_STYLES).toEqual({
+      light: 'https://tiles.openfreemap.org/styles/positron',
+      dark: 'https://tiles.openfreemap.org/styles/dark',
     });
   });
 
-  it('falls back to OpenFreeMap without a key and never requests CARTO', () => {
-    for (const key of ['', '   ']) {
-      const basemaps = resolveBasemaps(key);
-      expect(basemaps).toEqual({ provider: 'openfreemap', styles: OPENFREEMAP_STYLES });
-      for (const url of Object.values(basemaps.styles)) expect(url).not.toContain('cartocdn');
-    }
-  });
-});
-
-describe('warnIfFallback', () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  it('warns once for the fallback and never for CARTO', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    warnIfFallback(resolveBasemaps('abc'));
-    expect(warn).not.toHaveBeenCalled();
-    warnIfFallback(resolveBasemaps(''));
-    warnIfFallback(resolveBasemaps(''));
-    expect(warn).toHaveBeenCalledTimes(1);
+  it('has a style for every theme and defaults to light', () => {
+    for (const theme of BASEMAP_THEMES) expect(BASEMAP_STYLES[theme]).toMatch(/^https:\/\//);
+    expect(DEFAULT_BASEMAP_THEME).toBe('light');
   });
 });
