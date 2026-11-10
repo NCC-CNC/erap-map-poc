@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LayerDefinition, PopupChart } from '../layers';
-import { sample } from '../layers/sample';
-import { samplePoints } from '../layers/samplePoints';
+import { sample, samplePoints } from '../test/fixtures';
 import {
   MISSING,
   buildChart,

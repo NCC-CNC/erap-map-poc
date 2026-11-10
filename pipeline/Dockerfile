@@ -1,11 +1,16 @@
 # syntax=docker/dockerfile:1
 #
-# Pipeline image: GDAL/OGR, tippecanoe and the pmtiles CLI (ADR 0002).
+# Pipeline image: GDAL/OGR, tippecanoe, the pmtiles CLI (ADR 0002) and Node
+# for the display config tool (ADR 0007).
 # Every tool is pinned. To upgrade one, change its ARG (and digest or
 # checksum) here and note it in CHANGELOG.md.
 
 # GDAL base, pinned by tag and digest. The digest is the multi-arch index.
 ARG GDAL_IMAGE=ghcr.io/osgeo/gdal:ubuntu-small-3.13.3@sha256:64250faf833c06d4b21afce4c27190039ba7ab58d70f0eebc87cf77d929c0b40
+
+# Node, for the display config tool (style/, ADR 0007). Same pinned image as
+# web/Dockerfile and the web-dev compose service.
+ARG NODE_IMAGE=node:26.13.0-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68
 
 # ---------------------------------------------------------------------------
 # Build tippecanoe from a pinned release tag, checked against its commit.
@@ -63,23 +68,36 @@ RUN git clone --depth 1 --branch "v${BATS_VERSION}" \
  && /src/bats-core/install.sh /opt/bats
 
 # ---------------------------------------------------------------------------
+# The display config tool's packages (ajv, the MapLibre style spec), from
+# its committed lockfile. Plain JavaScript, so they run on the GDAL base.
+FROM ${NODE_IMAGE} AS style
+WORKDIR /opt/pipeline/style
+COPY style/package.json style/package-lock.json style/.npmrc ./
+RUN npm ci --omit=dev --no-audit --no-fund
+
+# ---------------------------------------------------------------------------
 # Shared base for the runtime and test images.
 FROM ${GDAL_IMAGE} AS base
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # jq: write and read manifest.json. libsqlite3/zlib: tippecanoe runtime libs.
+# libatomic1: Node runtime lib.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends jq libsqlite3-0 zlib1g \
+ && apt-get install -y --no-install-recommends jq libatomic1 libsqlite3-0 zlib1g \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=tippecanoe /opt/tippecanoe/bin/ /usr/local/bin/
 COPY --from=pmtiles /usr/local/bin/pmtiles /usr/local/bin/pmtiles
+COPY --from=style /usr/local/bin/node /usr/local/bin/node
 
-# Pipeline scripts, layer configs and the synthetic fixture, from the build
-# context (pipeline/).
+# Pipeline scripts, layer configs, the display schema and tool, and the
+# synthetic fixture, from the build context (pipeline/).
 COPY bin/ /opt/pipeline/bin/
 COPY lib/ /opt/pipeline/lib/
 COPY layers/ /opt/pipeline/layers/
+COPY schema/ /opt/pipeline/schema/
+COPY style/ /opt/pipeline/style/
+COPY --from=style /opt/pipeline/style/node_modules/ /opt/pipeline/style/node_modules/
 COPY tests/ /opt/pipeline/tests/
 
 # Run as a non-root user. docker-compose can override the uid with `user:`

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted (amended by 0007-data-driven-layer-styles: the pipeline image also carries a small pinned Node tool for style validation)
 
 ## Context
 

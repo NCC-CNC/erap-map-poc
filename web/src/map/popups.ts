@@ -1,7 +1,7 @@
 import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Popup, type Map as MapLibreMap, type MapMouseEvent } from 'maplibre-gl';
-import { layerRegistry, type LayerDefinition } from '../layers';
+import type { LayerDefinition } from '../layers';
 import { buildPopupContent, clickableLayers } from '../popup/content';
 import { FeaturePopup } from '../popup/FeaturePopup';
 
@@ -23,12 +23,25 @@ export interface PopupHandlers {
  * the clickable layers present and visible at event time. Map-level
  * listeners are not part of the style, so they keep working when
  * `setBasemapStyle` replaces the style and the data layers are added again.
+ *
+ * @param layers the data layers, read at event time, as they are loaded
+ *   from the manifest after the map is created.
  */
 export function attachPopups(
   map: MapLibreMap,
-  layers: readonly LayerDefinition[] = layerRegistry,
+  layers: () => readonly LayerDefinition[],
 ): PopupHandlers {
-  const targets = clickableLayers(layers);
+  // Rebuilt only when the layer list changes.
+  let known: readonly LayerDefinition[] | undefined;
+  let targets = clickableLayers([]);
+  const currentTargets = () => {
+    const defs = layers();
+    if (defs !== known) {
+      known = defs;
+      targets = clickableLayers(defs);
+    }
+    return targets;
+  };
   let current: { popup: Popup; root: Root; layerId: string } | undefined;
 
   const hidden = (id: string) => map.getLayoutProperty(id, 'visibility') === 'none';
@@ -38,7 +51,8 @@ export function attachPopups(
    * are added. MapLibre does not draw hidden layers, but this filter makes
    * sure they are never queried either.
    */
-  const queryableLayers = () => [...targets.keys()].filter((id) => map.getLayer(id) && !hidden(id));
+  const queryableLayers = () =>
+    [...currentTargets().keys()].filter((id) => map.getLayer(id) && !hidden(id));
 
   const featuresAt = (e: MapMouseEvent) => {
     const ids = queryableLayers();
@@ -51,7 +65,7 @@ export function attachPopups(
     close();
     // Topmost feature first.
     const feature = featuresAt(e)[0];
-    const def = feature && targets.get(feature.layer.id);
+    const def = feature && currentTargets().get(feature.layer.id);
     if (!feature || !def) return;
 
     const container = document.createElement('div');

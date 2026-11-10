@@ -1,7 +1,6 @@
 import { Map as MapLibreMap } from 'maplibre-gl';
 import { PMTiles } from 'pmtiles';
 import {
-  layerRegistry,
   toMapLibre,
   visibilityUpdates,
   type LayerDefinition,
@@ -14,9 +13,13 @@ import './worker';
 export interface CreateMapOptions {
   /** Basemap style URL, from `BASEMAP_STYLES` in `./basemap`. */
   style: string;
-  /** Data layers to add; defaults to the layer registry. */
-  layers?: readonly LayerDefinition[];
-  /** Absolute URL of the folder holding the archives; defaults to `/tiles/`. */
+  /**
+   * Data layers to add, in draw order, or a promise of them (from the
+   * manifest, see `loadManifest`): the basemap shows straight away and the
+   * data layers are added once they are known.
+   */
+  layers: readonly LayerDefinition[] | Promise<readonly LayerDefinition[]>;
+  /** Absolute URL of the folder holding the archives; defaults to `tilesBaseUrl()`. */
   tilesBaseUrl?: string;
   /** Aborting stops layers being added, for example after the map is removed. */
   signal?: AbortSignal;
@@ -30,7 +33,8 @@ export interface CreateMapOptions {
   onLayersChecked?: (available: ReadonlySet<string>) => void;
 }
 
-function defaultTilesBaseUrl(): string {
+/** The folder holding the archives and `manifest.json`: `<BASE_URL>tiles/`. */
+export function tilesBaseUrl(): string {
   return new URL(`${import.meta.env.BASE_URL}tiles/`, window.location.href).href;
 }
 
@@ -41,13 +45,14 @@ function defaultTilesBaseUrl(): string {
  * show.
  */
 async function availableLayers(
-  defs: readonly LayerDefinition[],
-  tilesBaseUrl: string,
+  layers: CreateMapOptions['layers'],
+  baseUrl: string,
 ): Promise<LayerDefinition[]> {
+  const defs = await layers;
   const protocol = pmtilesProtocol();
   const available = await Promise.all(
     defs.map(async (def) => {
-      const { archiveUrl } = toMapLibre(def, tilesBaseUrl);
+      const { archiveUrl } = toMapLibre(def, baseUrl);
       const archive = protocol.get(archiveUrl) ?? new PMTiles(archiveUrl);
       protocol.add(archive);
       try {
@@ -80,8 +85,8 @@ function addDataLayers(map: MapLibreMap, layers: readonly MapLibreLayer[]): void
 export function createMap(container: HTMLElement, options: CreateMapOptions): MapLibreMap {
   const {
     style,
-    layers = layerRegistry,
-    tilesBaseUrl = defaultTilesBaseUrl(),
+    layers,
+    tilesBaseUrl: baseUrl = tilesBaseUrl(),
     signal,
     isVisible = (def) => def.defaultVisible,
     onLayersChecked,
@@ -102,7 +107,7 @@ export function createMap(container: HTMLElement, options: CreateMapOptions): Ma
   map.on('style.load', () => {
     const loadedStyle = map.style;
     if (!available) {
-      available = availableLayers(layers, tilesBaseUrl);
+      available = availableLayers(layers, baseUrl);
       void available.then((ready) => {
         if (!signal?.aborted) onLayersChecked?.(new Set(ready.map((def) => def.id)));
       });
@@ -112,7 +117,7 @@ export function createMap(container: HTMLElement, options: CreateMapOptions): Ma
       if (signal?.aborted || map.style !== loadedStyle) return;
       addDataLayers(
         map,
-        ready.map((def) => toMapLibre(def, tilesBaseUrl, isVisible(def))),
+        ready.map((def) => toMapLibre(def, baseUrl, isVisible(def))),
       );
     });
   });

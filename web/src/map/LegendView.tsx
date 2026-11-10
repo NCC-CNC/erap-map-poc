@@ -2,8 +2,9 @@ import type { CSSProperties } from 'react';
 import type { Legend } from '../layers';
 
 /**
- * A layer's inline legend: one swatch and label per item, generated from
- * the layer's symbology by `legendFor`, never written by hand.
+ * A layer's inline legend: one swatch and label per item, from the legend
+ * the pipeline resolved for the layer (derived from its style, or given
+ * explicitly in its display config).
  */
 export function LegendView({ legend, label }: { legend: Legend; label: string }) {
   return (

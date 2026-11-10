@@ -1,0 +1,352 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NCC-CNC/erap-map-poc/pipeline/schema/layer-style.schema.json",
+  "title": "Layer display config",
+  "description": "How one data layer is shown in the web map: pipeline/layers/<layer>.style.json. The pipeline validates it, resolves it and writes the result into that layer's manifest.json entry as `display` (see $defs/display). ADR 0007; docs/design/02_data_layers_and_popups.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "defaultVisible"],
+  "properties": {
+    "$schema": {
+      "description": "Optional, for editors: the path to this schema.",
+      "type": "string"
+    },
+    "title": {
+      "description": "Human-readable layer name, shown in the layer list and legends.",
+      "type": "string",
+      "minLength": 1
+    },
+    "defaultVisible": {
+      "description": "Whether the layer is switched on when the map opens.",
+      "type": "boolean"
+    },
+    "order": {
+      "description": "Draw order: layers are drawn in ascending order (the highest on top, and first in the layer list), ties broken by layer name. Defaults to 0.",
+      "type": "integer"
+    },
+    "popup": { "$ref": "#/$defs/popup" },
+    "symbology": { "$ref": "#/$defs/symbology" },
+    "layers": {
+      "description": "Raw MapLibre style-spec layers, in draw order (last on top), without `source` or `source-layer`, which the pipeline and the app fill in. Each `id` must be unique within the file; it is prefixed with `<layer>-` on the map.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/styleLayer" }
+    },
+    "legend": { "$ref": "#/$defs/legend" }
+  },
+  "if": { "required": ["layers"] },
+  "then": { "properties": { "symbology": false } },
+  "else": { "required": ["symbology"] },
+  "$defs": {
+    "color": {
+      "description": "A CSS colour, as MapLibre accepts it, for example #2c7fb8.",
+      "type": "string",
+      "minLength": 1
+    },
+    "attribute": {
+      "description": "A tile attribute (feature property) name.",
+      "type": "string",
+      "minLength": 1
+    },
+    "fallback": {
+      "description": "Colour for features that match no category or have no numeric value. Without a label it is left out of the legend.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["color"],
+      "properties": {
+        "color": { "$ref": "#/$defs/color" },
+        "label": { "type": "string", "minLength": 1 }
+      }
+    },
+    "singleColor": {
+      "description": "Every feature in one colour. The legend label defaults to the layer title.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "color"],
+      "properties": {
+        "type": { "const": "single" },
+        "color": { "$ref": "#/$defs/color" },
+        "label": { "type": "string", "minLength": 1 }
+      }
+    },
+    "categoricalColor": {
+      "description": "One colour per value of a text attribute (MapLibre match).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "attribute", "categories", "fallback"],
+      "properties": {
+        "type": { "const": "categorical" },
+        "attribute": { "$ref": "#/$defs/attribute" },
+        "categories": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "color", "label"],
+            "properties": {
+              "value": { "type": "string" },
+              "color": { "$ref": "#/$defs/color" },
+              "label": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "fallback": { "$ref": "#/$defs/fallback" }
+      }
+    },
+    "steppedColor": {
+      "description": "Colour classes on a numeric attribute (MapLibre step). Either explicit `stops` (ascending `from`, each class running up to the next `from`, the last up to `max`, which is for the legend only) or `breaks` plus one colour per class in `colors`, which the pipeline resolves into stops from the data.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "attribute", "fallback"],
+      "properties": {
+        "type": { "const": "stepped" },
+        "attribute": { "$ref": "#/$defs/attribute" },
+        "stops": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "color"],
+            "properties": {
+              "from": { "type": "number" },
+              "color": { "$ref": "#/$defs/color" }
+            }
+          }
+        },
+        "max": { "type": "number" },
+        "breaks": { "$ref": "#/$defs/breaks" },
+        "colors": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/color" }
+        },
+        "fallback": { "$ref": "#/$defs/fallback" }
+      },
+      "if": { "required": ["breaks"] },
+      "then": {
+        "required": ["colors"],
+        "properties": { "stops": false, "max": false }
+      },
+      "else": {
+        "required": ["stops", "max"],
+        "properties": { "colors": false }
+      }
+    },
+    "breaks": {
+      "description": "Class breaks computed by the pipeline from the layer's data: `equal` splits min to max into equal ranges; `quantile` puts about the same number of features in each class. `classes` must equal the number of `colors`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "classes"],
+      "properties": {
+        "method": { "enum": ["quantile", "equal"] },
+        "classes": { "type": "integer", "minimum": 2, "maximum": 12 }
+      }
+    },
+    "colorRule": {
+      "type": "object",
+      "required": ["type"],
+      "properties": { "type": { "enum": ["single", "categorical", "stepped"] } },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "single" } } },
+          "then": { "$ref": "#/$defs/singleColor" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "categorical" } } },
+          "then": { "$ref": "#/$defs/categoricalColor" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "stepped" } } },
+          "then": { "$ref": "#/$defs/steppedColor" }
+        }
+      ]
+    },
+    "polygonSymbology": {
+      "description": "Polygons: a fill coloured by `color` with a thin outline.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["geometry", "color", "fillOpacity", "outline"],
+      "properties": {
+        "geometry": { "const": "polygon" },
+        "color": { "$ref": "#/$defs/colorRule" },
+        "fillOpacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "outline": { "$ref": "#/$defs/stroke" }
+      }
+    },
+    "pointSymbology": {
+      "description": "Points: circles coloured by `color` with a contrasting stroke.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["geometry", "color", "radius", "stroke"],
+      "properties": {
+        "geometry": { "const": "point" },
+        "color": { "$ref": "#/$defs/colorRule" },
+        "radius": { "type": "number", "exclusiveMinimum": 0 },
+        "stroke": { "$ref": "#/$defs/stroke" }
+      }
+    },
+    "stroke": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["color", "width"],
+      "properties": {
+        "color": { "$ref": "#/$defs/color" },
+        "width": { "type": "number", "minimum": 0 }
+      }
+    },
+    "symbology": {
+      "description": "Shorthand that the pipeline expands into MapLibre style layers (polygon: `fill` and `outline`; point: `circle`) and a legend.",
+      "type": "object",
+      "required": ["geometry"],
+      "properties": { "geometry": { "enum": ["polygon", "point"] } },
+      "allOf": [
+        {
+          "if": { "properties": { "geometry": { "const": "polygon" } } },
+          "then": { "$ref": "#/$defs/polygonSymbology" }
+        },
+        {
+          "if": { "properties": { "geometry": { "const": "point" } } },
+          "then": { "$ref": "#/$defs/pointSymbology" }
+        }
+      ]
+    },
+    "styleLayer": {
+      "description": "A MapLibre style-spec layer for a vector source, without `source` and `source-layer`. Everything but `id`, `type` and the absent source fields is checked by the MapLibre style validator in the pipeline.",
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$" },
+        "type": { "enum": ["fill", "line", "symbol", "circle", "heatmap", "fill-extrusion"] },
+        "source": false,
+        "source-layer": false
+      }
+    },
+    "legendItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["color", "label"],
+      "properties": {
+        "color": { "$ref": "#/$defs/color" },
+        "label": { "type": "string", "minLength": 1 }
+      }
+    },
+    "legendKind": {
+      "description": "`ramp` for classes of a numeric value, `categories` for categories, `single` for one colour.",
+      "enum": ["single", "categories", "ramp"]
+    },
+    "legendShape": {
+      "description": "Swatch shape: `square` for fills, `circle` for points, `line` for lines.",
+      "enum": ["square", "circle", "line"]
+    },
+    "legend": {
+      "description": "An explicit legend, used as is in place of the derived one. Fields left out are taken from the derived legend when there is one, otherwise from the first style layer (shape), `categories` (kind), `transparent` (border) and 1 (opacity). Required when the legend cannot be derived from `layers`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/legendKind" },
+        "shape": { "$ref": "#/$defs/legendShape" },
+        "border": { "$ref": "#/$defs/color" },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/legendItem" } }
+      }
+    },
+    "resolvedLegend": {
+      "description": "The legend as written to the manifest: every field set.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "shape", "border", "opacity", "items"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/legendKind" },
+        "shape": { "$ref": "#/$defs/legendShape" },
+        "border": { "$ref": "#/$defs/color" },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/legendItem" } }
+      }
+    },
+    "valueSource": {
+      "description": "Where a pop-up value comes from: a tile attribute, or the vector tile feature id.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["attribute"],
+          "properties": { "attribute": { "$ref": "#/$defs/attribute" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["featureId"],
+          "properties": { "featureId": { "const": true } }
+        }
+      ]
+    },
+    "numberFormat": {
+      "description": "How a number is shown. Without one, values are shown as they are.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "decimals": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "grouping": { "type": "boolean" },
+        "suffix": { "type": "string" }
+      }
+    },
+    "popupStat": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "value"],
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "value": { "$ref": "#/$defs/valueSource" },
+        "format": { "$ref": "#/$defs/numberFormat" }
+      }
+    },
+    "popupChartPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "attribute"],
+      "properties": {
+        "label": { "type": "string" },
+        "attribute": { "$ref": "#/$defs/attribute" }
+      }
+    },
+    "popupChart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "title", "valueLabel", "points"],
+      "properties": {
+        "type": { "enum": ["bar", "line"] },
+        "title": { "type": "string", "minLength": 1 },
+        "valueLabel": { "type": "string", "minLength": 1 },
+        "points": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/popupChartPoint" } }
+      }
+    },
+    "popup": {
+      "description": "The pop-up shown when a feature is clicked. Without one the layer is not clickable.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "stats"],
+      "properties": {
+        "title": { "$ref": "#/$defs/valueSource" },
+        "stats": { "type": "array", "items": { "$ref": "#/$defs/popupStat" } },
+        "charts": { "type": "array", "items": { "$ref": "#/$defs/popupChart" } }
+      }
+    },
+    "display": {
+      "description": "The resolved display config, as the pipeline writes it into the layer's manifest.json entry and the web app reads it: the shorthand expanded, breaks resolved and the legend filled in. Style layer ids are as in the config, without the `<layer>-` prefix.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "defaultVisible", "order", "layers", "legend"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1 },
+        "defaultVisible": { "type": "boolean" },
+        "order": { "type": "integer" },
+        "popup": { "$ref": "#/$defs/popup" },
+        "layers": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/styleLayer" } },
+        "legend": { "$ref": "#/$defs/resolvedLegend" }
+      }
+    }
+  }
+}

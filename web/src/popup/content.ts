@@ -144,7 +144,7 @@ export function clickableLayers(
   for (const def of defs) {
     const { popup } = def;
     if (!popup) continue;
-    for (const id of styleLayerIds(def.id, def.symbology)) result.set(id, { ...def, popup });
+    for (const id of styleLayerIds(def)) result.set(id, { ...def, popup });
   }
   return result;
 }

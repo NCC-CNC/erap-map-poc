@@ -28,6 +28,21 @@ docker compose --profile dev up web-dev   # or Vite with hot reload on :5173
 
 See `README.md` (Usage) for ports, `.env` settings and Linux file ownership.
 
+### Adding or changing a layer
+
+A layer is `pipeline/layers/<layer>.env` (input and tiling) plus
+`pipeline/layers/<layer>.style.json` (title, draw order, style, legend,
+pop-up), described in `docs/design/02_data_layers_and_popups.md` and ADR
+0007. Nothing in `web/` changes: the map reads every layer from
+`data/tiles/manifest.json`. Rerun the pipeline for that layer and reload the
+page; compose mounts `pipeline/layers/`, so neither image needs a rebuild.
+Check display configs without building:
+
+```sh
+docker compose run --rm --entrypoint sh pipeline -c \
+  'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.style.json'
+```
+
 ### Checks
 
 Every check below is a CI gate: the `ci.yml` jobs feed the one required
@@ -40,7 +55,8 @@ same tools at the same versions as CI, all in Docker:
 export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
-# pipeline job: shellcheck, hadolint, bats (14 tests), runtime image
+# pipeline job: shellcheck, hadolint, bats (40 tests, including the display
+# tool's node:test unit tests), runtime image
 docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
   pipeline/bin/run.sh pipeline/lib/*.sh pipeline/layers/*.env \
   pipeline/tests/fixtures/*.sh pipeline/tests/*.bats

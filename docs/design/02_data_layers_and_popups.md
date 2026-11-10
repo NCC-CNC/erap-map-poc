@@ -28,20 +28,141 @@ Copy this block for each layer.
 - Feature id: {{attribute used as a stable id, needed for sidecar lookups and
   feature state}}.
 - Attributes kept in tiles: {{name, type, meaning}}.
-- Styling: {{fill/line/circle, colour ramp, classification breaks, labels,
-  shown by default or not}}.
+- Display (`pipeline/layers/<layer>.style.json`): {{title, draw order,
+  shorthand or raw style layers, colour ramp, classification breaks,
+  labels, legend, shown by default or not}}.
 - Pop-up:
   - Title: {{attribute or template}}.
   - Stats: {{list of stats and their formatting}}.
   - Plots: {{chart type, x and y, data source}}.
 
-In the web app, each layer's styling is one `symbology` entry in its layer
-definition (`web/src/layers/symbology.ts`): polygons (fill and outline) or
-points (circle and stroke), coloured by a single colour, by category
-(MapLibre `match` on an attribute) or by a stepped ramp (MapLibre `step` on
-a numeric attribute). The MapLibre paint and the inline legend in the layer
-list are both generated from it, so they cannot drift; never write a legend
-by hand. `defaultVisible` sets whether the layer starts switched on.
+A layer is two files in `pipeline/layers/`: `<layer>.env` (processing, see
+Input options) and `<layer>.style.json` (display, next section). Nothing
+about a layer is written in `web/`: the app reads it all from
+`manifest.json` at startup (ADR 0007).
+
+## Display config (`<layer>.style.json`)
+
+How the map shows a layer. The JSON Schema is
+`pipeline/schema/layer-style.schema.json`; start a file with
+`"$schema": "../schema/layer-style.schema.json"` for checking and completion
+in an editor. Fields:
+
+- `title` (required): the name in the layer list and legend.
+- `defaultVisible` (required): whether the layer starts switched on.
+- `order` (optional, integer, default 0): draw order. Layers are drawn in
+  ascending `order`, ties broken by layer name; the highest is drawn on top,
+  wins pop-up clicks where features overlap, and is listed first.
+- `popup` (optional): the pop-up shown when a feature is clicked; without
+  one the layer is not clickable. `title` and each stat `value` are a value
+  source, `{"attribute": "name"}` or `{"featureId": true}` (the vector tile
+  feature id); a missing title falls back to the layer title. `stats` is a
+  list of `{label, value, format}`, where the optional `format` makes the
+  value a number with `decimals` (default 0), `grouping` (thousands
+  separators, default true) and a `suffix` such as `ha`. `charts` (optional)
+  is a list of `{type: "bar" | "line", title, valueLabel, points}`, each
+  point a `{label, attribute}`. Missing values show as "Not available".
+- Exactly one of:
+  - `symbology`: the shorthand. Polygons (`geometry: "polygon"`, a fill at
+    `fillOpacity` with an `outline`) or points (`geometry: "point"`, circles
+    of `radius` with a `stroke`), coloured by `color`: `single`,
+    `categorical` (MapLibre `match` on a text attribute, with a `fallback`)
+    or `stepped` (MapLibre `step` on a numeric attribute, guarded so
+    features without a number take the `fallback`). A stepped colour has
+    either explicit `stops` (`from` ascending, the last class up to `max`,
+    which is for the legend only) or `breaks` plus `colors` (below). The
+    shorthand expands to style layers with ids `fill` and `outline`, or
+    `circle`.
+  - `layers`: raw MapLibre style-spec layers, in draw order, without
+    `source` or `source-layer` (filled in from the layer). Any vector layer
+    type (`fill`, `line`, `symbol`, `circle`, `heatmap`, `fill-extrusion`),
+    with expressions, zoom functions, filters, labels and so on. Ids must be
+    unique within the file.
+- `legend` (optional): explicit legend `items` (`color`, `label`), with
+  optional `kind` (`single`, `categories`, `ramp`), `shape` (`square`,
+  `circle`, `line`), `border` and `opacity`. Without it the legend is
+  derived: from the shorthand exactly as before; from raw `layers`, from the
+  colour of the first fill, circle or line layer when it is a constant, a
+  `match` or a `step` with constant colours (optionally inside a `case`
+  guard, whose fallback is then left out). Anything else (for example an
+  `interpolate`) fails the build asking for an explicit `legend`. Fields
+  left out of an explicit legend come from the derived one when there is
+  one.
+
+Style layer ids are prefixed with `<layer>-` on the map and in `style.json`
+(`sample-fill`, `sample_points-circle`), so ids never clash between layers.
+
+Data-driven breaks: a `stepped` colour can give
+`"breaks": {"method": "quantile" | "equal", "classes": N}` and `colors` (one
+per class) in place of `stops` and `max`. The pipeline reads the numeric
+values of the attribute from the normalised data (text and missing values
+are left out) and resolves them into stops: `equal` splits min to max into N
+equal ranges; `quantile` takes the value at rank `floor(i * n / N)` of the
+sorted values as the lower bound of class i, so each class holds about n / N
+features. `max` is the data maximum. Breaks that are not distinct (too few
+different values for N) fail the build. For example:
+
+```json
+{
+  "$schema": "../schema/layer-style.schema.json",
+  "title": "Scores",
+  "defaultVisible": true,
+  "order": 10,
+  "symbology": {
+    "geometry": "polygon",
+    "color": {
+      "type": "stepped",
+      "attribute": "score",
+      "breaks": { "method": "quantile", "classes": 4 },
+      "colors": ["#a1dab4", "#41b6c4", "#2c7fb8", "#253494"],
+      "fallback": { "color": "#9e9e9e", "label": "No score" }
+    },
+    "fillOpacity": 0.7,
+    "outline": { "color": "#ffffff", "width": 0.75 }
+  }
+}
+```
+
+and with raw style layers (a legend derived from the `match`, a label layer
+from zoom 6):
+
+```json
+{
+  "title": "Sites",
+  "defaultVisible": false,
+  "order": 20,
+  "layers": [
+    {
+      "id": "circle",
+      "type": "circle",
+      "paint": {
+        "circle-color": ["match", ["get", "kind"], "a", "#e69f00", "b", "#cc79a7", "#9e9e9e"],
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 3, 3, 10, 8]
+      }
+    },
+    {
+      "id": "label",
+      "type": "symbol",
+      "minzoom": 6,
+      "layout": { "text-field": ["get", "name"], "text-size": 12, "text-offset": [0, 1.2] }
+    }
+  ]
+}
+```
+
+Checks: the pipeline (`lib/display.sh`, `pipeline/style/`) validates the
+file against the schema, resolves `breaks`, expands the shorthand, fills in
+the legend and runs the MapLibre style validator on the result, before
+tiling. Any problem fails the layer with one line per problem (for example
+`/symbology/fillOpacity must be <= 1` or
+`MapLibre style: layers[0].paint.fill-opacity: number expected, string found`)
+and keeps the previous archive and manifest entry. To check configs without
+building:
+
+```sh
+docker compose run --rm --entrypoint sh pipeline -c \
+  'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.style.json'
+```
 
 ### `sample`
 
@@ -69,8 +190,9 @@ against before real data arrives.
   - `score` (integer): a 0 to 100 score.
   - `v2020`, `v2021`, `v2022`, `v2023`, `v2024` (integer): a short yearly
     series, roughly 100 to 500, for a chart.
-- Styling (`web/src/layers/sample.ts`): fill at 70% opacity, stepped ramp
-  on `score` in four classes, 0 to 25 `#a1dab4`, 25 to 50 `#41b6c4`, 50 to
+- Display (`pipeline/layers/sample.style.json`, `order` 10, the `symbology`
+  shorthand with explicit stops): fill at 70% opacity, stepped ramp on
+  `score` in four classes, 0 to 25 `#a1dab4`, 25 to 50 `#41b6c4`, 50 to
   75 `#2c7fb8`, 75 to 100 `#253494` (ColorBrewer YlGnBu, the four darker
   classes of the five-class scheme; sequential and colour-blind safe), each
   class including its lower bound. A feature without a numeric `score` is
@@ -111,11 +233,12 @@ default for now (see #17).
   - `name` (string): made-up bird name, for example `Heron`.
   - `category` (string): exactly one of `alpha`, `beta`, `gamma`.
   - `count` (integer): 1 to 500.
-- Styling (`web/src/layers/samplePoints.ts`): circles of radius 6 px with
-  a 1.5 px white stroke, coloured by `category`: `alpha` orange `#e69f00`,
-  `beta` reddish purple `#cc79a7`, `gamma` vermillion `#d55e00` (Okabe-Ito,
-  colour-blind safe; warm colours so they stand apart from the blue-green
-  `sample` ramp underneath). Any other value is grey `#9e9e9e` ("Other").
+- Display (`pipeline/layers/sample_points.style.json`, `order` 20, the
+  `symbology` shorthand): circles of radius 6 px with a 1.5 px white stroke,
+  coloured by `category`: `alpha` orange `#e69f00`, `beta` reddish purple
+  `#cc79a7`, `gamma` vermillion `#d55e00` (Okabe-Ito, colour-blind safe;
+  warm colours so they stand apart from the blue-green `sample` ramp
+  underneath). Any other value is grey `#9e9e9e` ("Other").
   Drawn above `sample`, so a point inside a polygon wins the click. Shown
   by default.
 - Pop-up:
@@ -265,7 +388,8 @@ in the test by `ogr2ogr` (nothing binary is committed).
 ## Pipeline outputs
 
 Besides one `<layer>.pmtiles` per layer, the pipeline writes
-`data/tiles/manifest.json`, which the web app can read to find the layers:
+`data/tiles/manifest.json`, which the web app reads at startup to find and
+draw the layers (the `display` block is shortened here; see Display config):
 
 ```json
 {
@@ -280,6 +404,23 @@ Besides one `<layer>.pmtiles` per layer, the pipeline writes
       "center": [-108.98, 51.18, 8],
       "feature_count": 15,
       "built_at": "2026-01-01T00:00:00Z",
+      "display": {
+        "title": "Sample polygons",
+        "defaultVisible": true,
+        "order": 10,
+        "popup": { "title": { "attribute": "name" }, "stats": [] },
+        "layers": [
+          { "id": "fill", "type": "fill", "paint": { "fill-opacity": 0.7 } },
+          { "id": "outline", "type": "line", "paint": { "line-width": 0.75 } }
+        ],
+        "legend": {
+          "kind": "ramp",
+          "shape": "square",
+          "border": "#ffffff",
+          "opacity": 0.7,
+          "items": [{ "color": "#a1dab4", "label": "0 to 25" }]
+        }
+      },
       "profile": null,
       "min_visible_px": 1,
       "max_tile_bytes": 833,
@@ -299,12 +440,22 @@ Besides one `<layer>.pmtiles` per layer, the pipeline writes
 ```
 
 `bounds` is `[west, south, east, north]` and `center` is `[lon, lat, zoom]`,
-both from the PMTiles header. Layers are sorted by name. Rebuilding one layer
-replaces its entry and keeps the others. Both files are written to a temp
-file and moved into place, so a failed run leaves the previous version.
+both from the PMTiles header. Layers are sorted by name (draw order is
+`display.order`). Rebuilding one layer replaces its entry and keeps the
+others. Both files are written to a temp file and moved into place, so a
+failed run leaves the previous version.
 
-The fields from `name` to `built_at` are the ones the web app reads. The rest
-is the build report from the drop guard:
+The manifest is the runtime contract with the web app (ADR 0007), which
+reads `name` (also the source layer and style layer id prefix), `file` and
+`display`. `display` is the resolved `<layer>.style.json`, valid against
+`$defs/display` in the schema: `title`, `defaultVisible`, `order` (0 when
+not set), `popup` (when set), `layers` (the style layers in draw order,
+with the shorthand expanded and `breaks` resolved, ids as configured) and
+`legend` (every field filled in). The web app checks each entry again and
+leaves out one that does not pass, saying so in the layer panel; an entry
+written before display configs existed has no `display` and is left out
+until the layer is rebuilt. The rest is the build report from the drop
+guard:
 
 - `profile`: the layer's `LAYER_PROFILE`, or `null` for none.
 - `min_visible_px`: the layer's `LAYER_MIN_VISIBLE_PX`.
@@ -314,6 +465,17 @@ is the build report from the drop guard:
   least one tile, features `required` at that zoom (see the drop guard) and
   how many of them are present (`required_present`, always equal to
   `required` in a built layer), and that zoom's largest tile in bytes.
+
+The pipeline also writes `data/tiles/style.json` after every run: a
+standalone MapLibre style (version 8, no basemap) of every layer in the
+manifest, in draw order, for use in other tools. Each layer is a source
+`{"type": "vector", "url": "pmtiles://<layer>.pmtiles"}`, relative to the
+folder holding `style.json` (tools that need absolute URLs, or that resolve
+them against the page rather than the style, need them rewritten, and need
+the `pmtiles://` protocol), with its style layers prefixed with `<layer>-`
+and visible as `defaultVisible` says. `glyphs` (OpenFreeMap's) is set only
+when a layer shows text. It is checked with the MapLibre style validator
+before it is written.
 
 ## Where pop-up data lives
 

@@ -44,12 +44,13 @@ setup() {
 }
 
 # write_coverage_config FILE [LINE...]: the coverage layer config, z0 to z6,
-# plus any extra lines.
+# plus any extra lines, and a minimal display config next to it.
 write_coverage_config() {
   local file=$1
   shift
   printf '%s\n' 'LAYER_INPUT=coverage.geojson' 'LAYER_FIELDS=(id kind)' \
     'LAYER_FEATURE_ID=id' 'LAYER_MIN_ZOOM=0' 'LAYER_MAX_ZOOM=6' "$@" >"$file"
+  cp "${PIPELINE_ROOT}/tests/fixtures/minimal.style.json" "${file%.env}.style.json"
 }
 
 # Distinct feature ids of one kind at zoom Z of ARCHIVE, one per line.

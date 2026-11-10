@@ -17,5 +17,9 @@
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Tests and their fixtures read files outside web/ (the shared schema and
+  // pipeline fixtures), which the Docker build does not have; they are
+  // checked by tsconfig.test.json instead.
+  "exclude": ["src/**/*.test.ts", "src/test"]
 }

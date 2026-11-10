@@ -1,0 +1,162 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { expectedDisplay, sampleManifest } from '../test/fixtures';
+import {
+  MESSAGES,
+  ManifestError,
+  displayProblems,
+  loadManifest,
+  manifestUrl,
+  parseManifest,
+} from './manifest';
+
+beforeEach(() => {
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('parseManifest', () => {
+  it('reads each entry into a layer definition', () => {
+    const { layers, problem } = parseManifest(sampleManifest());
+    expect(problem).toBeNull();
+    expect(layers[0]).toEqual({
+      id: 'sample',
+      title: 'Sample polygons',
+      file: 'sample.pmtiles',
+      sourceLayer: 'sample',
+      defaultVisible: true,
+      order: 10,
+      layers: expectedDisplay.sample.layers,
+      legend: expectedDisplay.sample.legend,
+      popup: expectedDisplay.sample.popup,
+    });
+    expect(layers[1]?.id).toBe('sample_points');
+  });
+
+  it('puts the layers in draw order: ascending order, then name', () => {
+    const manifest = sampleManifest();
+    const [polys, points] = manifest.layers as [
+      (typeof manifest.layers)[0],
+      (typeof manifest.layers)[0],
+    ];
+    polys.display.order = 30;
+    const other = { ...structuredClone(points), name: 'another' };
+    manifest.layers.push(other);
+    expect(parseManifest(manifest).layers.map((d) => d.id)).toEqual([
+      'another',
+      'sample_points',
+      'sample',
+    ]);
+  });
+
+  it('leaves out invalid and repeated entries, says how many, and keeps the rest', () => {
+    const manifest = sampleManifest() as { layers: unknown[] };
+    manifest.layers.push(
+      { name: 'old', file: 'old.pmtiles' },
+      { name: 'Bad Name', file: 'x.pmtiles', display: expectedDisplay.sample },
+      { name: 'sample', file: 'sample.pmtiles', display: expectedDisplay.sample },
+      'nonsense',
+    );
+    const { layers, problem } = parseManifest(manifest);
+    expect(layers.map((d) => d.id)).toEqual(['sample', 'sample_points']);
+    expect(problem).toBe(MESSAGES.skipped(4));
+    expect(problem).toBe('4 layers in manifest.json could not be read and are not shown.');
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('display is missing'));
+  });
+
+  it('says when no layers have been built', () => {
+    expect(parseManifest({ layers: [] })).toEqual({ layers: [], problem: MESSAGES.empty });
+  });
+
+  it('throws when there is no layers list', () => {
+    expect(() => parseManifest({})).toThrow(ManifestError);
+    expect(() => parseManifest(null)).toThrow(ManifestError);
+    expect(() => parseManifest({ layers: {} })).toThrow(ManifestError);
+  });
+
+  it('does not let an entry point the archive somewhere else', () => {
+    const manifest = sampleManifest();
+    manifest.layers[0]!.file = 'https://elsewhere.test/x.pmtiles';
+    expect(parseManifest(manifest).layers.map((d) => d.id)).toEqual(['sample_points']);
+  });
+});
+
+describe('displayProblems', () => {
+  it('accepts the pipeline output', () => {
+    expect(displayProblems(expectedDisplay.sample)).toEqual([]);
+    expect(displayProblems(expectedDisplay.sample_points)).toEqual([]);
+  });
+
+  it('names each problem', () => {
+    const display = {
+      ...structuredClone(expectedDisplay.sample),
+      title: '',
+      extra: 1,
+      layers: [
+        { id: 'fill', type: 'fill', source: 'other' },
+        { id: 'fill', type: 'raster' },
+      ],
+    };
+    expect(displayProblems(display)).toEqual([
+      'display.extra is not allowed',
+      'display.title must be text',
+      'display.layers[0] must not set its source',
+      'display.layers[1].type is not a vector layer type',
+      'display.layers[1].id fill is used twice',
+    ]);
+  });
+});
+
+describe('loadManifest', () => {
+  const url = manifestUrl('https://example.test/tiles/');
+  const respond = (body: unknown, status = 200) =>
+    vi.fn<typeof fetch>(async () =>
+      new Response(typeof body === 'string' ? body : JSON.stringify(body), { status }),
+    );
+
+  it('fetches tiles/manifest.json, revalidating every time', async () => {
+    const fetchFn = respond(sampleManifest());
+    const result = await loadManifest(url, { fetch: fetchFn });
+    expect(url).toBe('https://example.test/tiles/manifest.json');
+    expect(fetchFn).toHaveBeenCalledWith(url, expect.objectContaining({ cache: 'no-cache' }));
+    expect(result.layers.map((d) => d.id)).toEqual(['sample', 'sample_points']);
+    expect(result.problem).toBeNull();
+  });
+
+  it('gives no layers and a message when the manifest is missing', async () => {
+    expect(await loadManifest(url, { fetch: respond('Not found', 404) })).toEqual({
+      layers: [],
+      problem: MESSAGES.missing,
+    });
+    const offline = vi.fn<typeof fetch>(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    expect(await loadManifest(url, { fetch: offline })).toEqual({
+      layers: [],
+      problem: MESSAGES.missing,
+    });
+  });
+
+  it('gives no layers and a message when the manifest is not valid', async () => {
+    for (const body of ['{"layers": [', { layers: 'none' }]) {
+      expect(await loadManifest(url, { fetch: respond(body) })).toEqual({
+        layers: [],
+        problem: MESSAGES.invalid,
+      });
+    }
+  });
+
+  it('gives nothing, and no message, once aborted', async () => {
+    const controller = new AbortController();
+    const fetchFn = vi.fn<typeof fetch>(async () => {
+      controller.abort();
+      throw new DOMException('Aborted', 'AbortError');
+    });
+    expect(await loadManifest(url, { fetch: fetchFn, signal: controller.signal })).toEqual({
+      layers: [],
+      problem: null,
+    });
+  });
+});

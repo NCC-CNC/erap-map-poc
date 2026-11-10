@@ -46,6 +46,9 @@ services:
     volumes:
       - ./data/raw:/data/raw:ro
       - ./data/tiles:/data/tiles
+      # The layer configs (.env and .style.json) from the repo, so editing a
+      # layer needs no image rebuild: rerun the pipeline and reload the map.
+      - ./pipeline/layers:/opt/pipeline/layers:ro
 
   # Frontend development: Vite with hot reload on http://localhost:5173,
   # serving data/tiles/ at /tiles/ like the web image.

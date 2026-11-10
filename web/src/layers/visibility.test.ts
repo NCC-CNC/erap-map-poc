@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sample } from './sample';
-import { samplePoints } from './samplePoints';
+import { sample, samplePoints } from '../test/fixtures';
 import type { LayerDefinition } from './types';
 import {
   initialVisibility,
