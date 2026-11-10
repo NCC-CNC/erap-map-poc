@@ -83,7 +83,12 @@ assert_no_temp_files() {
     and (.layers[0] | .name == "sample" and .file == "sample.pmtiles"
          and .minzoom == 0 and .maxzoom == 8 and .feature_count == 15
          and (.built_at | type == "string")
-         and .bounds == [-125, 46, -66, 56])' "$manifest"
+         and .bounds == [-125, 46, -66, 56]
+         and .profile == null and .min_visible_px == 1
+         and ([.zooms[].zoom] == [range(9)])
+         and all(.zooms[]; .input == 15 and .present == 15
+                 and .required == 15 and .required_present == 15)
+         and .max_tile_bytes == ([.zooms[].max_tile_bytes] | max))' "$manifest"
   [ "$status" -eq 0 ]
 }
 

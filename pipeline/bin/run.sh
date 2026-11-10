@@ -26,6 +26,8 @@ source "${PIPELINE_ROOT}/lib/config.sh"
 source "${PIPELINE_ROOT}/lib/normalise.sh"
 # shellcheck source=lib/tiles.sh
 source "${PIPELINE_ROOT}/lib/tiles.sh"
+# shellcheck source=lib/guard.sh
+source "${PIPELINE_ROOT}/lib/guard.sh"
 # shellcheck source=lib/manifest.sh
 source "${PIPELINE_ROOT}/lib/manifest.sh"
 
@@ -50,7 +52,8 @@ build_layer() {
   mkdir -p "$layer_scratch"
   local normalised="${layer_scratch}/${name}.geojsonl"
 
-  normalise "$LAYER_INPUT" "$LAYER_SOURCE_LAYER" "$normalised" "${LAYER_FIELDS[@]}"
+  normalise "$LAYER_INPUT" "$LAYER_SOURCE_LAYER" "$LAYER_SOURCE_SRS" \
+    "$LAYER_ENCODING" "$normalised" "${LAYER_FIELDS[@]}"
 
   local count
   count=$(wc -l <"$normalised")
@@ -58,11 +61,22 @@ build_layer() {
   ((count > 0)) || die "no features after normalising $LAYER_INPUT"
   log_info "$count features"
 
+  local sizes="${layer_scratch}/sizes.tsv" stats="${layer_scratch}/zoom_stats.json"
+  feature_sizes "$normalised" "$LAYER_FEATURE_ID" "$sizes"
+
   build_tiles "$name" "$normalised" "$PIPELINE_OUTPUT_DIR" \
     "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" "$LAYER_FEATURE_ID" "$layer_scratch" \
-    "${LAYER_TIPPECANOE_FLAGS[@]}"
+    check_layer_tiles "${LAYER_TIPPECANOE_FLAGS[@]}"
 
-  manifest_update "$PIPELINE_OUTPUT_DIR" "$name" "$count"
+  manifest_update "$PIPELINE_OUTPUT_DIR" "$name" "$count" "$stats" \
+    "$LAYER_PROFILE" "$LAYER_MIN_VISIBLE_PX"
+}
+
+# check_layer_tiles ARCHIVE: the drop guard, run by build_tiles from inside
+# build_layer, whose locals (name, sizes, count, stats) it reads.
+check_layer_tiles() {
+  drop_guard "$1" "$name" "$sizes" "$count" "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" \
+    "$LAYER_MIN_VISIBLE_PX" "$stats"
 }
 
 main() {
@@ -83,7 +97,7 @@ main() {
   done
 
   local tool
-  for tool in ogr2ogr ogrinfo tippecanoe pmtiles jq; do
+  for tool in gdal ogr2ogr ogrinfo tippecanoe tippecanoe-decode pmtiles jq; do
     command -v "$tool" >/dev/null || die "required tool not found: $tool"
   done
 

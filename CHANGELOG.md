@@ -7,6 +7,28 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Coverage-safe tiling, drop guard and shapefile input options for the
+  pipeline (#36). `LAYER_PROFILE=coverage` adds
+  `--no-simplification-of-shared-nodes` (chosen over the deprecated
+  `--detect-shared-borders`, which left a hole at z5 of the test fixture)
+  and `--drop-smallest-as-needed`; `LAYER_TIPPECANOE_FLAGS` add to it. Every
+  layer now goes through a visibility-aware drop guard (`lib/guard.sh`):
+  each feature's largest polygon part is measured once in EPSG:3857, and the
+  build fails, keeping the previous archive, if a feature covering at least
+  `LAYER_MIN_VISIBLE_PX` (default 1) screen pixels at 256 px tiles is missing
+  at any zoom; smaller missing features are logged. `manifest.json` entries
+  gain `profile`, `min_visible_px`, `max_tile_bytes` and per-zoom `zooms`
+  stats (input, present, required, required present, largest tile); the
+  existing fields are unchanged. New layer options `LAYER_SOURCE_SRS`
+  (`-s_srs`) and `LAYER_ENCODING` (open option `ENCODING`), and `.zip`
+  inputs read in place through `/vsizip/`. tippecanoe now always gets
+  `--read-parallel`. Tests: `coverage.bats` (a generated synthetic coverage
+  fixture, `make_coverage.sh`; gap check at z0 to z6 that fails without the
+  shared-nodes flag; large features at every zoom; manifest stats; guard
+  failures) and `inputs.bats` (shapefiles without `.prj` or `.cpg`, zipped
+  shapefiles, made in the test with `ogr2ogr`), 27 bats tests in all. Design
+  notes in `docs/design/01_architecture.md` and
+  `docs/design/02_data_layers_and_popups.md`.
 - Second synthetic pipeline layer `sample_points` (#32): 30 made-up points
   over Canada (`id` as the tile feature id; `name`, `category` of `alpha`,
   `beta` or `gamma`, `count` 1 to 500), 8 of them inside `sample` polygons so
