@@ -114,6 +114,23 @@ All notable changes to this project are documented here. The format is based on
 - ADR 0001 names files `NNNN-short-title.md`, matching the ADR README.
 - `ci.yml` runs on pull requests only; `bootstrap-repo-settings.sh` gates on
   `checks` by default.
+- Basemaps are OpenFreeMap Positron (light, the default) and Dark only, with
+  no key (ADR 0006, superseding ADR 0005, #31). The map is created straight
+  away with the light style; the Light/Dark toggle, the data layers re-added
+  after a style switch, and MapLibre's attribution control are unchanged.
+- The `web` compose healthcheck fetches `/` instead of `/config.json`.
+- The CI web smoke test checks that `/` returns HTML and that the hashed
+  MapLibre worker named in the app bundle is served from `/assets/` as
+  `application/javascript`, instead of checking `/config.json`.
+
+### Removed
+
+- The CARTO basemap option and its runtime config: `CARTO_API_KEY` (compose
+  `web` and `web-dev`, `.env.example`, CI), `/config.json` and the code that
+  served or read it (`web/src/config.ts`, `web/vite/serveConfig.ts`, their
+  tests, `web/docker/40-write-config-json.sh` and its Dockerfile `COPY`, and
+  the `/config.json` location in `web/nginx.conf`), and the console warning
+  about the keyless fallback.
 
 ### Fixed
 

@@ -18,8 +18,8 @@ Goal: a placeholder layer goes from raw file to clickable feature on the map.
   `bin/run.sh` with one layer config and a small synthetic test case
   (no real data) committed under `pipeline/tests/fixtures/`.
 - `web/`: React + Vite + TypeScript app with MapLibre, the pmtiles protocol,
-  the CARTO basemaps (Positron default, Dark Matter toggle, key from
-  runtime config), and the sample layer; multi-stage Dockerfile and nginx
+  the OpenFreeMap basemaps (Positron default, Dark toggle, no key; ADR
+  0006), and the sample layer; multi-stage Dockerfile and nginx
   config.
 - `docker-compose.yml` with `web` and `pipeline` (profile) services and the
   shared `data/` mounts; decide the frontend dev workflow.

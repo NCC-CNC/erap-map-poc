@@ -190,18 +190,26 @@ jobs:
 
       - name: Smoke test the web image
         run: |
-          docker run -d --name web -p 8080:8080 --read-only --tmpfs /tmp \
-            -e CARTO_API_KEY=ci-test-key erap-map-web:ci
+          docker run -d --name web -p 8080:8080 --read-only --tmpfs /tmp erap-map-web:ci
+          base=http://127.0.0.1:8080
           ok=
           for _ in $(seq 1 20); do
-            if curl -fsS http://127.0.0.1:8080/config.json > "$RUNNER_TEMP/config.json"; then ok=1; break; fi
+            if curl -fsS -o "$RUNNER_TEMP/index.html" "$base/"; then ok=1; break; fi
             sleep 1
           done
           if [ -z "$ok" ]; then docker logs web; exit 1; fi
-          cat "$RUNNER_TEMP/config.json"
-          grep -q '"ci-test-key"' "$RUNNER_TEMP/config.json"
-          curl -fsS -o "$RUNNER_TEMP/index.html" http://127.0.0.1:8080/
           grep -qi '<!doctype html>' "$RUNNER_TEMP/index.html"
+          # The app bundle names the hashed MapLibre worker (#26); it must be
+          # served as JavaScript or the module worker will not load.
+          app_js=$(grep -o '/assets/index-[^"]*\.js' "$RUNNER_TEMP/index.html" | head -n 1)
+          echo "app bundle: $app_js"
+          test -n "$app_js"
+          worker=$(curl -fsS "$base$app_js" | grep -o 'assets/maplibre-gl-worker-[A-Za-z0-9_-]*\.mjs' | head -n 1)
+          echo "worker: $worker"
+          test -n "$worker"
+          curl -fsS -o /dev/null -D "$RUNNER_TEMP/worker.headers" "$base/$worker"
+          cat "$RUNNER_TEMP/worker.headers"
+          grep -qi '^content-type: application/javascript' "$RUNNER_TEMP/worker.headers"
           docker rm -f web
 
   # Compose: the file and every profile resolve.

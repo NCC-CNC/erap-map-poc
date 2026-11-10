@@ -6,7 +6,7 @@ import { pmtilesProtocol } from './pmtiles';
 import './worker';
 
 export interface CreateMapOptions {
-  /** Basemap style URL, from `resolveBasemaps` in `./basemap`. */
+  /** Basemap style URL, from `BASEMAP_STYLES` in `./basemap`. */
   style: string;
   /** Data layers to add; defaults to the layer registry. */
   layers?: readonly LayerDefinition[];

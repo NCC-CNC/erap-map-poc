@@ -8,13 +8,12 @@ const LABELS: Record<BasemapTheme, string> = {
 interface BasemapToggleProps {
   value: BasemapTheme;
   onChange: (theme: BasemapTheme) => void;
-  disabled?: boolean;
 }
 
 /** Light or dark basemap, as a labelled radio group. */
-export function BasemapToggle({ value, onChange, disabled = false }: BasemapToggleProps) {
+export function BasemapToggle({ value, onChange }: BasemapToggleProps) {
   return (
-    <fieldset className="basemap-toggle" disabled={disabled}>
+    <fieldset className="basemap-toggle">
       <legend>Basemap</legend>
       {BASEMAP_THEMES.map((theme) => (
         <label key={theme}>

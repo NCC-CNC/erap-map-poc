@@ -85,12 +85,10 @@ contract in `02_data_layers_and_popups.md`. It never reads `data/raw/`.
 - Chart.js renders the charts, drawn on a canvas inside the pop-up. Register
   only the chart types and components used (tree-shaken imports) to keep the
   bundle small, and destroy each chart instance when its pop-up closes.
-- Basemap: CARTO Positron by default, Dark Matter as a toggle (ADR 0005),
-  behind one module in `src/map/`. The CARTO API key is read at runtime from
-  `/config.json`, never baked into the build. With no key, the app uses
-  OpenFreeMap's keyless Positron and Dark styles and logs a warning. In
-  development the Vite dev server serves `/config.json` from `CARTO_API_KEY`
-  (the environment, or the repo root `.env`).
+- Basemap: OpenFreeMap's keyless Positron by default, Dark as a toggle
+  (ADR 0006), behind one module in `src/map/basemap.ts`. No key and no
+  runtime config: the map is created straight away with the light style.
+  MapLibre's attribution control stays on.
 - Tests: vitest for logic (stat formatting, layer registry), ESLint and
   `tsc --noEmit` as gates.
 
@@ -104,14 +102,10 @@ default, so the git-ignored `.env` (documented in `.env.example`) is
 optional.
 
 - `web`: builds `web/Dockerfile`, publishes `${WEB_PORT:-8080}:8080`,
-  mounts `./data/tiles` read-only at `/srv/tiles` (served at `/tiles/`),
-  and passes `CARTO_API_KEY` from `.env` (empty when unset). At start an
-  entrypoint script (`web/docker/40-write-config-json.sh`) writes it,
-  JSON-escaped, to `/tmp/erap-web/config.json`, which nginx serves as
-  `/config.json`. A plain envsubst template is not used because it would not
-  escape the value; a key with control characters stops the container.
-  Runs with `read_only: true` and a tmpfs on `/tmp`, a healthcheck with the
-  image's busybox `wget`, and `restart: unless-stopped`. Started with
+  mounts `./data/tiles` read-only at `/srv/tiles` (served at `/tiles/`).
+  Runs with `read_only: true` and a tmpfs on `/tmp` (nginx's pid file and
+  temp files), a healthcheck that fetches `/` with the image's busybox
+  `wget`, and `restart: unless-stopped`. Started with
   `docker compose up -d web`.
 - `pipeline`: builds the `runtime` target of `pipeline/Dockerfile`, mounts
   `./data/raw` read-only and `./data/tiles` read-write, under the `pipeline`
@@ -126,8 +120,7 @@ optional.
   Linux `node_modules` in the named volume `web-dev-node-modules` (`npm ci`
   only when `package-lock.json` changed), and `./data/tiles` read-only at
   `/repo/data/tiles`, where `vite.config.ts` looks by default. Port
-  `${WEB_DEV_PORT:-5173}`; `CARTO_API_KEY` is passed through to the dev
-  server's `/config.json`. File events do not reach the container from
+  `${WEB_DEV_PORT:-5173}`. File events do not reach the container from
   Windows bind mounts, so `VITE_USE_POLLING` (default 1) turns on Vite's
   polling watcher. `npm run dev` on the host still works for anyone with
   Node 26.

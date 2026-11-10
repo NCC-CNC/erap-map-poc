@@ -19,7 +19,7 @@ GDAL or tippecanoe) is needed on the host. On Windows, use Git Bash: the
 
 ```sh
 git clone https://github.com/NCC-CNC/erap-map-poc.git && cd erap-map-poc
-cp .env.example .env                      # optional: set CARTO_API_KEY
+cp .env.example .env                      # optional: ports, Linux UIDs
 
 docker compose run --rm pipeline          # build tiles into data/tiles/
 docker compose up -d --build web          # map at http://localhost:8080

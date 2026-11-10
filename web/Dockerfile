@@ -7,7 +7,6 @@
 # Runtime contract:
 #   - listens on 8080
 #   - serves /tiles/ from /srv/tiles (mount the pipeline output read-only)
-#   - writes /config.json at start from CARTO_API_KEY (empty when unset)
 
 ARG NODE_IMAGE=node:26.13.0-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68
 ARG NGINX_IMAGE=nginxinc/nginx-unprivileged:1.30.6-alpine3.24@sha256:f5116ed4606f3eb015dd4a8e28cb9b351476dc0ad4bc6e9f93b19cec130cdf03
@@ -29,7 +28,6 @@ RUN npm run build
 FROM ${NGINX_IMAGE} AS runtime
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --chmod=755 docker/40-write-config-json.sh /docker-entrypoint.d/40-write-config-json.sh
 COPY --from=build /app/dist/ /usr/share/nginx/html/
 
 EXPOSE 8080
