@@ -7,6 +7,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Pipeline image (`pipeline/Dockerfile`): GDAL 3.13.3 base pinned by digest,
+  tippecanoe 2.79.0 built from a commit-checked tag, pmtiles CLI 1.31.2
+  checksum-verified, non-root user; repo-wide `.hadolint.yaml`.
+
 - Project plan for ERAP Map PoC: project brief, architecture, data contract
   skeleton and milestones in `docs/design/`, and ADRs 0002 to 0004 for the
   pipeline, web app, and Docker Compose stack choices.
