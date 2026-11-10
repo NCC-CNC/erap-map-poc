@@ -7,6 +7,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Pipeline entry script `pipeline/bin/run.sh` with shared functions in
+  `pipeline/lib/` (logging, layer config, ogr2ogr normalise, atomic
+  tippecanoe build, `manifest.json`), the `sample` layer config, a synthetic
+  fixture with its generator, and bats tests. The pipeline image now runs
+  `run.sh` by default and has a `test` target with bats-core 1.14.0.
 - Pipeline image (`pipeline/Dockerfile`): GDAL 3.13.3 base pinned by digest,
   tippecanoe 2.79.0 built from a commit-checked tag, pmtiles CLI 1.31.2
   checksum-verified, non-root user; repo-wide `.hadolint.yaml`.
