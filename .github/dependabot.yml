@@ -8,18 +8,45 @@ updates:
     commit-message:
       prefix: ci
 
-  # Add one entry per package manager your stack uses, for example:
-  #
-  # - package-ecosystem: npm
-  #   directory: '/'
-  #   schedule:
-  #     interval: weekly
-  #   open-pull-requests-limit: 5
-  #   commit-message:
-  #     prefix: chore
-  #   groups:
-  #     dev-dependencies:
-  #       dependency-type: development
-  #
-  # See https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
-  # for the full list of supported ecosystems (pip, bundler, cargo, gomod, ...).
+  # Web app dependencies. Minor and patch updates come as two grouped PRs
+  # (runtime and dev); major updates come one PR each.
+  - package-ecosystem: npm
+    directory: '/web'
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+    groups:
+      runtime:
+        dependency-type: production
+        update-types: [minor, patch]
+      dev-dependencies:
+        dependency-type: development
+        update-types: [minor, patch]
+    ignore:
+      # TypeScript is held at 6.x: typescript-eslint 8.72.1 supports
+      # `typescript <6.1.0`. Drop this once typescript-eslint supports 7.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+
+  # Base images in the Dockerfiles. They are pinned by tag and digest in
+  # `ARG ..._IMAGE=` lines; if Dependabot does not pick those up, bump them
+  # by hand (see the header of each Dockerfile).
+  - package-ecosystem: docker
+    directories:
+      - '/pipeline'
+      - '/web'
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+
+  # Images named directly in docker-compose.yml (the web-dev Node image).
+  # Keep it on the same Node version as web/Dockerfile.
+  - package-ecosystem: docker-compose
+    directory: '/'
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore

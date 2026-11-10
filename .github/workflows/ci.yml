@@ -57,15 +57,168 @@ jobs:
   #     # Caching a slow-to-fetch dependency or tool: restore it with
   #     # actions/cache and a key from your lockfile. A PR can read caches
   #     # saved on main but not caches saved by another PR, so also add
-  #     # workflows-optional/warm-cache.yml with the same key.
+  #     # a matching step to warm-cache.yml with the same key.
   #     - uses: actions/cache@v6
   #       with:
   #         path: PATH_TO_CACHE
   #         key: cache-${{ runner.os }}-${{ hashFiles('LOCKFILE') }}
   #     - run: YOUR_BUILD_AND_TEST_COMMAND
 
+  # Stack jobs. Docker builds use the GitHub Actions cache (type=gha), one
+  # scope per image, with mode=max so intermediate stages (the slow
+  # tippecanoe build) are cached too. warm-cache.yml writes the same scopes
+  # from main, so a new PR starts warm. The gha cache backend authenticates
+  # with the runner's own cache token, so no extra `permissions:` are needed.
+
+  # Pipeline: shellcheck and hadolint, then the bats tests in the `test`
+  # image, then the `runtime` image (the default target).
+  pipeline:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install shellcheck and hadolint
+        env:
+          SHELLCHECK_VERSION: 0.11.0
+          SHELLCHECK_SHA256: 8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198
+          HADOLINT_VERSION: 2.15.1
+          HADOLINT_SHA256: c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          cd "$RUNNER_TEMP"
+          curl -fsSL -o shellcheck.tar.xz \
+            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.xz"
+          echo "${SHELLCHECK_SHA256}  shellcheck.tar.xz" | sha256sum --check --strict -
+          tar -xJf shellcheck.tar.xz --strip-components=1 -C bin "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+          curl -fsSL -o bin/hadolint \
+            "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-linux-x86_64"
+          echo "${HADOLINT_SHA256}  bin/hadolint" | sha256sum --check --strict -
+          chmod +x bin/hadolint
+          rm shellcheck.tar.xz
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
+      - name: shellcheck
+        run: |
+          shellcheck --version
+          shellcheck -x pipeline/bin/run.sh pipeline/lib/*.sh pipeline/layers/*.env \
+            pipeline/tests/fixtures/make_sample.sh pipeline/tests/*.bats
+
+      - name: hadolint
+        run: hadolint --config .hadolint.yaml pipeline/Dockerfile
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build test image
+        uses: docker/build-push-action@v7
+        with:
+          context: pipeline
+          target: test
+          load: true
+          tags: erap-map-pipeline:test
+          cache-from: type=gha,scope=pipeline
+          cache-to: type=gha,scope=pipeline,mode=max
+
+      - name: bats
+        run: docker run --rm erap-map-pipeline:test
+
+      # Shares every stage with the test image, so this is a cache hit.
+      - name: Build runtime image
+        uses: docker/build-push-action@v7
+        with:
+          context: pipeline
+          target: runtime
+          tags: erap-map-pipeline:ci
+          cache-from: type=gha,scope=pipeline
+
+  # Web: lint, typecheck, test and build with npm, then hadolint and the
+  # nginx image, with a smoke test of the running container.
+  web:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          # Same Node as web/Dockerfile and the web-dev compose service.
+          node-version: 26.13.0
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      # Runtime dependencies only: the known moderate findings are dev-only
+      # (eslint toolchain) and nothing from them ships in the bundle.
+      - name: npm audit (runtime dependencies)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: hadolint
+        env:
+          HADOLINT_VERSION: 2.15.1
+          HADOLINT_SHA256: c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/hadolint" \
+            "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-linux-x86_64"
+          echo "${HADOLINT_SHA256}  $RUNNER_TEMP/hadolint" | sha256sum --check --strict -
+          chmod +x "$RUNNER_TEMP/hadolint"
+          "$RUNNER_TEMP/hadolint" --config ../.hadolint.yaml Dockerfile
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build web image
+        uses: docker/build-push-action@v7
+        with:
+          context: web
+          load: true
+          tags: erap-map-web:ci
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+      - name: Smoke test the web image
+        run: |
+          docker run -d --name web -p 8080:8080 --read-only --tmpfs /tmp \
+            -e CARTO_API_KEY=ci-test-key erap-map-web:ci
+          ok=
+          for _ in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8080/config.json > "$RUNNER_TEMP/config.json"; then ok=1; break; fi
+            sleep 1
+          done
+          if [ -z "$ok" ]; then docker logs web; exit 1; fi
+          cat "$RUNNER_TEMP/config.json"
+          grep -q '"ci-test-key"' "$RUNNER_TEMP/config.json"
+          curl -fsS -o "$RUNNER_TEMP/index.html" http://127.0.0.1:8080/
+          grep -qi '<!doctype html>' "$RUNNER_TEMP/index.html"
+          docker rm -f web
+
+  # Compose: the file and every profile resolve.
+  compose:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker compose version
+      - run: docker compose config -q
+      - run: docker compose --profile pipeline --profile dev config -q
+
   checks:
-    needs: [changes, repo-hygiene]
+    needs: [changes, repo-hygiene, pipeline, web, compose]
     if: always()
     runs-on: ubuntu-latest
     steps:

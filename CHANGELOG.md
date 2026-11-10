@@ -7,6 +7,23 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- CI stack jobs in `ci.yml`, gated on non-docs changes and required through
+  `checks`: `pipeline` (shellcheck 0.11.0 and hadolint 2.15.1 from
+  checksum-verified release binaries, the bats tests in the `test` image,
+  then the `runtime` image), `web` (Node 26.13.0 with npm cache: `npm ci`,
+  lint, typecheck, test, build, `npm audit --omit=dev --audit-level=high`,
+  hadolint, the web image and a smoke test of `/config.json` and `/`) and
+  `compose` (`docker compose config -q`, with and without the `pipeline` and
+  `dev` profiles); Docker builds use Buildx with the GitHub Actions cache
+  (`mode=max`, scopes `pipeline` and `web`).
+- `warm-cache.yml` moved from `workflows-optional/` into `workflows/` and
+  filled in: on pushes to `main` that touch `pipeline/` or `web/`, twice a
+  week and by hand, it saves the `pipeline` and `web` Docker layer caches and
+  the `web/` npm cache from `main`, so new PRs start warm.
+- Dependabot entries for npm (`/web`, grouped minor and patch updates for
+  runtime and dev dependencies, TypeScript majors ignored while
+  typescript-eslint needs `<6.1.0`), docker (`/pipeline`, `/web`) and
+  docker-compose (`/`).
 - `docker-compose.yml` (ADR 0004): `web` (nginx image
   `natureconservancy/erap-map-web`, port `WEB_PORT` default 8080, tiles
   mounted read-only, `CARTO_API_KEY` from `.env`, read-only root with a tmpfs
