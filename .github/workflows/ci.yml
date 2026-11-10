@@ -1,0 +1,113 @@
+name: CI
+
+# PRs only: with strict branch protection every PR is tested against current
+# main before it merges, so a run on push to main would test the same code
+# again. If you do not use strict protection, add this back under `on:` so a
+# fresh repo gets a first run:
+#   push:
+#     branches: [main]
+on:
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs for the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Layout:
+# - changes: says whether the PR touches anything besides docs and Markdown.
+# - repo-hygiene: stack-neutral checks, always runs.
+# - your own jobs: add them with the `needs`/`if` lines of the example below,
+#   so a docs-only PR skips them and clears in seconds.
+# - checks: the one required status check. It passes when every job it needs
+#   passed or was skipped. Branch protection names only this job, so adding or
+#   renaming a stack job never means touching the protection rules.
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          files=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR}/files" --paginate --jq '.[].filename')
+          if printf '%s\n' "$files" | grep -qvE '^docs/|\.md$'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Example stack job, to copy once the stack is chosen. Add its name to the
+  # `needs` list of `checks` below.
+  #
+  # build:
+  #   needs: changes
+  #   if: needs.changes.outputs.code == 'true'
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v7
+  #     # Setup, install, then format/lint/typecheck/test/build for your stack.
+  #     #
+  #     # Caching a slow-to-fetch dependency or tool: restore it with
+  #     # actions/cache and a key from your lockfile. A PR can read caches
+  #     # saved on main but not caches saved by another PR, so also add
+  #     # workflows-optional/warm-cache.yml with the same key.
+  #     - uses: actions/cache@v6
+  #       with:
+  #         path: PATH_TO_CACHE
+  #         key: cache-${{ runner.os }}-${{ hashFiles('LOCKFILE') }}
+  #     - run: YOUR_BUILD_AND_TEST_COMMAND
+
+  checks:
+    needs: [changes, repo-hygiene]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: All jobs passed or were skipped
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "results: $RESULTS"
+          case "$RESULTS" in
+            *failure*|*cancelled*) exit 1 ;;
+          esac
+
+  repo-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Lint workflow files
+        env:
+          ACTIONLINT_VERSION: 1.7.7
+          ACTIONLINT_SHA256: 023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757
+        run: |
+          curl -fsSL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum --check --strict -
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -color
+          rm -f actionlint actionlint.tar.gz
+
+      - name: Lint markdown
+        run: npx --yes markdownlint-cli '**/*.md' --ignore node_modules --ignore LICENSE
+
+      - name: No em dashes in tracked text
+        run: |
+          if git grep -In $'\xe2\x80\x94' -- . ':!LICENSE'; then
+            echo "Em dash found. See CLAUDE.md: no em dashes in code, comments, docs, or commit messages." >&2
+            exit 1
+          fi
+
+      - name: Docs structure present
+        run: |
+          test -f CLAUDE.md
+          test -f docs/decisions/README.md
+          test -f docs/handoffs/HANDOFF_TEMPLATE.md
+          test -d docs/design

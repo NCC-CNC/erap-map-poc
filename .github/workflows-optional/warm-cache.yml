@@ -1,0 +1,39 @@
+name: Warm cache
+
+# OPT-IN. Move this file into .github/workflows/ to use it.
+#
+# GitHub lets a PR read caches saved on main but not caches saved by another
+# PR, and CI only runs on PRs. This job saves a cache from main, so the PR
+# runs in ci.yml find it. Use it when a job downloads something slow or large
+# on every run (dependencies, a browser, a toolchain).
+#
+# Fill in the two placeholders. The cache path and key must match the
+# actions/cache step in ci.yml exactly, or the PRs never hit this cache.
+on:
+  push:
+    branches: [main]
+    paths: [LOCKFILE]
+  schedule:
+    # Caches unused for 7 days are dropped; refresh twice a week.
+    - cron: '17 4 * * 1,4'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Cache
+        id: cache
+        uses: actions/cache@v6
+        with:
+          path: PATH_TO_CACHE
+          key: cache-${{ runner.os }}-${{ hashFiles('LOCKFILE') }}
+
+      - name: Fill the cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: YOUR_COMMAND_THAT_DOWNLOADS_INTO_PATH_TO_CACHE

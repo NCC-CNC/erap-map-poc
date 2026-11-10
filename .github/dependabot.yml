@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # Keep GitHub Actions themselves up to date. Stack-agnostic; leave this in.
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+
+  # Add one entry per package manager your stack uses, for example:
+  #
+  # - package-ecosystem: npm
+  #   directory: '/'
+  #   schedule:
+  #     interval: weekly
+  #   open-pull-requests-limit: 5
+  #   commit-message:
+  #     prefix: chore
+  #   groups:
+  #     dev-dependencies:
+  #       dependency-type: development
+  #
+  # See https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+  # for the full list of supported ecosystems (pip, bundler, cargo, gomod, ...).

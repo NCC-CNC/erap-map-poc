@@ -1,0 +1,29 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Build output (adjust for your stack: dist/, build/, out/, target/, __pycache__/, etc.)
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+__pycache__/
+playwright-report/
+test-results/
+
+# Logs and temp
+*.log
+tmp/
+.tmp/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Claude Code local overrides (personal, not shared)
+.claude/settings.local.json
+.claude/worktrees/

@@ -1,0 +1,49 @@
+name: Keep PRs up to date
+
+# OPT-IN. Move this file (and auto-merge.yml) into .github/workflows/ to use
+# it; see "Solo-maintainer auto-merge" in README.md.
+
+# Branch protection requires a PR to be up to date with main before it
+# merges, so when one PR merges, every other open one sits at BEHIND until
+# someone updates it
+# After each push to main, this updates each open PR that has auto-merge
+# armed; its checks then run again and auto-merge takes it from there. PRs
+# without auto-merge are left alone. A PR armed after main's last push is
+# brought level by auto-merge.yml as it is armed.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: update-branches
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Update open PRs that have auto-merge armed
+        env:
+          # A fine-grained PAT for this repo only (Contents, Pull requests,
+          # Workflows: read/write). Not the built-in GITHUB_TOKEN: GitHub
+          # starts no workflows for pushes made with it, so the update would
+          # land and the PR's required check would never run on it - a PR
+          # stuck for good instead of merely behind. Without the secret this
+          # does nothing, and PRs wait for a manual update as before.
+          GH_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::notice::AUTO_MERGE_TOKEN is not set; not updating PRs"
+            exit 0
+          fi
+          prs=$(gh pr list --state open --json number,autoMergeRequest --jq '.[] | select(.autoMergeRequest != null) | .number')
+          for n in $prs; do
+            # Already up to date (or in conflict): GitHub says so, and that's fine.
+            if gh pr update-branch "$n"; then echo "updated #$n"; else echo "#$n not updated"; fi
+          done
