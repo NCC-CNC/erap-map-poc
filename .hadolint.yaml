@@ -1,0 +1,7 @@
+# hadolint config for every Dockerfile in the repo.
+ignored:
+  # Pinning apt package versions breaks whenever Ubuntu publishes a security
+  # update. Base images are pinned by digest and the key tools by version;
+  # the few apt packages take the distro's current version at build time,
+  # which is an accepted trade-off for this PoC.
+  - DL3008
