@@ -1,0 +1,47 @@
+name: Keep PRs up to date
+
+# Branch protection requires a PR to be up to date with main before it
+# merges, so when one PR merges, every other open one sits at BEHIND until
+# someone updates it. After each push to main, this updates each open PR into
+# main that has auto-merge armed; its checks then run again and auto-merge
+# takes it from there. PRs without auto-merge are left alone. A PR armed
+# after main's last push is brought level by auto-merge.yml as it is armed.
+#
+# Uses the NCC ConsTech Automation GitHub App, as auto-merge.yml does: an
+# update pushed with the built-in GITHUB_TOKEN would not start the PR's
+# checks, leaving it stuck.
+
+on:
+  push:
+    branches: [main]
+
+# The app token does the writing; GITHUB_TOKEN needs nothing more.
+permissions:
+  contents: read
+
+concurrency:
+  group: update-branches
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Get an app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+
+      - name: Update open PRs into main that have auto-merge armed
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          prs=$(gh pr list --state open --base main --json number,autoMergeRequest --jq '.[] | select(.autoMergeRequest != null) | .number')
+          for n in $prs; do
+            # Already up to date (or in conflict): GitHub says so, and that's fine.
+            if gh pr update-branch "$n"; then echo "updated #$n"; else echo "#$n not updated"; fi
+          done
