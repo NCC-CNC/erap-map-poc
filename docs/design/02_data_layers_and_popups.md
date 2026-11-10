@@ -59,9 +59,10 @@ against before real data arrives.
 - Styling: TBC (suggest a fill coloured by `score`).
 - Pop-up:
   - Title: `name`.
-  - Stats: `area_ha` (thousands separator, one decimal, "ha"), `score`
-    (integer, "/ 100").
-  - Plots: line or bar chart, x = 2020 to 2024, y = `v2020` to `v2024`, read
+  - Stats: feature id (label "ID"), `area_ha` (label "Area", thousands
+    separator, one decimal, "ha"), `score` (label "Score",
+    integer, "/ 100"). Missing values show as "Not available".
+  - Plots: bar chart "Value by year", x = 2020 to 2024, y = `v2020` to `v2024`, read
     from tile attributes (five integers is small enough not to need sidecar
     JSON).
 

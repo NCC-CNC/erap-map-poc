@@ -7,6 +7,16 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Feature pop-ups in the web app: clicking a feature of a layer with a
+  `popup` definition opens a MapLibre pop-up rendered by a React component,
+  with a title, labelled and formatted stats, and Chart.js charts built from
+  tile attributes and the feature id. Pop-up content is declared per layer in
+  `src/layers/` (typed `PopupDefinition`); the `sample` layer shows its name,
+  ID, area, score and a bar chart of its yearly values. Pointer cursor over
+  clickable features, one pop-up at a time, closes on a click elsewhere, and
+  keeps working after a basemap switch. Adds `chart.js` 4.6.1 with only the
+  bar, line, scale and tooltip components registered; charts are destroyed
+  when the pop-up closes.
 - CARTO basemaps in the web app (ADR 0005): `src/map/basemap.ts` picks CARTO
   Positron (default) or Dark Matter with the key from the runtime
   `/config.json` (`src/config.ts`), or keyless OpenFreeMap Positron and Dark
