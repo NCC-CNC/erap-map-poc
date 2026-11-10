@@ -97,25 +97,34 @@ web checks run the same way:
 `npm run lint`, `npm run typecheck`). With Node 26 on the host,
 `cd web && npm ci && npm run dev` works too.
 
-## Solo-maintainer auto-merge (optional)
+## Auto-merge and branch updates
 
-`.github/workflows-optional/` holds two workflows that make the owner's own
-green PRs merge themselves. They are not active until you move them into
-`.github/workflows/`.
+Two workflows in `.github/workflows/` make green PRs merge themselves. Both
+act through the NCC ConsTech Automation GitHub App, owned by the `NCC-CNC`
+org, so there is no personal access token to create or rotate.
 
-- `auto-merge.yml` arms squash auto-merge on PRs opened by the repository
-  owner (never on anyone else's, Dependabot included) and brings the PR level
-  with `main`.
+- `auto-merge.yml` arms squash auto-merge on every PR into `main` opened from
+  a branch in this repo (pushing one needs write access, so this covers the
+  owner and maintainers) and brings the PR level with `main`. PRs from forks
+  and from Dependabot are never armed and merge by hand. A draft is armed
+  when it is marked ready for review.
 - `update-branches.yml` updates every armed PR after each push to `main`, so
   strict "up to date" branch protection does not leave them stuck BEHIND.
 
-One-time setup: create a fine-grained personal access token for this repo only
-(Contents, Pull requests and Workflows: read/write) and store it as the
-`AUTO_MERGE_TOKEN` secret. `GITHUB_TOKEN` cannot be used because GitHub starts
-no workflows for pushes or merges made with it, so the PR's checks would never
-run on the updated branch. Rotate the PAT before it expires. `ci.yml` already
-runs on PRs only: with strict protection every PR is tested against current
-`main` before it merges.
+One-time setup (org or repo admin):
+
+- Install the NCC ConsTech Automation app on this repo.
+- Give this repo access to the org-level `AUTOMATION_APP_CLIENT_ID` variable
+  (the app's Client ID, not its App ID) and the org-level
+  `AUTOMATION_APP_PRIVATE_KEY` secret; both are shared with selected
+  repositories.
+- Turn on "Allow auto-merge" in the repo settings
+  (`scripts/bootstrap-repo-settings.sh` does this).
+
+`GITHUB_TOKEN` cannot be used because GitHub starts no workflows for pushes or
+merges made with it: "Closes #N" would not close issues, and the PR's checks
+would never run on an updated branch. `ci.yml` runs on PRs only: with strict
+protection every PR is tested against current `main` before it merges.
 
 ## Cache warming (optional)
 
@@ -136,8 +145,9 @@ key in the `actions/cache` step of your CI job.
 - `docs/handoffs/`: session handoff template for continuity between work
   sessions.
 - `.github/`: issue forms, PR template, Dependabot config, a stack-neutral CI
-  workflow (docs-only PRs skip stack jobs, one required `checks` status), and
-  optional solo-maintainer auto-merge and cache-warming workflows.
+  workflow (docs-only PRs skip stack jobs, one required `checks` status),
+  app-based auto-merge and branch-update workflows, and an optional
+  cache-warming workflow.
 - `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`, `LICENSE`.
 - `scripts/bootstrap-repo-settings.sh`: one-time repo settings setup (branch
   protection, auto-merge, labels) that a template cannot carry over on its

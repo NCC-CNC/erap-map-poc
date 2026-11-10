@@ -1,0 +1,60 @@
+name: Enable auto-merge
+
+# Arms GitHub's auto-merge (squash) on every PR into main opened from a
+# branch in this repo, so it merges itself once the required "checks" job
+# passes. Pushing a branch here needs write access, so this covers the owner
+# and every collaborator with write access; PRs from forks and from
+# Dependabot are left to merge by hand (their runs cannot read the app's
+# secret anyway). A draft is armed when it is marked ready for review.
+#
+# It also brings the PR level with main as it arms it: main's strict branch
+# protection wants an up-to-date branch, and update-branches.yml only runs
+# on a push to main.
+#
+# Both act through the NCC ConsTech Automation GitHub App (org-owned), not
+# the built-in GITHUB_TOKEN: GitHub starts no workflows for actions taken
+# with GITHUB_TOKEN, so "Closes #N" would not close issues and an updated
+# branch would never be re-checked. Settings (org level, shared with this
+# repo): the AUTOMATION_APP_CLIENT_ID variable (the app's Client ID, not its
+# App ID) and the AUTOMATION_APP_PRIVATE_KEY secret.
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+
+# The app token does the writing; GITHUB_TOKEN needs nothing more.
+permissions:
+  contents: read
+
+jobs:
+  enable-auto-merge:
+    if: >-
+      !github.event.pull_request.draft &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]' &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      github.base_ref == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Get an app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.AUTOMATION_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUTOMATION_APP_PRIVATE_KEY }}
+
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: gh pr merge --auto --squash "$PR"
+
+      - name: Bring it level with main
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        # Already level is not an error worth failing for.
+        run: gh pr update-branch "$PR" || echo "already level with main"
