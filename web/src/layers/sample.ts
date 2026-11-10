@@ -6,24 +6,27 @@ export const sample: LayerDefinition = {
   title: 'Sample polygons',
   file: 'sample.pmtiles',
   sourceLayer: 'sample',
-  layers: [
-    {
-      id: 'sample-fill',
-      type: 'fill',
-      paint: {
-        'fill-color': '#2a9d8f',
-        'fill-opacity': 0.35,
-      },
+  defaultVisible: true,
+  symbology: {
+    geometry: 'polygon',
+    // ColorBrewer YlGnBu, the four darker classes of the five-class scheme
+    // (colour-blind safe, sequential). The palest class is left out so the
+    // lowest scores still show on the light basemap.
+    color: {
+      type: 'stepped',
+      attribute: 'score',
+      stops: [
+        { from: 0, color: '#a1dab4' },
+        { from: 25, color: '#41b6c4' },
+        { from: 50, color: '#2c7fb8' },
+        { from: 75, color: '#253494' },
+      ],
+      max: 100,
+      fallback: { color: '#9e9e9e', label: 'No score' },
     },
-    {
-      id: 'sample-outline',
-      type: 'line',
-      paint: {
-        'line-color': '#1d6f65',
-        'line-width': 1,
-      },
-    },
-  ],
+    fillOpacity: 0.7,
+    outline: { color: '#ffffff', width: 0.75 },
+  },
   popup: {
     title: { attribute: 'name' },
     stats: [

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LayerDefinition, PopupChart } from '../layers';
 import { sample } from '../layers/sample';
+import { samplePoints } from '../layers/samplePoints';
 import {
   MISSING,
   buildChart,
@@ -148,14 +149,10 @@ describe('buildPopupContent for the sample layer', () => {
 
 describe('clickableLayers', () => {
   it('maps every style layer of a layer with a pop-up, and skips the rest', () => {
-    const noPopup: LayerDefinition = {
-      ...sample,
-      id: 'plain',
-      popup: undefined,
-      layers: [{ id: 'plain-fill', type: 'fill', paint: {} }],
-    };
-    const targets = clickableLayers([sample, noPopup]);
-    expect([...targets.keys()]).toEqual(['sample-fill', 'sample-outline']);
+    const noPopup: LayerDefinition = { ...sample, id: 'plain', popup: undefined };
+    const targets = clickableLayers([sample, noPopup, samplePoints]);
+    expect([...targets.keys()]).toEqual(['sample-fill', 'sample-outline', 'sample_points-circle']);
     expect(targets.get('sample-fill')?.popup).toBe(sample.popup);
+    expect(targets.get('sample_points-circle')?.popup).toBe(samplePoints.popup);
   });
 });

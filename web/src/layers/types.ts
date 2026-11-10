@@ -1,19 +1,4 @@
-import type {
-  CircleLayerSpecification,
-  FillLayerSpecification,
-  LineLayerSpecification,
-} from '@maplibre/maplibre-gl-style-spec';
-
-type WithoutSource<T> = T extends unknown ? Omit<T, 'source' | 'source-layer'> : never;
-
-/**
- * A MapLibre style layer as written in a layer definition. `source` and
- * `source-layer` are filled in from the definition, so they are left out
- * here. Add more layer types to the union as they are needed.
- */
-export type StyleLayer = WithoutSource<
-  FillLayerSpecification | LineLayerSpecification | CircleLayerSpecification
->;
+import type { Symbology } from './symbology';
 
 /**
  * Where a pop-up value comes from: a tile attribute (a feature property),
@@ -78,7 +63,12 @@ export interface LayerDefinition {
   file: string;
   /** Vector tile layer name inside the archive (tippecanoe `-l`). */
   sourceLayer: string;
-  /** Style layers, drawn in order. Their ids must be unique across the map. */
-  layers: StyleLayer[];
+  /**
+   * How the layer is drawn. The MapLibre style layers and the legend are
+   * both generated from this (see `./symbology.ts`), so they cannot drift.
+   */
+  symbology: Symbology;
+  /** Whether the layer is shown when the app opens. */
+  defaultVisible: boolean;
   popup?: PopupDefinition;
 }
