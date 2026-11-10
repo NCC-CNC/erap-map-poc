@@ -17,6 +17,16 @@ All notable changes to this project are documented here. The format is based on
   keeps working after a basemap switch. Adds `chart.js` 4.6.1 with only the
   bar, line, scale and tooltip components registered; charts are destroyed
   when the pop-up closes.
+- `docker-compose.yml` (ADR 0004): `web` (nginx image
+  `natureconservancy/erap-map-web`, port `WEB_PORT` default 8080, tiles
+  mounted read-only, `CARTO_API_KEY` from `.env`, read-only root with a tmpfs
+  `/tmp`, healthcheck), `pipeline` under the `pipeline` profile (image
+  `natureconservancy/erap-map-pipeline`, `data/raw` read-only, `data/tiles`
+  read-write, uid overridable with `PIPELINE_UID`/`PIPELINE_GID`), and
+  `web-dev` under the `dev` profile (Vite with hot reload in the pinned Node
+  image, `node_modules` in a named volume, port `WEB_DEV_PORT` default
+  5173); `VITE_USE_POLLING` turns on Vite's polling watcher for Windows bind
+  mounts; README usage and `.env.example` updated.
 - Web image (`web/Dockerfile`): Node 26.13.0 build stage and unprivileged
   nginx 1.30.6 runtime, both pinned by digest, listening on 8080;
   `web/nginx.conf` serves the app with an `index.html` fallback for app

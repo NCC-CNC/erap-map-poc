@@ -1,0 +1,83 @@
+# ERAP Map PoC stack (ADR 0004). Usage is in README.md; the design is in
+# docs/design/01_architecture.md (Docker Compose section).
+#
+#   docker compose run --rm pipeline [layer ...]   build tiles into data/tiles/
+#   docker compose up -d web                       map at http://localhost:8080
+#   docker compose --profile dev up web-dev        Vite dev server on :5173
+#
+# Variables come from the shell or the git-ignored .env (see .env.example);
+# every one has a default, so .env is optional.
+
+name: erap-map
+
+services:
+  # nginx serving the built app and the pipeline output (web/Dockerfile).
+  web:
+    build:
+      context: ./web
+    image: natureconservancy/erap-map-web
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    environment:
+      # Written to /config.json at start; empty means the keyless basemap.
+      CARTO_API_KEY: ${CARTO_API_KEY:-}
+    volumes:
+      - ./data/tiles:/srv/tiles:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      # busybox wget ships with the alpine nginx image.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/config.json"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Tile builder, run on demand: `docker compose run --rm pipeline [layer ...]`.
+  pipeline:
+    build:
+      context: ./pipeline
+      target: runtime
+    image: natureconservancy/erap-map-pipeline
+    profiles: [pipeline]
+    # On Linux, set PIPELINE_UID/PIPELINE_GID to your own (`id -u`, `id -g`)
+    # so the tiles in data/tiles/ are owned by you. Docker Desktop (Windows,
+    # macOS) maps bind mount ownership itself, so the default is fine there.
+    user: "${PIPELINE_UID:-10001}:${PIPELINE_GID:-10001}"
+    volumes:
+      - ./data/raw:/data/raw:ro
+      - ./data/tiles:/data/tiles
+
+  # Frontend development: Vite with hot reload on http://localhost:5173,
+  # serving data/tiles/ at /tiles/ and /config.json like the web image.
+  web-dev:
+    image: node:26.13.0-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68
+    profiles: [dev]
+    working_dir: /repo/web
+    # npm ci runs only when package-lock.json differs from the last install
+    # into the node_modules volume.
+    command:
+      - sh
+      - -c
+      - >-
+        cmp -s package-lock.json node_modules/.compose-lock 2>/dev/null
+        || { npm ci --no-audit --no-fund && cp package-lock.json node_modules/.compose-lock; }
+        && exec npm run dev -- --host 0.0.0.0 --port 5173 --strictPort
+    ports:
+      - "${WEB_DEV_PORT:-5173}:5173"
+    environment:
+      CARTO_API_KEY: ${CARTO_API_KEY:-}
+      # File change events do not reach containers from Windows bind mounts,
+      # so web/vite.config.ts polls when this is set. Set to 0 to turn off.
+      VITE_USE_POLLING: ${VITE_USE_POLLING:-1}
+    volumes:
+      - ./web:/repo/web
+      # Linux node_modules, kept apart from any host install.
+      - web-dev-node-modules:/repo/web/node_modules
+      # Same layout as the repo, so vite.config.ts finds ../data/tiles.
+      - ./data/tiles:/repo/data/tiles:ro
+
+volumes:
+  web-dev-node-modules:
