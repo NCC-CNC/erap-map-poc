@@ -16,7 +16,9 @@ All notable changes to this project are documented here. The format is based on
   0 to 10, `--drop-rate=1` so every point is kept at every zoom), bats tests
   for the fixture, layer, zooms, attributes, feature ids at every zoom and a
   default run building both layers into one manifest, and a contract entry
-  in `docs/design/02_data_layers_and_popups.md`.
+  in `docs/design/02_data_layers_and_popups.md`. The CI shellcheck step
+  and its `CONTRIBUTING.md` equivalent now lint every
+  `pipeline/tests/fixtures/*.sh`.
 - `CONTRIBUTING.md` Setup: prerequisites (Git, Docker with Compose v2, Git
   Bash on Windows), a run block, a Checks block with Docker-only local
   equivalents of every CI job (`pipeline`, `web`, `compose`,
