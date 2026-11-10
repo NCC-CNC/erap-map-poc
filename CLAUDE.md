@@ -20,8 +20,8 @@ now; conservation planning staff more widely if it continues. See
 
 M1 (skeleton end to end) is nearly done: the pipeline, web app, CARTO
 basemaps, feature pop-ups, docker-compose and CI are merged, and the
-synthetic `sample` layer goes from raw file to clickable feature. A MapLibre
-worker loading bug in built images (#26) is being fixed. Next is M2, real
+synthetic `sample` layer goes from raw file to clickable feature (the MapLibre
+worker fix, #26, is merged; a hands-on browser check is pending). Next is M2, real
 data, blocked on confirmed source datasets (#13); styling and pop-up content
 are still TBC. Open GitHub issues are the live task tracker;
 `docs/design/03_milestones.md` is the shape of the plan.
