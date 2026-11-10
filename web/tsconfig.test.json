@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "types": ["vite/client", "node"]
+  },
+  // The whole of src, tests included. Tests read the shared schema and the
+  // pipeline fixtures from the repo, so this needs a full checkout.
+  "include": ["src"],
+  "exclude": []
+}

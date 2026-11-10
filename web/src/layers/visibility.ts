@@ -1,5 +1,4 @@
-import { visibilityValue } from './spec';
-import { styleLayerIds } from './symbology';
+import { styleLayerIds, visibilityValue } from './spec';
 import type { LayerDefinition } from './types';
 
 /**
@@ -36,12 +35,12 @@ export function visibilityUpdates(
   visible: boolean,
 ): [string, 'visible' | 'none'][] {
   const value = visibilityValue(visible);
-  return styleLayerIds(def.id, def.symbology).map((id) => [id, value]);
+  return styleLayerIds(def).map((id) => [id, value]);
 }
 
 /**
  * The layers in the order a layer list shows them: topmost first, which is
- * the registry (draw) order reversed.
+ * the draw order reversed.
  */
 export function listOrder(defs: readonly LayerDefinition[]): LayerDefinition[] {
   return [...defs].reverse();

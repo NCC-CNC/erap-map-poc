@@ -124,6 +124,18 @@ body,
   border-radius: 50%;
 }
 
+/* A line layer: a short thick stroke in the line colour. */
+.layer-legend-line {
+  height: 4px;
+  border: none;
+  border-radius: 2px;
+}
+
+.layer-message {
+  margin: 0 0 0.375rem;
+  color: #595959;
+}
+
 .feature-popup {
   min-width: 220px;
   font: 13px/1.4 system-ui, sans-serif;

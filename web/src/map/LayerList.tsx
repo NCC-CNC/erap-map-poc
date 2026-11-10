@@ -1,8 +1,11 @@
-import { legendFor, listOrder, isVisible, type LayerDefinition, type VisibilityState } from '../layers';
+import { listOrder, isVisible, type LayerDefinition, type VisibilityState } from '../layers';
 import { LegendView } from './LegendView';
 
 interface LayerListProps {
-  layers: readonly LayerDefinition[];
+  /** The layers from the manifest, in draw order; `null` while loading. */
+  layers: readonly LayerDefinition[] | null;
+  /** A problem with the manifest to show above the list, if any. */
+  problem: string | null;
   visibility: VisibilityState;
   /** Ids of the layers whose archive could be read; `null` while checking. */
   available: ReadonlySet<string> | null;
@@ -12,14 +15,18 @@ interface LayerListProps {
 /**
  * The data layers as labelled checkboxes, topmost first, each with its
  * inline legend. A layer whose archive is missing is shown disabled with a
- * short note.
+ * short note; a missing or invalid manifest is reported in a status
+ * message, and the map still shows the basemap.
  */
-export function LayerList({ layers, visibility, available, onChange }: LayerListProps) {
+export function LayerList({ layers, problem, visibility, available, onChange }: LayerListProps) {
   return (
     <fieldset className="layer-list">
       <legend>Layers</legend>
+      <p className="layer-message" role="status" hidden={!problem && layers !== null}>
+        {problem ?? (layers === null ? 'Loading layers...' : '')}
+      </p>
       <ul>
-        {listOrder(layers).map((def) => {
+        {listOrder(layers ?? []).map((def) => {
           const missing = available !== null && !available.has(def.id);
           const inputId = `layer-toggle-${def.id}`;
           const noteId = `${inputId}-note`;
@@ -41,7 +48,7 @@ export function LayerList({ layers, visibility, available, onChange }: LayerList
                   Not available: tiles not found.
                 </p>
               )}
-              <LegendView legend={legendFor(def.symbology, def.title)} label={`${def.title} legend`} />
+              <LegendView legend={def.legend} label={`${def.title} legend`} />
             </li>
           );
         })}

@@ -1,4 +1,15 @@
-import type { Symbology } from './symbology';
+import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec';
+
+/**
+ * The shapes here mirror the shared JSON Schema,
+ * `pipeline/schema/layer-style.schema.json` (`$defs`); `schema.test.ts`
+ * checks they stay in step. The pipeline resolves each layer's
+ * `<layer>.style.json` into the `display` block of its `manifest.json`
+ * entry, which `./manifest.ts` reads into a `LayerDefinition`.
+ */
+
+/** CSS colour, as MapLibre accepts it, for example `#2c7fb8`. */
+export type Color = string;
 
 /**
  * Where a pop-up value comes from: a tile attribute (a feature property),
@@ -44,7 +55,8 @@ export interface PopupChart {
 
 /**
  * The pop-up shown when a feature of the layer is clicked. Declarative, so
- * the content lives in the layer file and the map code stays generic.
+ * the content lives in the layer's display config and the map code stays
+ * generic.
  */
 export interface PopupDefinition {
   /** Pop-up heading; falls back to the layer title when missing. */
@@ -53,9 +65,47 @@ export interface PopupDefinition {
   charts?: PopupChart[];
 }
 
+/** One legend entry: a swatch and its label. */
+export interface LegendItem {
+  color: Color;
+  label: string;
+}
+
+/** Everything a legend shows for one layer, as resolved by the pipeline. */
+export interface Legend {
+  /** `ramp` for classes of a number, `categories` for categories, `single` for one colour. */
+  kind: 'single' | 'categories' | 'ramp';
+  /** Swatch shape: `square` for fills, `circle` for points, `line` for lines. */
+  shape: 'square' | 'circle' | 'line';
+  /** Swatch border: the outline or stroke colour. */
+  border: Color;
+  /** Swatch opacity, matching the map. */
+  opacity: number;
+  items: LegendItem[];
+}
+
+type WithoutSource<T> = T extends unknown ? Omit<T, 'source' | 'source-layer'> : never;
+
+/**
+ * A MapLibre style layer as given in the display config: without `source`
+ * and `source-layer` (filled in by `toMapLibre`), and with its id as
+ * configured, before the `<layer>-` prefix is added.
+ */
+export type StyleLayer = WithoutSource<Exclude<LayerSpecification, { type: 'background' }>>;
+
+/** The `display` block of a manifest entry (schema `$defs/display`). */
+export interface Display {
+  title: string;
+  defaultVisible: boolean;
+  order: number;
+  popup?: PopupDefinition;
+  layers: StyleLayer[];
+  legend: Legend;
+}
+
 /** Everything the map needs to know about one data layer. */
 export interface LayerDefinition {
-  /** Unique id; also used as the MapLibre source id. */
+  /** The manifest layer name; also the MapLibre source id and id prefix. */
   id: string;
   /** Human-readable name, for legends and layer controls. */
   title: string;
@@ -63,12 +113,12 @@ export interface LayerDefinition {
   file: string;
   /** Vector tile layer name inside the archive (tippecanoe `-l`). */
   sourceLayer: string;
-  /**
-   * How the layer is drawn. The MapLibre style layers and the legend are
-   * both generated from this (see `./symbology.ts`), so they cannot drift.
-   */
-  symbology: Symbology;
   /** Whether the layer is shown when the app opens. */
   defaultVisible: boolean;
+  /** Draw order: higher is drawn on top. */
+  order: number;
+  /** Style layers in draw order (last on top), ids as configured. */
+  layers: StyleLayer[];
+  legend: Legend;
   popup?: PopupDefinition;
 }
