@@ -102,3 +102,12 @@ All notable changes to this project are documented here. The format is based on
 - ADR 0001 names files `NNNN-short-title.md`, matching the ADR README.
 - `ci.yml` runs on pull requests only; `bootstrap-repo-settings.sh` gates on
   `checks` by default.
+
+### Fixed
+
+- MapLibre worker failed to load ("Worker failed to load") in the built app
+  (#26): maplibre-gl builds its worker URL at runtime, so Vite never emitted
+  `maplibre-gl-worker.mjs`. `src/map/worker.ts` now imports it with `?url`
+  (emitted as a hashed file under `assets/`) and calls `setWorkerUrl` before
+  any map is created, and `web/nginx.conf` serves `.mjs` under `/assets/` as
+  `application/javascript` with the same cache and `nosniff` headers.

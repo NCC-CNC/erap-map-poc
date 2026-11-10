@@ -2,6 +2,8 @@ import { Map as MapLibreMap } from 'maplibre-gl';
 import { PMTiles } from 'pmtiles';
 import { layerRegistry, toMapLibre, type LayerDefinition, type MapLibreLayer } from '../layers';
 import { pmtilesProtocol } from './pmtiles';
+// Sets the MapLibre worker URL; must run before any map is created.
+import './worker';
 
 export interface CreateMapOptions {
   /** Basemap style URL, from `resolveBasemaps` in `./basemap`. */
