@@ -126,13 +126,16 @@ merges made with it: "Closes #N" would not close issues, and the PR's checks
 would never run on an updated branch. `ci.yml` runs on PRs only: with strict
 protection every PR is tested against current `main` before it merges.
 
-## Cache warming (optional)
+## Cache warming
 
-`.github/workflows-optional/warm-cache.yml` saves a cache from `main`, because
-a PR can read caches saved on `main` but not caches saved by another PR. Use it
-if a CI job downloads something slow on every run. Move it into
-`.github/workflows/`, fill in the two placeholders, and use the same path and
-key in the `actions/cache` step of your CI job.
+`.github/workflows/warm-cache.yml` saves the CI caches from `main`, because a
+PR can read caches saved on `main` but not caches saved by another PR. It
+builds the pipeline `test` image and the web image with the same Docker
+layer cache scopes as `ci.yml` (`pipeline`, `web`), so a new PR does not
+rebuild tippecanoe from source, and fills the npm cache for `web/`. It runs
+on pushes to `main` that touch `pipeline/` or `web/`, twice a week (unused
+caches expire after 7 days), and by hand. If you change a cache scope or
+build setting in `ci.yml`, change it here too.
 
 ## What's included
 
@@ -146,8 +149,8 @@ key in the `actions/cache` step of your CI job.
   sessions.
 - `.github/`: issue forms, PR template, Dependabot config, a stack-neutral CI
   workflow (docs-only PRs skip stack jobs, one required `checks` status),
-  app-based auto-merge and branch-update workflows, and an optional
-  cache-warming workflow.
+  app-based auto-merge and branch-update workflows, and a cache-warming
+  workflow.
 - `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`, `LICENSE`.
 - `scripts/bootstrap-repo-settings.sh`: one-time repo settings setup (branch
   protection, auto-merge, labels) that a template cannot carry over on its
