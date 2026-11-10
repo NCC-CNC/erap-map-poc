@@ -12,6 +12,6 @@
   },
   "dependencies": {
     "@maplibre/maplibre-gl-style-spec": "26.6.0",
-    "ajv": "8.17.1"
+    "ajv": "8.20.0"
   }
 }
