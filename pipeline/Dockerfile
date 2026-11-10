@@ -45,8 +45,26 @@ RUN curl -fsSL -o /tmp/pmtiles.tar.gz \
  && rm /tmp/pmtiles.tar.gz
 
 # ---------------------------------------------------------------------------
-# Runtime image.
-FROM ${GDAL_IMAGE} AS runtime
+# Fetch bats-core (test stage only) from a pinned release tag, checked
+# against its commit.
+FROM ${GDAL_IMAGE} AS bats
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ARG BATS_VERSION=1.14.0
+ARG BATS_COMMIT=eb7f42f8d608ac693d7a4b67474f6714ea68cfc5
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates git \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN git clone --depth 1 --branch "v${BATS_VERSION}" \
+      https://github.com/bats-core/bats-core.git /src/bats-core \
+ && test "$(git -C /src/bats-core rev-parse HEAD)" = "${BATS_COMMIT}" \
+ && /src/bats-core/install.sh /opt/bats
+
+# ---------------------------------------------------------------------------
+# Shared base for the runtime and test images.
+FROM ${GDAL_IMAGE} AS base
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # jq: write and read manifest.json. libsqlite3/zlib: tippecanoe runtime libs.
@@ -57,11 +75,35 @@ RUN apt-get update \
 COPY --from=tippecanoe /opt/tippecanoe/bin/ /usr/local/bin/
 COPY --from=pmtiles /usr/local/bin/pmtiles /usr/local/bin/pmtiles
 
+# Pipeline scripts, layer configs and the synthetic fixture, from the build
+# context (pipeline/).
+COPY bin/ /opt/pipeline/bin/
+COPY lib/ /opt/pipeline/lib/
+COPY layers/ /opt/pipeline/layers/
+COPY tests/ /opt/pipeline/tests/
+
 # Run as a non-root user. docker-compose can override the uid with `user:`
 # so files written to bind mounts match the host user on Linux.
 RUN useradd --create-home --uid 10001 pipeline
 USER 10001
 WORKDIR /work
 
-# The entry script arrives with #5; until then the image opens a shell.
-CMD ["bash"]
+# ---------------------------------------------------------------------------
+# Test image: `docker build --target test pipeline`. Running it runs every
+# bats test in /opt/pipeline/tests.
+FROM base AS test
+
+COPY --from=bats /opt/bats/ /usr/local/
+
+ENTRYPOINT ["bats"]
+CMD ["/opt/pipeline/tests"]
+
+# ---------------------------------------------------------------------------
+# Runtime image. Last, so it is the default target.
+# `docker compose run --rm pipeline [layer ...]` passes the layer names to
+# run.sh; with no names it builds every layer. For a shell, add
+# `--entrypoint bash`.
+FROM base AS runtime
+
+ENTRYPOINT ["/opt/pipeline/bin/run.sh"]
+CMD []
