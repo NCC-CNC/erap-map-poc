@@ -39,3 +39,49 @@ body,
   align-items: center;
   cursor: pointer;
 }
+
+.feature-popup {
+  min-width: 220px;
+  font: 13px/1.4 system-ui, sans-serif;
+  color: #222;
+}
+
+.feature-popup h2 {
+  margin: 0 1.25rem 0.5rem 0;
+  font-size: 15px;
+}
+
+.feature-popup dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.125rem 0.75rem;
+  margin: 0;
+}
+
+.feature-popup dl > div {
+  display: contents;
+}
+
+.feature-popup dt {
+  color: #555;
+}
+
+.feature-popup dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.feature-popup-chart {
+  margin: 0.75rem 0 0;
+}
+
+.feature-popup-chart figcaption {
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+}
+
+.feature-popup-chart-canvas {
+  position: relative;
+  height: 140px;
+}

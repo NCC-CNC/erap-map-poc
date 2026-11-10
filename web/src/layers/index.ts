@@ -8,5 +8,14 @@ import type { LayerDefinition } from './types';
  */
 export const layerRegistry: readonly LayerDefinition[] = [sample];
 
-export type { LayerDefinition, PopupDefinition, StyleLayer } from './types';
+export type {
+  LayerDefinition,
+  NumberFormat,
+  PopupChart,
+  PopupChartPoint,
+  PopupDefinition,
+  PopupStat,
+  StyleLayer,
+  ValueSource,
+} from './types';
 export { toMapLibre, type MapLibreLayer } from './spec';
