@@ -30,6 +30,19 @@ updates:
       - dependency-name: typescript
         update-types: ['version-update:semver-major']
 
+  # The pipeline's display config tool (ajv, the MapLibre style spec).
+  # Keep @maplibre/maplibre-gl-style-spec on the same version as in web/.
+  - package-ecosystem: npm
+    directory: '/pipeline/style'
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+    groups:
+      style-tool:
+        update-types: [minor, patch]
+
   # Base images in the Dockerfiles. They are pinned by tag and digest in
   # `ARG ..._IMAGE=` lines; if Dependabot does not pick those up, bump them
   # by hand (see the header of each Dockerfile).

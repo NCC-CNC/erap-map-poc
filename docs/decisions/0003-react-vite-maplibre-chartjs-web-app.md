@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted
+Accepted. Amended by 0007-data-driven-layer-styles.md: layers are no longer
+defined in the app's code but read from the pipeline's manifest.json.
 
 ## Context
 

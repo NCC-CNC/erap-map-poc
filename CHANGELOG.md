@@ -7,6 +7,32 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Data-driven layer styles (#39, ADR 0007). Each layer gains
+  `pipeline/layers/<layer>.style.json`: `title`, `defaultVisible`, `order`
+  (draw order, default 0, ties by name), `popup`, and either the `symbology`
+  shorthand or raw MapLibre style-spec `layers` (no `source`; ids prefixed
+  with `<layer>-` on the map), an optional explicit `legend`, and optional
+  `breaks` (`quantile` or `equal`) on a stepped colour, computed from the
+  data. One JSON Schema, `pipeline/schema/layer-style.schema.json`, is used
+  by the pipeline and by the web app's tests. The pipeline image gains Node
+  (from the same pinned image as the web build) and a small tool,
+  `pipeline/style/` (ajv 8.17.1, `@maplibre/maplibre-gl-style-spec` 26.6.0,
+  pinned by lockfile), that validates each config (schema, legend, MapLibre
+  style validator) before tiling, failing the layer and keeping the
+  previous archive and manifest entry on any problem, and writes the
+  resolved config into its `manifest.json` entry as `display`. The pipeline
+  also writes `data/tiles/style.json`, a standalone MapLibre style of the
+  data layers (`pmtiles://` sources, no basemap). The web app no longer
+  defines any layer: it fetches `manifest.json` at startup and builds the
+  layer list, style layers, legends, pop-ups and draw order from it, with a
+  message in the layer panel if the manifest is missing or invalid;
+  `web/src/layers/sample.ts`, `samplePoints.ts`, the registry and the
+  symbology generator (now in the pipeline tool) are removed, and `sample`
+  and `sample_points` look and behave as before. Compose mounts
+  `pipeline/layers/` into the pipeline container, so a layer change needs
+  only a pipeline run and a reload. Tests: `display.bats` and the tool's
+  node:test suite (40 bats tests in all), and web tests for the manifest
+  reader and its agreement with the schema.
 - Coverage-safe tiling, drop guard and shapefile input options for the
   pipeline (#36). `LAYER_PROFILE=coverage` adds
   `--no-simplification-of-shared-nodes` (chosen over the deprecated

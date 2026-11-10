@@ -41,14 +41,20 @@ docker compose down
 Rebuild the images after changing `pipeline/` or `web/` with
 `docker compose build` (or `docker compose up -d --build web`). A rebuilt
 layer needs no restart: nginx serves `data/tiles/` straight from the host
-folder, so reload the page.
+folder, so reload the page. Layers are not defined in the web app: each is
+`pipeline/layers/<layer>.env` plus `<layer>.style.json` (how it is drawn,
+its legend and pop-up; see `docs/design/02_data_layers_and_popups.md`), and
+compose mounts `pipeline/layers/`, so restyling or adding a layer needs only
+a pipeline run and a reload, no image rebuild.
 
 ### Where data goes
 
 - `data/raw/`: source data, mounted read-only into the pipeline at
   `/data/raw`. Layer configs in `pipeline/layers/` name their inputs there.
 - `data/tiles/`: pipeline output, one `.pmtiles` per layer plus
-  `manifest.json`. The `web` service serves it read-only at `/tiles/`.
+  `manifest.json` (which the map reads its layers from) and `style.json` (a
+  standalone MapLibre style of the data layers, for other tools). The `web`
+  service serves it read-only at `/tiles/`.
 
 Both folders are git-ignored apart from `.gitkeep`.
 

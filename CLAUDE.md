@@ -40,7 +40,8 @@ design note in `docs/design/` or an ADR in `docs/decisions/`.
 
 - Pipeline (`pipeline/`): bash, GDAL/OGR, tippecanoe, `pmtiles` CLI, in a
   custom image on a pinned `ghcr.io/osgeo/gdal` base. shellcheck and bats.
-  See ADR 0002.
+  See ADR 0002. Node in the same image runs the display config tool
+  (`pipeline/style/`, ajv and the MapLibre style spec; ADR 0007).
 - Web app (`web/`): React, TypeScript, Vite, MapLibre GL JS, `pmtiles`,
   Chart.js, OpenFreeMap basemaps (ADR 0006); served by nginx. ESLint, `tsc`,
   vitest. See ADR 0003.
@@ -51,7 +52,10 @@ design note in `docs/design/` or an ADR in `docs/decisions/`.
   only `data/tiles/` and the data contract in
   `docs/design/02_data_layers_and_popups.md`, never `data/raw/`; any secrets
   come from `.env` at runtime, never committed or baked into images;
-  pipeline writes are atomic (temp file then move).
+  pipeline writes are atomic (temp file then move); no layer is defined in
+  `web/`: each is `pipeline/layers/<layer>.env` plus `<layer>.style.json`
+  (schema `pipeline/schema/layer-style.schema.json`), and the app reads
+  them from `data/tiles/manifest.json` at runtime (ADR 0007).
 
 ## Commands
 
@@ -62,7 +66,10 @@ container paths needs `MSYS_NO_PATHCONV=1` and host paths from `pwd -W` or
 block; keep it in step with this section.
 
 - Pipeline: `docker compose run --rm pipeline [layer ...]` (no names builds
-  every layer into `data/tiles/`).
+  every layer into `data/tiles/`, plus `manifest.json` and `style.json`).
+  Check display configs only: `docker compose run --rm --entrypoint sh
+  pipeline -c 'node /opt/pipeline/style/cli.mjs check
+  /opt/pipeline/layers/*.style.json'`.
 - Web map: `docker compose up -d --build web` (<http://localhost:8080>,
   `WEB_PORT`). Dev server: `docker compose --profile dev up web-dev` (Vite
   on :5173, `VITE_USE_POLLING`). Optional ports and UIDs come from `.env`.
