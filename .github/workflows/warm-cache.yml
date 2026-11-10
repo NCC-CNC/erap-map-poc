@@ -1,0 +1,68 @@
+name: Warm cache
+
+# GitHub lets a PR read caches saved on main but not caches saved by another
+# PR, and CI only runs on PRs. This workflow saves the CI caches from main,
+# so the PR runs in ci.yml start warm:
+# - Docker layer caches (type=gha) for the pipeline `test` image (which
+#   covers every stage of the runtime image, including the slow tippecanoe
+#   build) and the web image. The scopes and build settings must match
+#   ci.yml exactly, or the PRs never hit these caches.
+# - the npm download cache that actions/setup-node keys on
+#   web/package-lock.json.
+on:
+  push:
+    branches: [main]
+    paths:
+      - pipeline/**
+      - web/**
+      - .github/workflows/warm-cache.yml
+  schedule:
+    # Caches unused for 7 days are dropped; refresh twice a week.
+    - cron: '17 4 * * 1,4'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: warm-cache
+  cancel-in-progress: true
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build pipeline test image into the cache
+        uses: docker/build-push-action@v7
+        with:
+          context: pipeline
+          target: test
+          cache-from: type=gha,scope=pipeline
+          cache-to: type=gha,scope=pipeline,mode=max
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - name: Build web image into the cache
+        uses: docker/build-push-action@v7
+        with:
+          context: web
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26.13.0
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # setup-node saves ~/.npm at the end of the job when the key missed.
+      - run: npm ci --no-audit --no-fund
+        working-directory: web
