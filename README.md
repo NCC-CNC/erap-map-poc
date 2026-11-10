@@ -13,8 +13,9 @@ them in an interactive web map.
 Both run in their own Docker containers, tied together by
 `docker-compose.yml`.
 
-Status: design / pre-build. The source data, styling, and pop-up content are
-still to be confirmed. See `docs/design/` for the brief, architecture, and
+Status: M1 skeleton. A synthetic sample layer runs from raw file to clickable
+feature; the source data, styling, and pop-up content are still to be
+confirmed. Setup and checks are in `CONTRIBUTING.md`. See `docs/design/` for the brief, architecture, and
 milestones, and `docs/decisions/` for the ADRs.
 
 ## Usage

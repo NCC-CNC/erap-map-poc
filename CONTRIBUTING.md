@@ -6,20 +6,80 @@ The workflow is:
 
 1. Branch from `main` (one short-lived branch per change).
 2. Keep changes small and focused.
-3. Run the project checks locally before pushing (format, lint, tests, build).
-   See the Setup section below for the exact commands once they are defined.
-4. Open a pull request into `main`. CI must pass before merge.
+3. Run the project checks locally before pushing (lint, tests, build). See
+   Checks below for the exact commands.
+4. Open a pull request into `main`. CI must pass before merge, and a ready
+   PR merges itself when it does (see Pull requests below).
 
 ## Setup
 
-TODO (milestone M1): setup and local-run instructions. Planned: Docker with
-Docker Compose is the only prerequisite; see the Commands section of
-`CLAUDE.md` for the planned commands. A good shape:
+Prerequisites: Git and Docker with Docker Compose v2. Nothing else (no Node,
+GDAL or tippecanoe) is needed on the host. On Windows, use Git Bash: the
+`bash` in PowerShell may be WSL, without `gh` or your Git credentials.
 
-- Prerequisites (tool and version).
-- A short block that installs, runs, and checks. Make its last line the
-  command CI runs, and say so.
-- Pointers to `CLAUDE.md` for anything stack-specific or slow.
+```sh
+git clone https://github.com/NCC-CNC/erap-map-poc.git && cd erap-map-poc
+cp .env.example .env                      # optional: set CARTO_API_KEY
+
+docker compose run --rm pipeline          # build tiles into data/tiles/
+docker compose up -d --build web          # map at http://localhost:8080
+docker compose --profile dev up web-dev   # or Vite with hot reload on :5173
+```
+
+See `README.md` (Usage) for ports, `.env` settings and Linux file ownership.
+
+### Checks
+
+Every check below is a CI gate: the `ci.yml` jobs feed the one required
+status, `checks`, and a PR merges only when it passes. A PR that touches
+only `docs/` and Markdown runs just `repo-hygiene`. These commands run the
+same tools at the same versions as CI, all in Docker:
+
+```sh
+# Git Bash on Windows: stop MSYS rewriting container paths like /mnt.
+export MSYS_NO_PATHCONV=1
+repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
+
+# pipeline job: shellcheck, hadolint, bats (10 tests), runtime image
+docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
+  pipeline/bin/run.sh pipeline/lib/*.sh pipeline/layers/*.env \
+  pipeline/tests/fixtures/make_sample.sh pipeline/tests/*.bats
+docker run --rm -v "$repo":/mnt -w /mnt hadolint/hadolint:v2.15.1 \
+  hadolint --config .hadolint.yaml pipeline/Dockerfile web/Dockerfile
+docker build --target test -t erap-map-pipeline:test pipeline
+docker run --rm erap-map-pipeline:test
+docker compose build pipeline
+
+# web job: npm ci, lint, typecheck, test, build, audit (Node 26.13.0)
+docker compose --profile dev run --rm --no-deps web-dev sh -c 'npm ci &&
+  npm run lint && npm run typecheck && npm test && npm run build &&
+  npm audit --omit=dev --audit-level=high'
+docker compose build web
+
+# compose job
+docker compose config -q
+docker compose --profile pipeline --profile dev config -q
+
+# repo-hygiene job: actionlint, markdownlint, no em dashes
+docker run --rm -v "$repo":/repo -w /repo rhysd/actionlint:1.7.7 -color
+docker run --rm -v "$repo":/repo -w /repo node:26.13.0-bookworm-slim \
+  npx --yes markdownlint-cli '**/*.md' --ignore node_modules --ignore LICENSE
+! git grep -In $'\xe2\x80\x94' -- . ':!LICENSE'
+```
+
+The first pipeline image build takes about 4 minutes (it compiles
+tippecanoe); later builds are cached and take seconds. The web checks take
+about 15 seconds once the Node image is pulled. CI runs the same steps (the
+web smoke test of the nginx image is CI only); see the Commands section of
+`CLAUDE.md` for CI timings.
+
+### Pull requests
+
+The NCC ConsTech Automation app arms auto-merge on every non-draft PR from a
+branch in this repo, so the PR merges itself as soon as `checks` passes. If
+it is not ready, open it as a draft and mark it ready for review later. PRs
+from forks and from Dependabot merge by hand. See `README.md` (Auto-merge and
+branch updates).
 
 ## Conventions
 

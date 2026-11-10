@@ -18,9 +18,12 @@ now; conservation planning staff more widely if it continues. See
 
 ## Project status
 
-Design / pre-build. The next milestone is M1, a skeleton that takes one sample
-layer from raw file to clickable feature. Source data, styling, and pop-up
-content are TBC. Open GitHub issues are the live task tracker;
+M1 (skeleton end to end) is nearly done: the pipeline, web app, CARTO
+basemaps, feature pop-ups, docker-compose and CI are merged, and the
+synthetic `sample` layer goes from raw file to clickable feature. A MapLibre
+worker loading bug in built images (#26) is being fixed. Next is M2, real
+data, blocked on confirmed source datasets (#13); styling and pop-up content
+are still TBC. Open GitHub issues are the live task tracker;
 `docs/design/03_milestones.md` is the shape of the plan.
 
 ## Scope
@@ -52,14 +55,41 @@ design note in `docs/design/` or an ADR in `docs/decisions/`.
 
 ## Commands
 
-Planned for M1, not yet working. Fill in real commands, gates, and timings
-once they exist, and keep `CONTRIBUTING.md` Setup in step.
+Only Docker with Compose is needed on the host. On Windows use Git Bash (the
+`bash` in PowerShell may be WSL without `gh`); there, `docker run` with
+container paths needs `MSYS_NO_PATHCONV=1` and host paths from `pwd -W` or
+`cygpath -w`. `CONTRIBUTING.md` (Setup, Checks) has the full copy-paste
+block; keep it in step with this section.
 
-- Run the web map: `docker compose up web` (then <http://localhost:8080>).
-- Run the pipeline: `docker compose run --rm pipeline [layer ...]`.
-- Web checks (gates): `npm run lint`, `npm run typecheck`, `npm test`,
-  `npm run build` in `web/`.
-- Pipeline checks (gates): shellcheck and bats.
+- Pipeline: `docker compose run --rm pipeline [layer ...]` (no names builds
+  every layer into `data/tiles/`).
+- Web map: `docker compose up -d --build web` (<http://localhost:8080>,
+  `WEB_PORT`). Dev server: `docker compose --profile dev up web-dev` (Vite
+  on :5173, `VITE_USE_POLLING`). `CARTO_API_KEY` comes from `.env`.
+
+Gates: every CI job below feeds the one required status `checks`; a PR that
+touches only `docs/` and `*.md` runs just `repo-hygiene`.
+
+- `pipeline`: shellcheck 0.11.0 and hadolint 2.15.1 (file list in
+  `ci.yml`), then `docker build --target test pipeline` and run it (bats),
+  then the `runtime` image. Locally the first build takes about 4 minutes
+  (tippecanoe compile), then seconds from cache. CI: about 4 min cold, under
+  1 min warm.
+- `web` (Node 26.13.0, in `web/`): `npm ci`, `npm run lint`,
+  `npm run typecheck`, `npm test`, `npm run build`,
+  `npm audit --omit=dev --audit-level=high`, hadolint, then the image and a
+  smoke test. Locally without Node:
+  `docker compose --profile dev run --rm --no-deps web-dev sh -c 'npm ci && npm run lint && npm run typecheck && npm test && npm run build'`
+  (about 15 s). CI: about 2.5 min cold, under 1 min warm.
+- `compose`: `docker compose config -q`, and again with
+  `--profile pipeline --profile dev`.
+- `repo-hygiene`: actionlint, markdownlint (`.markdownlint.json`), no em
+  dashes. Run markdownlint locally in the Node image with
+  `npx --yes markdownlint-cli '**/*.md' --ignore node_modules --ignore LICENSE`.
+
+Ready PRs from branches in this repo merge themselves when `checks` passes
+(auto-merge via the NCC ConsTech Automation app), so open a draft until the
+change is ready.
 
 ## Repo structure
 
