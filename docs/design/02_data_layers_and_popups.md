@@ -28,11 +28,20 @@ Copy this block for each layer.
 - Feature id: {{attribute used as a stable id, needed for sidecar lookups and
   feature state}}.
 - Attributes kept in tiles: {{name, type, meaning}}.
-- Styling: {{fill/line/circle, colour ramp, classification breaks, labels}}.
+- Styling: {{fill/line/circle, colour ramp, classification breaks, labels,
+  shown by default or not}}.
 - Pop-up:
   - Title: {{attribute or template}}.
   - Stats: {{list of stats and their formatting}}.
   - Plots: {{chart type, x and y, data source}}.
+
+In the web app, each layer's styling is one `symbology` entry in its layer
+definition (`web/src/layers/symbology.ts`): polygons (fill and outline) or
+points (circle and stroke), coloured by a single colour, by category
+(MapLibre `match` on an attribute) or by a stepped ramp (MapLibre `step` on
+a numeric attribute). The MapLibre paint and the inline legend in the layer
+list are both generated from it, so they cannot drift; never write a legend
+by hand. `defaultVisible` sets whether the layer starts switched on.
 
 ### `sample`
 
@@ -60,7 +69,13 @@ against before real data arrives.
   - `score` (integer): a 0 to 100 score.
   - `v2020`, `v2021`, `v2022`, `v2023`, `v2024` (integer): a short yearly
     series, roughly 100 to 500, for a chart.
-- Styling: TBC (suggest a fill coloured by `score`).
+- Styling (`web/src/layers/sample.ts`): fill at 70% opacity, stepped ramp
+  on `score` in four classes, 0 to 25 `#a1dab4`, 25 to 50 `#41b6c4`, 50 to
+  75 `#2c7fb8`, 75 to 100 `#253494` (ColorBrewer YlGnBu, the four darker
+  classes of the five-class scheme; sequential and colour-blind safe), each
+  class including its lower bound. A feature without a numeric `score` is
+  grey `#9e9e9e` ("No score"). Thin white outline (0.75 px), which reads on
+  both the Light and Dark basemaps. Shown by default.
 - Pop-up:
   - Title: `name`.
   - Stats: feature id (label "ID"), `area_ha` (label "Area", thousands
@@ -96,7 +111,13 @@ default for now (see #17).
   - `name` (string): made-up bird name, for example `Heron`.
   - `category` (string): exactly one of `alpha`, `beta`, `gamma`.
   - `count` (integer): 1 to 500.
-- Styling: circles coloured by `category`.
+- Styling (`web/src/layers/samplePoints.ts`): circles of radius 6 px with
+  a 1.5 px white stroke, coloured by `category`: `alpha` orange `#e69f00`,
+  `beta` reddish purple `#cc79a7`, `gamma` vermillion `#d55e00` (Okabe-Ito,
+  colour-blind safe; warm colours so they stand apart from the blue-green
+  `sample` ramp underneath). Any other value is grey `#9e9e9e` ("Other").
+  Drawn above `sample`, so a point inside a polygon wins the click. Shown
+  by default.
 - Pop-up:
   - Title: `name`.
   - Stats: feature id (label "ID"), `category` (label "Category"), `count`

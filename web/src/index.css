@@ -10,16 +10,14 @@ body,
   inset: 0;
 }
 
-.basemap-toggle {
+.map-panel {
   position: absolute;
   top: 10px;
   left: 10px;
-  display: flex;
-  gap: 0.75rem;
-  align-items: center;
-  margin: 0;
-  padding: 0.375rem 0.625rem;
-  border: 0;
+  max-width: calc(100% - 20px - 40px);
+  max-height: calc(100% - 20px - 30px);
+  overflow: auto;
+  box-sizing: border-box;
   border-radius: 4px;
   background: #fff;
   box-shadow: 0 0 0 2px rgb(0 0 0 / 10%);
@@ -27,17 +25,103 @@ body,
   color: #333;
 }
 
-.basemap-toggle legend {
-  float: left;
+.map-panel summary {
+  padding: 0.375rem 0.625rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.map-panel-body {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0 0.625rem 0.5rem;
+}
+
+.map-panel fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.map-panel legend {
   padding: 0;
   font-weight: 600;
 }
 
-.basemap-toggle label {
+.basemap-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.basemap-toggle legend {
+  float: left;
+}
+
+.basemap-toggle label,
+.layer-list label {
   display: flex;
   gap: 0.25rem;
   align-items: center;
   cursor: pointer;
+}
+
+.layer-list legend {
+  margin-bottom: 0.25rem;
+}
+
+.layer-list > ul {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.layer-missing label {
+  color: #767676;
+  cursor: not-allowed;
+}
+
+.layer-note {
+  margin: 0 0 0 1.25rem;
+  color: #595959;
+  font-style: italic;
+}
+
+.layer-legend {
+  display: grid;
+  gap: 0.125rem;
+  margin: 0.125rem 0 0 1.25rem;
+  padding: 0;
+  list-style: none;
+}
+
+.layer-legend li {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+.layer-missing .layer-legend {
+  opacity: 0.5;
+}
+
+.layer-legend-swatch {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 1px solid;
+  /* Keeps a white outline or stroke visible on the white panel. */
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+}
+
+.layer-legend-circle {
+  border-width: 1.5px;
+  border-radius: 50%;
 }
 
 .feature-popup {
