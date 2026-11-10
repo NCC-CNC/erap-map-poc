@@ -42,6 +42,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Auto-merge and branch updates run from `.github/workflows/` through the NCC
+  ConsTech Automation GitHub App (org-level `AUTOMATION_APP_CLIENT_ID`
+  variable and `AUTOMATION_APP_PRIVATE_KEY` secret) instead of the template's
+  opt-in PAT-based workflows, which are removed from `workflows-optional/`.
+  Squash auto-merge is armed on PRs into `main` from branches in this repo,
+  never on forks or Dependabot.
 - ADR 0001 names files `NNNN-short-title.md`, matching the ADR README.
 - `ci.yml` runs on pull requests only; `bootstrap-repo-settings.sh` gates on
   `checks` by default.
