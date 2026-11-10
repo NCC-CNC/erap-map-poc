@@ -7,6 +7,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Web app scaffold (`web/`): React, TypeScript and Vite, MapLibre GL JS with
+  the `pmtiles` protocol, a placeholder OpenFreeMap basemap in `src/map/`, and
+  a layer registry in `src/layers/` with the `sample` layer from
+  `/tiles/sample.pmtiles`; the Vite dev and preview servers serve
+  `data/tiles/` at `/tiles/` with range requests; ESLint, `tsc --noEmit` and
+  vitest wired to npm scripts.
 - Pipeline image (`pipeline/Dockerfile`): GDAL 3.13.3 base pinned by digest,
   tippecanoe 2.79.0 built from a commit-checked tag, pmtiles CLI 1.31.2
   checksum-verified, non-root user; repo-wide `.hadolint.yaml`.
