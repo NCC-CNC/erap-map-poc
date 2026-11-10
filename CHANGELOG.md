@@ -7,6 +7,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Web image (`web/Dockerfile`): Node 26.13.0 build stage and unprivileged
+  nginx 1.30.6 runtime, both pinned by digest, listening on 8080;
+  `web/nginx.conf` serves the app with an `index.html` fallback for app
+  routes, `/tiles/` from `/srv/tiles` with range requests,
+  `application/vnd.pmtiles`, `no-cache` revalidation and plain 404s, and
+  year-long caching for `/assets/`; an entrypoint script writes
+  `/config.json` from `CARTO_API_KEY` at start, JSON-escaped.
 - CARTO basemaps in the web app (ADR 0005): `src/map/basemap.ts` picks CARTO
   Positron (default) or Dark Matter with the key from the runtime
   `/config.json` (`src/config.ts`), or keyless OpenFreeMap Positron and Dark

@@ -1,0 +1,11 @@
+# Build context for web/Dockerfile. The image runs `npm ci` and
+# `npm run build` itself, so local installs and builds stay out.
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+.env
+.env.*
+Dockerfile
+.dockerignore
