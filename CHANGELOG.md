@@ -17,6 +17,13 @@ All notable changes to this project are documented here. The format is based on
   keeps working after a basemap switch. Adds `chart.js` 4.6.1 with only the
   bar, line, scale and tooltip components registered; charts are destroyed
   when the pop-up closes.
+- Web image (`web/Dockerfile`): Node 26.13.0 build stage and unprivileged
+  nginx 1.30.6 runtime, both pinned by digest, listening on 8080;
+  `web/nginx.conf` serves the app with an `index.html` fallback for app
+  routes, `/tiles/` from `/srv/tiles` with range requests,
+  `application/vnd.pmtiles`, `no-cache` revalidation and plain 404s, and
+  year-long caching for `/assets/`; an entrypoint script writes
+  `/config.json` from `CARTO_API_KEY` at start, JSON-escaped.
 - CARTO basemaps in the web app (ADR 0005): `src/map/basemap.ts` picks CARTO
   Positron (default) or Dark Matter with the key from the runtime
   `/config.json` (`src/config.ts`), or keyless OpenFreeMap Positron and Dark
@@ -52,6 +59,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Auto-merge and branch updates run from `.github/workflows/` through the NCC
+  ConsTech Automation GitHub App (org-level `AUTOMATION_APP_CLIENT_ID`
+  variable and `AUTOMATION_APP_PRIVATE_KEY` secret) instead of the template's
+  opt-in PAT-based workflows, which are removed from `workflows-optional/`.
+  Squash auto-merge is armed on PRs into `main` from branches in this repo,
+  never on forks or Dependabot.
 - ADR 0001 names files `NNNN-short-title.md`, matching the ADR README.
 - `ci.yml` runs on pull requests only; `bootstrap-repo-settings.sh` gates on
   `checks` by default.
