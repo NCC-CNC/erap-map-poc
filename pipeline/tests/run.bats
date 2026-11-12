@@ -9,6 +9,9 @@ setup() {
   RUN="${PIPELINE_ROOT}/bin/run.sh"
   export PIPELINE_INPUT_DIR="${BATS_TEST_TMPDIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
+  # The synthetic test layers (read only); a test that edits configs makes
+  # its own layers dir with make_layers_dir or copy_layers.
+  export PIPELINE_LAYERS_DIR="${PIPELINE_ROOT}/tests/layers"
   mkdir -p "$PIPELINE_INPUT_DIR"
 }
 
@@ -19,18 +22,19 @@ make_layers_dir() {
   mkdir -p "$PIPELINE_LAYERS_DIR"
   local name
   for name in "$@"; do
-    cp "${PIPELINE_ROOT}/layers/sample.env" "${PIPELINE_LAYERS_DIR}/${name}.env"
-    cp "${PIPELINE_ROOT}/layers/sample.style.json" "${PIPELINE_LAYERS_DIR}/${name}.style.json"
+    cp "${PIPELINE_ROOT}/tests/layers/sample.env" "${PIPELINE_LAYERS_DIR}/${name}.env"
+    cp "${PIPELINE_ROOT}/tests/layers/sample.style.json" "${PIPELINE_LAYERS_DIR}/${name}.style.json"
   done
 }
 
-# A layers dir holding the repo's configs of the given layers, as they are.
+# A layers dir holding the test layer configs (tests/layers/) of the given
+# layers, as they are.
 copy_layers() {
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
   mkdir -p "$PIPELINE_LAYERS_DIR"
   local name
   for name in "$@"; do
-    cp "${PIPELINE_ROOT}/layers/${name}.env" "${PIPELINE_ROOT}/layers/${name}.style.json" \
+    cp "${PIPELINE_ROOT}/tests/layers/${name}.env" "${PIPELINE_ROOT}/tests/layers/${name}.style.json" \
       "$PIPELINE_LAYERS_DIR"
   done
 }
@@ -183,7 +187,7 @@ assert_no_temp_files() {
 }
 
 @test "no arguments builds sample and sample_points into one manifest" {
-  # The two synthetic layers only: the repo's raster layers need RAW_DIR.
+  # The two synthetic test layers (tests/layers/).
   copy_layers sample sample_points
   run "$RUN"
   [ "$status" -eq 0 ]

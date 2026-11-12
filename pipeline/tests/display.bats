@@ -18,11 +18,12 @@ setup() {
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR"
 }
 
-# use_layer NAME [AS]: copy a layer's .env and .style.json from layers/.
+# use_layer NAME [AS]: copy a test layer's .env and .style.json from
+# tests/layers/.
 use_layer() {
   local name=$1 as=${2:-$1}
-  cp "${PIPELINE_ROOT}/layers/${name}.env" "${PIPELINE_LAYERS_DIR}/${as}.env"
-  cp "${PIPELINE_ROOT}/layers/${name}.style.json" "${PIPELINE_LAYERS_DIR}/${as}.style.json"
+  cp "${PIPELINE_ROOT}/tests/layers/${name}.env" "${PIPELINE_LAYERS_DIR}/${as}.env"
+  cp "${PIPELINE_ROOT}/tests/layers/${name}.style.json" "${PIPELINE_LAYERS_DIR}/${as}.style.json"
 }
 
 # write_style NAME JSON: set a layer's display config.
@@ -64,11 +65,20 @@ EOF
   [[ $output == *"# fail 0"* || $output == *"fail 0"* ]]
 }
 
-@test "the repo's layer configs pass the pre-check" {
-  run node "$TOOL" check "${PIPELINE_ROOT}"/layers/*.style.json
+@test "the repo's layer configs and the test layers pass the pre-check" {
+  run node "$TOOL" check "${PIPELINE_ROOT}"/layers/*.style.json \
+    "${PIPELINE_ROOT}"/tests/layers/*.style.json
   [ "$status" -eq 0 ]
+  [[ $output == *"forest.style.json: ok"* ]]
   [[ $output == *"sample.style.json: ok"* ]]
   [[ $output == *"sample_points.style.json: ok"* ]]
+}
+
+@test "no layer in layers/ reads the synthetic fixtures: they are test layers (#17)" {
+  run grep -l 'tests/fixtures' "${PIPELINE_ROOT}"/layers/*.env
+  [ "$status" -eq 1 ]
+  [ ! -e "${PIPELINE_ROOT}/layers/sample.env" ]
+  [ ! -e "${PIPELINE_ROOT}/layers/sample_points.env" ]
 }
 
 @test "a valid config is resolved into the manifest's display block" {
@@ -106,7 +116,7 @@ EOF
   [ "$status" -eq 0 ]
 
   # A higher order on sample draws it on top.
-  jq '.order = 30' "${PIPELINE_ROOT}/layers/sample.style.json" >"${PIPELINE_LAYERS_DIR}/sample.style.json"
+  jq '.order = 30' "${PIPELINE_ROOT}/tests/layers/sample.style.json" >"${PIPELINE_LAYERS_DIR}/sample.style.json"
   run "$RUN" sample
   [ "$status" -eq 0 ]
   run jq -r '[.layers[].id] | join(",")' "$STYLE"
