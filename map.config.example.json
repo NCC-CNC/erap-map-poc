@@ -1,0 +1,11 @@
+{
+  "$schema": "./pipeline/schema/map-config.schema.json",
+  "map": { "center": [-96, 60], "zoom": 3, "basemap": "light" },
+  "disabled": [],
+  "overrides": {
+    "forest": {
+      "title": "Forest cover",
+      "style": { "symbology": { "opacity": 0.5 } }
+    }
+  }
+}

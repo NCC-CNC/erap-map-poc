@@ -23,7 +23,16 @@ their display updated, with no re-tiling:
 `docker compose run --rm pipeline --style-only <name> ...` (no names: every
 built layer), so do not rebuild them for that alone; `invalid` ones will
 fail until their config is fixed (the notes say why); `orphan` is for the
-remove-layer skill.
+remove-layer skill. `source missing` layers are skipped by a full build
+(their data is not in `RAW_DIR`) and `disabled` ones are left out by the
+user's map config (`map.config.json`, README, Your map config): build
+neither unless the user fixes that.
+
+To build only some layers, or one from another copy of its data, just for
+the user, change their `map.config.json` (`enabled`, `disabled`, or
+`overrides.<name>.input`) rather than the committed `.env`; a change for
+everyone goes in `pipeline/layers/` with a draft PR. A bad map config
+stops every run with exit 2 and one line per problem.
 
 ## 2. Build
 

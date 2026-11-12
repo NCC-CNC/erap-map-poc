@@ -214,9 +214,12 @@ assert_no_temp_files() {
 
 @test "one failed layer fails the run but the others still build" {
   make_layers_dir good
-  printf '%s\n' 'LAYER_INPUT=missing.geojson' 'LAYER_FIELDS=(id)' \
-    'LAYER_FEATURE_ID=id' 'LAYER_MIN_ZOOM=0' 'LAYER_MAX_ZOOM=4' \
+  # Source data that is there (a full build skips a layer whose source is
+  # missing, tests/mapconfig.bats), but a field that is not.
+  printf '%s\n' "LAYER_INPUT=${PIPELINE_ROOT}/tests/fixtures/sample.geojson" \
+    'LAYER_FIELDS=(nope)' 'LAYER_FEATURE_ID=nope' 'LAYER_MIN_ZOOM=0' 'LAYER_MAX_ZOOM=4' \
     >"${PIPELINE_LAYERS_DIR}/broken.env"
+  cp "${PIPELINE_LAYERS_DIR}/good.style.json" "${PIPELINE_LAYERS_DIR}/broken.style.json"
 
   run "$RUN"
   [ "$status" -eq 1 ]

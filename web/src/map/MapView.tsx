@@ -14,6 +14,7 @@ import { createMap, setBasemapStyle, setLayerVisibility, tilesBaseUrl } from './
 import { LayerList } from './LayerList';
 import { MapPanel } from './MapPanel';
 import { attachPopups, type PopupHandlers } from './popups';
+import { openingView } from './view';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 const NO_LAYERS: readonly LayerDefinition[] = [];
@@ -21,7 +22,9 @@ const NO_LAYERS: readonly LayerDefinition[] = [];
 /**
  * Full-page map with a panel holding the basemap toggle and the layer list.
  * The data layers come from the pipeline's `manifest.json`, fetched once
- * when the map is created; the basemap shows without waiting for it.
+ * when the map is created; the basemap shows without waiting for it. The
+ * manifest's `map` (the local map config's view and basemap, ADR 0009) is
+ * applied once it has loaded, unless the URL already holds a view.
  * Clicking a feature of a visible layer with a pop-up definition opens its
  * pop-up. MapLibre lives outside React's render tree: the map is created
  * once and removed on unmount.
@@ -50,6 +53,8 @@ export function MapView() {
     const controller = new AbortController();
     const baseUrl = tilesBaseUrl();
     const loaded = loadManifest(manifestUrl(baseUrl), { signal: controller.signal });
+    // Read before the map can write its own view into the URL.
+    const hash = window.location.hash;
     const style = BASEMAP_STYLES[initialTheme.current];
     const created = createMap(container.current, {
       style,
@@ -64,6 +69,10 @@ export function MapView() {
       currentLayers.current = result.layers;
       setLayers(result.layers);
       setProblem(result.problem);
+      // The map config's opening view and basemap (ADR 0009), once known.
+      const view = openingView(result.map, hash);
+      if (view) created.jumpTo(view);
+      if (result.map?.basemap) setTheme(result.map.basemap);
     });
     const handlers = attachPopups(created, () => currentLayers.current);
     map.current = created;

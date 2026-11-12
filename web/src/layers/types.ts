@@ -131,3 +131,20 @@ export interface LayerDefinition {
   legend: Legend;
   popup?: PopupDefinition;
 }
+
+/** A basemap theme the map config may open with (ADR 0006, ADR 0009). */
+export type BasemapName = 'light' | 'dark';
+
+/**
+ * How the map opens, from the local map config (ADR 0009) through the
+ * manifest's `map`. Each field is optional; the app's own default applies
+ * where one is not set.
+ */
+export interface MapDefaults {
+  /** Opening centre, `[longitude, latitude]`. */
+  center?: [number, number];
+  /** Opening zoom. */
+  zoom?: number;
+  /** Opening basemap. */
+  basemap?: BasemapName;
+}

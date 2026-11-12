@@ -138,7 +138,7 @@ touch_later() {
   [ "$(notes_of zipped)" = "source data changed since the build" ]
 }
 
-@test "--status reports invalid configs and orphaned builds" {
+@test "--status reports invalid configs, missing source data and orphaned builds" {
   add_layer alpha broken nostyle nodata
   run "$RUN" alpha
   [ "$status" -eq 0 ]
@@ -152,7 +152,7 @@ touch_later() {
   run jq -r '.layers[] | "\(.name)|\(.state)|\(.notes | join(";"))"' <<<"$output"
   [ "${lines[0]}" = "alpha|orphan|no alpha.env: remove the build with --remove" ]
   [[ ${lines[1]} == "broken|invalid|LAYER_MIN_ZOOM must be an integer in "* ]]
-  [ "${lines[2]}" = "nodata|invalid|source data not found: missing.gpkg" ]
+  [ "${lines[2]}" = "nodata|source missing|source data not found: missing.gpkg" ]
   [ "${lines[3]}" = "nostyle|invalid|no nostyle.style.json" ]
   [ "${#lines[@]}" -eq 4 ]
 }
@@ -279,7 +279,7 @@ add_raster() {
   [ "$(state_of cover)" = stale ]
   [[ "$(notes_of cover)" == *"source data changed since the build"* ]]
   rm "${PIPELINE_INPUT_DIR}/cover.tif"
-  [ "$(state_of cover)" = invalid ]
+  [ "$(state_of cover)" = "source missing" ]
   [[ "$(notes_of cover)" == *"source data not found: cover.tif"* ]]
 
   # --remove takes the raster archive, entry and style source; alpha stays.

@@ -45,3 +45,9 @@ data/tiles/*
 *.vrt
 *.gdb/
 data/work/
+
+# Local map config and local-only layer configs (ADR 0009): yours, not
+# shared. map.config.example.json is the committed starting point.
+/map.config*.json
+!/map.config.example.json
+pipeline/layers.local/

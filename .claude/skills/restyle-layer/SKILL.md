@@ -12,6 +12,15 @@ the PR. Reference: `docs/design/02_data_layers_and_popups.md` (Display
 config) and `pipeline/schema/layer-style.schema.json`. Never commit data
 or screenshots.
 
+First ask, unless the user already said: is this change just for them,
+or for everyone? Just for them: put it in their git-ignored
+`map.config.json` (README, Your map config; ADR 0009) as
+`overrides.<name>` with `title`, `order`, `defaultVisible` or a `style`
+patch (merged over the `.style.json`; `null` removes a key, lists are
+replaced), run `docker compose run --rm pipeline --style-only <name>`,
+take the screenshots as below, and stop: no branch, no PR. For everyone:
+the steps below.
+
 ## 1. Before
 
 Make sure the layer is built (`data/tiles/<name>.pmtiles` and its entry in

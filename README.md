@@ -97,7 +97,7 @@ docker compose run --rm --build pipeline sample sample_points
 # The real layers (`forest`, `agriculture`) read their source from RAW_DIR,
 # here the folder holding the November 2026 play data (see .env.example).
 RAW_DIR=C:/data/ERAP_play_data docker compose run --rm pipeline forest
-docker compose run --rm pipeline   # every layer
+docker compose run --rm pipeline   # every layer (or those your map config enables)
 
 # After editing only a layer's .style.json (colours, legend, pop-up, title,
 # order): update its display in seconds, no re-tiling. No names: every
@@ -153,7 +153,7 @@ style (ADR 0006). It needs no key or other setup, but the browser must reach
 `tiles.openfreemap.org`.
 
 The optional settings (host ports, Linux UIDs, dev server polling, the
-source data folder `RAW_DIR`) can go in
+source data folder `RAW_DIR`, the map config file `MAP_CONFIG`) can go in
 a git-ignored `.env` in the repo root; copy `.env.example` to start.
 
 ### Linux file ownership
@@ -306,6 +306,75 @@ docker compose run --rm pipeline --remove <layer>
 After pulling a change that removed a layer, `--status` lists your local
 build of it as `orphan`; the same `--remove` command clears it.
 
+## Your map config
+
+The layers in `pipeline/layers/` are shared: changing them means a pull
+request. To change your own map only, write a map config:
+`map.config.json` in the repo root, git-ignored (ADR 0009). Copy
+`map.config.example.json` to start; its `$schema` line gives completion
+and checking in an editor. With no map config the pipeline builds every
+committed layer as it is. `MAP_CONFIG` in `.env` picks another file,
+relative to the repo root, so you can keep several and switch.
+
+```json
+{
+  "$schema": "./pipeline/schema/map-config.schema.json",
+  "map": { "center": [-79.4, 44.1], "zoom": 7, "basemap": "dark" },
+  "enabled": ["forest", "wetlands"],
+  "overrides": {
+    "forest": {
+      "input": "forest_2025/forest.tif",
+      "title": "Forest (2025)",
+      "style": { "symbology": { "color": "#00441b", "opacity": 0.5 } }
+    }
+  },
+  "localLayers": {
+    "wetlands": {
+      "env": { "LAYER_TYPE": "raster", "LAYER_INPUT": "wetlands.tif",
+               "LAYER_MIN_ZOOM": 2, "LAYER_MAX_ZOOM": 12 },
+      "style": { "title": "Wetlands", "defaultVisible": true,
+                 "symbology": { "geometry": "raster", "color": "#2c7fb8",
+                                "opacity": 0.7 } }
+    }
+  }
+}
+```
+
+- `enabled` lists the layers to build and show (default: all of them);
+  `disabled` leaves some out. A layer you built before and then leave out
+  stays on disk but is hidden from the map.
+- `overrides` change a layer by name. `input` (the source data, relative
+  to `RAW_DIR`) and `env` (any other `.env` setting, such as
+  `LAYER_MAX_ZOOM` or `LAYER_FIELDS`) change the tiles: rebuild the
+  layer. `title`, `order`, `defaultVisible` and `style` change only how it
+  looks. `style` is merged over the layer's `.style.json`: objects key by
+  key, anything else (lists too) replaced, and `null` removes a key.
+- `localLayers` are layers only you have, written inline in the same
+  shape as a `.env` (`env`) and `.style.json` (`style`). Or keep them as
+  files in a folder such as `pipeline/layers.local/` (git-ignored) and
+  list it in `layerDirs`, relative to the config file. A local layer
+  needs its own name.
+- `map` sets where the map opens (`center` as `[longitude, latitude]`,
+  `zoom`) and on which basemap. A view in the page URL wins.
+
+Apply a change with the commands you already use:
+
+```sh
+docker compose run --rm pipeline --status       # what needs what
+docker compose run --rm pipeline --style-only   # display, selection, map view
+docker compose run --rm pipeline                # input or env changes, new layers
+```
+
+The pipeline checks the whole config before it builds anything and stops
+with one line per problem (an unknown layer name, a missing folder, a
+style that is no longer valid). `--status` shows `stale` for a layer
+whose input or settings changed, `restyle` for a display change,
+`disabled` for one you left out, and `source missing` for one whose data
+you do not have: a full build skips those with a warning, and fails only
+if it could build nothing. Each layer's `manifest.json` entry records
+its source file (size and date) and the overrides applied under
+`provenance`, so two maps can be compared.
+
 ## Using Claude Code (optional)
 
 Everything in this README works with the plain commands above; Claude
@@ -328,6 +397,7 @@ prompt; removing a layer always asks first.
 | Refresh a layer's source data | Adding a layer, above (inspect, compare, build) | "The parcels data was updated, refresh it" (`/update-layer-data`) |
 | Remove a layer | Removing a layer, above | "Remove the parcels layer" (`/remove-layer`) |
 | Run, stop or screenshot the map | Usage, above; `scripts/screenshot.sh --help` | "Start the map", "Screenshot parcels" (`/run-map`) |
+| Change your own map only | Your map config, above | "Hide agriculture on my map", "Use my copy of the forest data" (`/restyle-layer`, `/build-layers`) |
 | Run the CI checks locally | `CONTRIBUTING.md` (Checks) | "Run the checks" (`/run-checks`) |
 
 Skills that change files (add, restyle, update, remove) work on a branch

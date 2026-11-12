@@ -482,6 +482,7 @@ draw the layers (the `display` block is shortened here; see Display config):
 ```json
 {
   "updated_at": "2026-01-01T00:00:00Z",
+  "map": { "center": [-96, 60], "zoom": 3, "basemap": "light" },
   "layers": [
     {
       "name": "sample",
@@ -511,8 +512,20 @@ draw the layers (the `display` block is shortened here; see Display config):
           "items": [{ "color": "#a1dab4", "label": "0 to 25" }]
         }
       },
+      "enabled": true,
       "build_seconds": 3,
       "bytes": 49824,
+      "provenance": {
+        "origin": "committed",
+        "source": {
+          "path": "sample.geojson",
+          "bytes": 9876,
+          "modified_at": "2026-01-01T00:00:00Z"
+        },
+        "overrides": { "title": "My sample" },
+        "env_sha256": "3f1c...",
+        "style_sha256": "9a0b..."
+      },
       "feature_count": 15,
       "profile": null,
       "min_visible_px": 1,
@@ -545,10 +558,30 @@ failed run leaves the previous version. nginx serves them with
 `Cache-Control: no-cache` and an ETag, so a reload picks up a change
 (checked by `scripts/check-tiles-cache.sh` in CI).
 
+The local map config (ADR 0009, `map.config.json`, schema
+`pipeline/schema/map-config.schema.json`) adds three things. `map`, at the
+top, is its opening view and basemap (`center` as `[lon, lat]`, `zoom`,
+`basemap` `light` or `dark`), left out when it sets none; `style.json`
+takes the `center` and `zoom` too. `enabled` is false on the entry of a
+layer built before and since left out by the config: the archive and
+entry are kept, but the map and `style.json` leave it out (an entry
+without `enabled` is enabled). `provenance` says what the layer was built
+from: `origin` (`committed`, `local` for a config in one of the map
+config's `layerDirs`, or `config` for one of its `localLayers`), the
+source data (`path` relative to `RAW_DIR`, total `bytes` of its files and
+newest `modified_at`; null for a `/vsi` path), the map config `overrides`
+as applied (null for none) and SHA-256 hashes of the effective settings
+and display config (the `.env` and `.style.json` with the overrides
+applied). `--status` compares the hashes too, so an `input` or `env`
+override change shows as `stale` and a display override change as
+`restyle`; `--style-only` updates the display part (`style_sha256` and the
+display overrides). Older entries have none of these and read as before.
+
 The manifest is the runtime contract with the web app (ADR 0007), which
 reads `name` (also the source layer and style layer id prefix), `file`,
-`type` and `display`. `type` is the layer's `LAYER_TYPE`, `vector` or
-`raster` (ADR 0008); it decides the MapLibre source (`vector`, or the
+`type`, `display`, `enabled` and the top-level `map`. `type` is the
+layer's `LAYER_TYPE`, `vector` or `raster` (ADR 0008); it decides the
+MapLibre source (`vector`, or the
 `raster-dem` source of Raster layers), and an entry without it, written
 before raster layers, is read as vector. `format` is the archive's tile
 type from its PMTiles header, `mvt` or `png`. `display` is the resolved

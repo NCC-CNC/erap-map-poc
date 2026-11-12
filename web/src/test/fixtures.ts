@@ -10,6 +10,8 @@
  * - `expectedRasterDisplay`: the same for the synthetic raster layer of the
  *   pipeline's raster tests (`pipeline/tests/raster.bats`).
  * - `layerStyleSchema`: the shared JSON Schema.
+ * - `mapConfigSchema` and `mapConfigExample`: the local map config's schema
+ *   and the committed example (ADR 0009).
  */
 import { readFileSync } from 'node:fs';
 import { parseManifest } from '../layers/manifest';
@@ -22,6 +24,15 @@ export const layerStyleSchema = readJson('pipeline/schema/layer-style.schema.jso
   $id: string;
   $defs: Record<string, { properties?: Record<string, unknown> }>;
 };
+
+/** The local map config's JSON Schema (ADR 0009). */
+export const mapConfigSchema = readJson('pipeline/schema/map-config.schema.json') as {
+  $id: string;
+  properties: { map: { properties: { basemap: { enum: string[] } } } };
+};
+
+/** The committed example map config, `map.config.example.json`. */
+export const mapConfigExample = readJson('map.config.example.json');
 
 export const expectedDisplay = readJson('pipeline/tests/fixtures/expected_display.json') as {
   sample: Display;

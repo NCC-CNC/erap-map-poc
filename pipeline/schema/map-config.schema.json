@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NCC-CNC/erap-map-poc/pipeline/schema/map-config.schema.json",
+  "title": "Local map config",
+  "description": "Your own map, on top of the committed layers: map.config.json at the repo root (git-ignored; MAP_CONFIG in .env picks another file). Selects the layers, overrides their source, processing settings and display, adds local-only layers and sets the map's opening view and basemap. The pipeline checks it before it builds anything. ADR 0009; docs/design/02_data_layers_and_popups.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "description": "Optional, for editors: the path to this schema.",
+      "type": "string"
+    },
+    "map": {
+      "description": "How the map opens. Written to manifest.json, so the web app reads it; a view in the page URL (#zoom/lat/lon) wins over center and zoom.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "center": {
+          "description": "Opening centre, [longitude, latitude].",
+          "type": "array",
+          "prefixItems": [
+            { "type": "number", "minimum": -180, "maximum": 180 },
+            { "type": "number", "minimum": -90, "maximum": 90 }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "zoom": {
+          "description": "Opening zoom.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 22
+        },
+        "basemap": {
+          "description": "Opening basemap.",
+          "enum": ["light", "dark"]
+        }
+      }
+    },
+    "enabled": {
+      "description": "The layers to build and show. Default: every layer (committed and local-only).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/layerName" },
+      "uniqueItems": true
+    },
+    "disabled": {
+      "description": "Layers to leave out (after `enabled`): not built, and hidden from the map if built before.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/layerName" },
+      "uniqueItems": true
+    },
+    "layerDirs": {
+      "description": "Folders of local-only layer configs, each layer a <name>.env and <name>.style.json like pipeline/layers/. Relative to this file, for example pipeline/layers.local (git-ignored). A name may not repeat a committed layer: use `overrides` to change one.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "localLayers": {
+      "description": "Local-only layers defined here, by name: their processing settings (`env`, as in a <name>.env) and display config (`style`, as in a <name>.style.json).",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/layerName" },
+      "additionalProperties": { "$ref": "#/$defs/localLayer" }
+    },
+    "overrides": {
+      "description": "Changes to layers (committed or local-only), by name. `input` and `env` change the tiles: rebuild the layer. The rest changes only its display: `run.sh --style-only` is enough.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/layerName" },
+      "additionalProperties": { "$ref": "#/$defs/override" }
+    }
+  },
+  "$defs": {
+    "layerName": {
+      "description": "A layer name: lower case letters, digits, _ and -.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "settings": {
+      "description": "Layer processing settings, as in a <name>.env (see pipeline/lib/config.sh): a LAYER_* name and a text, number or (for an array setting such as LAYER_FIELDS) a list of texts.",
+      "type": "object",
+      "propertyNames": { "pattern": "^LAYER_[A-Z][A-Z0-9_]*$" },
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string" },
+          { "type": "number" },
+          { "type": "array", "items": { "type": "string" } }
+        ]
+      }
+    },
+    "localLayer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["env", "style"],
+      "properties": {
+        "env": {
+          "$ref": "#/$defs/settings",
+          "type": "object",
+          "required": ["LAYER_INPUT"]
+        },
+        "style": { "$ref": "layer-style.schema.json" }
+      }
+    },
+    "override": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "input": {
+          "description": "Source data, relative to RAW_DIR (mounted at /data/raw), as LAYER_INPUT. Changes the tiles.",
+          "type": "string",
+          "minLength": 1
+        },
+        "env": {
+          "description": "Other processing settings, added after the layer's .env (for example LAYER_MAX_ZOOM or LAYER_FIELDS). Changes the tiles. Use `input` for the source.",
+          "$ref": "#/$defs/settings",
+          "type": "object",
+          "not": { "type": "object", "required": ["LAYER_INPUT"] }
+        },
+        "title": {
+          "description": "Layer title. Display only.",
+          "type": "string",
+          "minLength": 1
+        },
+        "order": {
+          "description": "Draw order. Display only.",
+          "type": "integer"
+        },
+        "defaultVisible": {
+          "description": "Switched on when the map opens. Display only.",
+          "type": "boolean"
+        },
+        "style": {
+          "description": "A JSON merge patch (RFC 7396) on the layer's .style.json: objects merge key by key, anything else (lists included) replaces, null removes a key. title, order and defaultVisible above are applied after it. The result must be a valid display config. Display only.",
+          "type": "object"
+        }
+      }
+    }
+  }
+}
