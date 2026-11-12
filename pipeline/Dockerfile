@@ -2,19 +2,20 @@
 #
 # Pipeline image: GDAL/OGR, tippecanoe, the pmtiles CLI (ADR 0002) and Node
 # for the display config tool (ADR 0007).
-# Every tool is pinned. To upgrade one, change its ARG (and digest or
-# checksum) here and note it in CHANGELOG.md.
+# Every tool is pinned. Base images are pinned by tag and digest (the
+# multi-arch index) in literal `FROM` lines so Dependabot can propose
+# updates; it does not resolve `ARG` values in `FROM`. To upgrade a tool,
+# change its ARG (and commit or checksum) here. Note upgrades in
+# CHANGELOG.md.
 
-# GDAL base, pinned by tag and digest. The digest is the multi-arch index.
-ARG GDAL_IMAGE=ghcr.io/osgeo/gdal:ubuntu-small-3.13.3@sha256:64250faf833c06d4b21afce4c27190039ba7ab58d70f0eebc87cf77d929c0b40
-
-# Node, for the display config tool (style/, ADR 0007). Same pinned image as
-# web/Dockerfile and the web-dev compose service.
-ARG NODE_IMAGE=node:26.13.0-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68
+# ---------------------------------------------------------------------------
+# GDAL base. Every GDAL-based stage below builds from this one, so the pin
+# lives in one place.
+FROM ghcr.io/osgeo/gdal:ubuntu-small-3.13.3@sha256:64250faf833c06d4b21afce4c27190039ba7ab58d70f0eebc87cf77d929c0b40 AS gdal
 
 # ---------------------------------------------------------------------------
 # Build tippecanoe from a pinned release tag, checked against its commit.
-FROM ${GDAL_IMAGE} AS tippecanoe
+FROM gdal AS tippecanoe
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG TIPPECANOE_VERSION=2.79.0
@@ -33,7 +34,7 @@ RUN git clone --depth 1 --branch "${TIPPECANOE_VERSION}" \
 
 # ---------------------------------------------------------------------------
 # Fetch the pmtiles CLI (protomaps/go-pmtiles) and verify its checksum.
-FROM ${GDAL_IMAGE} AS pmtiles
+FROM gdal AS pmtiles
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG PMTILES_VERSION=1.31.2
@@ -52,7 +53,7 @@ RUN curl -fsSL -o /tmp/pmtiles.tar.gz \
 # ---------------------------------------------------------------------------
 # Fetch bats-core (test stage only) from a pinned release tag, checked
 # against its commit.
-FROM ${GDAL_IMAGE} AS bats
+FROM gdal AS bats
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ARG BATS_VERSION=1.14.0
@@ -70,14 +71,14 @@ RUN git clone --depth 1 --branch "v${BATS_VERSION}" \
 # ---------------------------------------------------------------------------
 # The display config tool's packages (ajv, the MapLibre style spec), from
 # its committed lockfile. Plain JavaScript, so they run on the GDAL base.
-FROM ${NODE_IMAGE} AS style
+FROM node:26.13.0-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68 AS style
 WORKDIR /opt/pipeline/style
 COPY style/package.json style/package-lock.json style/.npmrc ./
 RUN npm ci --omit=dev --no-audit --no-fund
 
 # ---------------------------------------------------------------------------
 # Shared base for the runtime and test images.
-FROM ${GDAL_IMAGE} AS base
+FROM gdal AS base
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # jq: write and read manifest.json. libsqlite3/zlib: tippecanoe runtime libs.
