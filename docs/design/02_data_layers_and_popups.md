@@ -493,6 +493,7 @@ draw the layers (the `display` block is shortened here; see Display config):
       "bounds": [-125, 46, -66, 56],
       "center": [-108.98, 51.18, 8],
       "built_at": "2026-01-01T00:00:00Z",
+      "display_updated_at": "2026-01-01T00:00:00Z",
       "display": {
         "title": "Sample polygons",
         "defaultVisible": true,
@@ -534,8 +535,15 @@ draw the layers (the `display` block is shortened here; see Display config):
 `bounds` is `[west, south, east, north]` and `center` is `[lon, lat, zoom]`,
 both from the PMTiles header. Layers are sorted by name (draw order is
 `display.order`). Rebuilding one layer replaces its entry and keeps the
-others. Both files are written to a temp file and moved into place, so a
-failed run leaves the previous version.
+others. `pipeline --style-only <layer>` (#53) replaces only the entry's
+`display` and sets `display_updated_at`, with no re-tiling; `built_at` and
+the build report stay as they were, and a build sets both times. `--status`
+compares the `.env` and source data with `built_at` (`stale`) and the
+`.style.json` with `display_updated_at` (`restyle`: `--style-only` is
+enough). Both files are written to a temp file and moved into place, so a
+failed run leaves the previous version. nginx serves them with
+`Cache-Control: no-cache` and an ETag, so a reload picks up a change
+(checked by `scripts/check-tiles-cache.sh` in CI).
 
 The manifest is the runtime contract with the web app (ADR 0007), which
 reads `name` (also the source layer and style layer id prefix), `file`,

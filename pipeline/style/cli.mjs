@@ -5,7 +5,8 @@
 //       Resolve LAYER's display config CONFIG (a .style.json) against its
 //       normalised data DATA (GeoJSONSeq, read only for `breaks`) and write
 //       the manifest `display` block to OUT. TYPE is the layer's LAYER_TYPE,
-//       `vector` (default) or `raster`; a raster layer has no DATA (pass -).
+//       `vector` (default) or `raster`. DATA `-` means none: a raster
+//       layer, or a vector layer whose config has no `breaks`.
 //   cli.mjs check CONFIG...
 //       Check configs without data (schema, legend, MapLibre validation);
 //       `breaks` are resolved against placeholder values, and the layer
@@ -53,10 +54,14 @@ function resolveCommand([layer, config, data, out, type = 'vector']) {
   if (!out || !['vector', 'raster'].includes(type)) return usage();
   const parsed = readJson(config, 'display config');
   let text;
-  const valuesOf = (attribute) => {
-    text ??= readFileSync(data, 'utf8');
-    return attributeValues(text, attribute);
-  };
+  // `-`: no data, so a config with `breaks` is reported, not a crash.
+  const valuesOf =
+    data === '-'
+      ? undefined
+      : (attribute) => {
+          text ??= readFileSync(data, 'utf8');
+          return attributeValues(text, attribute);
+        };
   writeJson(out, resolveDisplay(layer, parsed, valuesOf, type));
   return 0;
 }

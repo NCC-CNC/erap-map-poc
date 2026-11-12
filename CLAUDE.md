@@ -75,9 +75,11 @@ block; keep it in step with this section.
   every layer into `data/tiles/`, plus `manifest.json` and `style.json`).
   Source data comes from `RAW_DIR` (`.env`; default `./data/raw`), mounted
   read-only at `/data/raw`; the play data lives outside the repo.
-  `--status [--json]` lists built and stale layers (read only);
-  `--remove <layer>` deletes a layer's build. Check display configs only: `docker compose run --rm --entrypoint sh
-  pipeline -c 'node /opt/pipeline/style/cli.mjs check
+  `--status [--json]` lists built, stale and `restyle` layers (read only);
+  `--style-only [layer ...]` applies `.style.json` changes to built layers
+  (vector or raster) without re-tiling; `--remove <layer>` deletes a
+  layer's build. Check display configs only: `docker compose run --rm
+  --entrypoint sh pipeline -c 'node /opt/pipeline/style/cli.mjs check
   /opt/pipeline/layers/*.style.json'`.
 - Web map: `docker compose up -d --build web` (<http://localhost:8080>,
   `WEB_PORT`). Dev server: `docker compose --profile dev up web-dev` (Vite

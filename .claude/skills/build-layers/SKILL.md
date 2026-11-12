@@ -18,8 +18,11 @@ If the user did not name layers, see what needs it:
 docker compose run --rm --build pipeline --status
 ```
 
-`stale` and `not built` layers need a build; `invalid` ones will fail
-until their config is fixed (the notes say why); `orphan` is for the
+`stale` and `not built` layers need a build; `restyle` ones only need
+their display updated, with no re-tiling:
+`docker compose run --rm pipeline --style-only <name> ...` (no names: every
+built layer), so do not rebuild them for that alone; `invalid` ones will
+fail until their config is fixed (the notes say why); `orphan` is for the
 remove-layer skill.
 
 ## 2. Build
