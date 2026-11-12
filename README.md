@@ -57,6 +57,10 @@ they are not pushed anywhere.
 docker compose run --rm --build pipeline
 docker compose run --rm pipeline sample sample_points
 
+# What is configured and built, and which builds are stale (a config or
+# the source data changed since); --json for detail. Read only.
+docker compose run --rm pipeline --status
+
 # Run the web map at http://localhost:8080 (WEB_PORT changes the port).
 docker compose up -d --build web
 docker compose logs -f web
@@ -199,6 +203,61 @@ reads every layer from `data/tiles/manifest.json` at startup (ADR 0007).
 
 Restyling a layer is the same loop: edit its `.style.json`, rerun the
 pipeline for it, reload.
+
+To see a dataset without adding a layer, run the inspect helper on it
+(path relative to `data/raw/`; `--json` for every field's stats, `--help`
+for the options):
+
+```sh
+docker compose run --rm --entrypoint inspect.sh pipeline my/data.gpkg
+```
+
+When a layer's source data is replaced, inspect the new file and compare
+its fields, CRS and feature count with the layer's `.env`, then rebuild
+the layer. A build that fails (a field gone, say) keeps the previous
+tiles. `--status` shows the new feature count, and lists the layer as
+`stale` until it is rebuilt.
+
+### Removing a layer
+
+Delete its two configs, then its build (archive and `manifest.json`
+entry; `style.json` is rewritten). The source data in `data/raw/` is left
+alone.
+
+```sh
+git rm pipeline/layers/<layer>.env pipeline/layers/<layer>.style.json
+docker compose run --rm pipeline --remove <layer>
+```
+
+After pulling a change that removed a layer, `--status` lists your local
+build of it as `orphan`; the same `--remove` command clears it.
+
+## Using Claude Code (optional)
+
+Everything in this README works with the plain commands above; Claude
+Code is never required. For those who use it, the repo has project
+skills: short step-by-step procedures in `.claude/skills/<name>/SKILL.md`
+that Claude Code follows when a request matches, or when you type
+`/<name>`. They call only the documented commands below, so the logic
+lives in the pipeline and scripts, not in the skills.
+`.claude/settings.json` lets read-only and build commands run without a
+prompt; removing a layer always asks first.
+
+| Task | Plain command | Ask Claude Code |
+| --- | --- | --- |
+| See what is built or stale | `docker compose run --rm pipeline --status` | "Which layers are out of date?" (`/layer-status`) |
+| Look at a dataset | `docker compose run --rm --entrypoint inspect.sh pipeline <path>` | "What is in data/raw/parcels.gpkg?" (`/inspect-data`) |
+| Add a layer | Adding a layer, above | "Add data/raw/parcels.gpkg as a layer" (`/add-layer`) |
+| Restyle a layer or its pop-up | Edit `<layer>.style.json`, then build it | "Colour parcels by habitat type" (`/restyle-layer`) |
+| Build layers, explain failures | `docker compose run --rm pipeline [layer ...]` | "Rebuild the stale layers" (`/build-layers`) |
+| Refresh a layer's source data | Adding a layer, above (inspect, compare, build) | "The parcels data was updated, refresh it" (`/update-layer-data`) |
+| Remove a layer | Removing a layer, above | "Remove the parcels layer" (`/remove-layer`) |
+| Run, stop or screenshot the map | Usage, above; `scripts/screenshot.sh --help` | "Start the map", "Screenshot parcels" (`/run-map`) |
+| Run the CI checks locally | `CONTRIBUTING.md` (Checks) | "Run the checks" (`/run-checks`) |
+
+Skills that change files (add, restyle, update, remove) work on a branch
+and open a draft pull request with the configs only; data never goes in
+git. Adding or changing a skill is described in `CONTRIBUTING.md`.
 
 ## Maintainers
 
