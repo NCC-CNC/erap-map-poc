@@ -48,9 +48,34 @@
 #                           threshold: a polygon is required at a zoom once
 #                           its largest part covers at least this many screen
 #                           pixels at 256 px tiles (see lib/guard.sh).
+#   LAYER_GENERALISE_MAX_ZOOM
+#                           optional, vector polygons only; empty (default)
+#                           for none. Generalise the low zooms, from
+#                           LAYER_MIN_ZOOM up to this zoom (below
+#                           LAYER_MAX_ZOOM): per zoom, small polygon parts
+#                           (islands) are dropped and borders simplified as
+#                           a coverage; the zooms above keep full detail.
+#                           See lib/generalise.sh.
+#   LAYER_GENERALISE_MIN_PART_PX
+#                           optional, default 4. With LAYER_GENERALISE_MAX_ZOOM:
+#                           at each generalised zoom, drop polygon parts
+#                           smaller than this many screen pixels (at 256 px
+#                           tiles, as LAYER_MIN_VISIBLE_PX). Each feature
+#                           keeps its largest part, so the drop guard holds.
+#   LAYER_GENERALISE_SIMPLIFY_PX
+#                           optional, default 1. With LAYER_GENERALISE_MAX_ZOOM:
+#                           coverage simplification tolerance in screen
+#                           pixels at each generalised zoom. Needs a coverage
+#                           (no overlaps); 0 skips it, for polygons that
+#                           overlap.
 
 # Default drop guard threshold, in screen pixels at 256 px tiles.
 LAYER_MIN_VISIBLE_PX_DEFAULT=1
+
+# Default low-zoom generalisation thresholds, in screen pixels at 256 px
+# tiles (used only with LAYER_GENERALISE_MAX_ZOOM).
+LAYER_GENERALISE_MIN_PART_PX_DEFAULT=4
+LAYER_GENERALISE_SIMPLIFY_PX_DEFAULT=1
 
 # Highest max zoom for a raster layer: z14 is about 10 m at the equator,
 # already finer than any 30 m source, and each zoom up quadruples the tiles.
@@ -108,6 +133,9 @@ load_layer_config() {
   LAYER_PROFILE=""
   LAYER_TIPPECANOE_FLAGS=()
   LAYER_MIN_VISIBLE_PX=$LAYER_MIN_VISIBLE_PX_DEFAULT
+  LAYER_GENERALISE_MAX_ZOOM=""
+  LAYER_GENERALISE_MIN_PART_PX=$LAYER_GENERALISE_MIN_PART_PX_DEFAULT
+  LAYER_GENERALISE_SIMPLIFY_PX=$LAYER_GENERALISE_SIMPLIFY_PX_DEFAULT
 
   # shellcheck source=/dev/null
   source "$file"
@@ -144,6 +172,16 @@ _check_vector_config() {
   [[ -n $LAYER_FEATURE_ID ]] || die "LAYER_FEATURE_ID is not set in $file"
   [[ $LAYER_MIN_VISIBLE_PX =~ ^[0-9]+([.][0-9]+)?$ ]] \
     || die "LAYER_MIN_VISIBLE_PX must be a non-negative number in $file"
+  if [[ -n $LAYER_GENERALISE_MAX_ZOOM ]]; then
+    [[ $LAYER_GENERALISE_MAX_ZOOM =~ ^[0-9]+$ ]] \
+      || die "LAYER_GENERALISE_MAX_ZOOM must be an integer in $file"
+    ((LAYER_GENERALISE_MAX_ZOOM >= LAYER_MIN_ZOOM && LAYER_GENERALISE_MAX_ZOOM < LAYER_MAX_ZOOM)) \
+      || die "LAYER_GENERALISE_MAX_ZOOM must be from LAYER_MIN_ZOOM to below LAYER_MAX_ZOOM in $file"
+  fi
+  [[ $LAYER_GENERALISE_MIN_PART_PX =~ ^[0-9]+([.][0-9]+)?$ ]] \
+    || die "LAYER_GENERALISE_MIN_PART_PX must be a non-negative number in $file"
+  [[ $LAYER_GENERALISE_SIMPLIFY_PX =~ ^[0-9]+([.][0-9]+)?$ ]] \
+    || die "LAYER_GENERALISE_SIMPLIFY_PX must be a non-negative number in $file"
 
   local flags
   flags=$(layer_profile_flags "$LAYER_PROFILE") \

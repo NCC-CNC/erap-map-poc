@@ -59,6 +59,8 @@ source "${PIPELINE_ROOT}/lib/normalise.sh"
 source "${PIPELINE_ROOT}/lib/tiles.sh"
 # shellcheck source=lib/guard.sh
 source "${PIPELINE_ROOT}/lib/guard.sh"
+# shellcheck source=lib/generalise.sh
+source "${PIPELINE_ROOT}/lib/generalise.sh"
 # shellcheck source=lib/manifest.sh
 source "${PIPELINE_ROOT}/lib/manifest.sh"
 # shellcheck source=lib/display.sh
@@ -121,7 +123,18 @@ build_vector_layer() {
   local sizes="${layer_scratch}/sizes.tsv" stats="${layer_scratch}/zoom_stats.json"
   feature_sizes "$normalised" "$LAYER_FEATURE_ID" "$sizes"
 
-  build_tiles "$name" "$normalised" "$PIPELINE_OUTPUT_DIR" \
+  # With low-zoom generalisation, tippecanoe reads the generalised zooms
+  # and the full input from one file (lib/generalise.sh); the drop guard
+  # still measures the full input.
+  local tile_input=$normalised
+  if [[ -n $LAYER_GENERALISE_MAX_ZOOM ]]; then
+    tile_input="${layer_scratch}/${name}.generalised.geojsonl"
+    generalised_input "$normalised" "$tile_input" "$LAYER_MIN_ZOOM" \
+      "$LAYER_GENERALISE_MAX_ZOOM" "$LAYER_FEATURE_ID" "$LAYER_GENERALISE_MIN_PART_PX" \
+      "$LAYER_GENERALISE_SIMPLIFY_PX" "$layer_scratch" "${LAYER_FIELDS[@]}"
+  fi
+
+  build_tiles "$name" "$tile_input" "$PIPELINE_OUTPUT_DIR" \
     "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" "$LAYER_FEATURE_ID" "$layer_scratch" \
     check_layer_tiles "${LAYER_TIPPECANOE_FLAGS[@]}"
 

@@ -83,6 +83,10 @@ Pick a layer name (`^[a-z0-9][a-z0-9_-]*$`). Infer, do not ask:
 - `LAYER_PROFILE=coverage` when inspect says coverage-like; otherwise no
   profile and `LAYER_TIPPECANOE_FLAGS=(--drop-densest-as-needed)` for
   polygons, `(--drop-rate=1)` for a modest number of points.
+- Many small polygon parts (inspect's union has thousands of parts, such
+  as coastal islands): `LAYER_GENERALISE_MAX_ZOOM` about 3 below
+  `LAYER_MAX_ZOOM` (7 for a max of 10), so low zooms drop small parts and
+  simplify borders; check the low-zoom screenshots.
 
 Ask the user only what the data cannot answer: usually the attribute to
 colour by, the title, and which fields go in the pop-up. Then write the
