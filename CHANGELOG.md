@@ -7,6 +7,25 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Pipeline `--status` and `--remove`, and Claude Code skills for most
+  pipeline and app tasks (#54). `run.sh --status [--json] [layer ...]`
+  (alias `--list`, read only, `lib/status.sh`) lists every configured or
+  built layer as `current`, `stale` (its `.env`, `.style.json` or source
+  data, including shapefile sidecars or the zip, is newer than the
+  manifest's `built_at`, or the archive is missing), `not built`,
+  `invalid` (the `.env` does not load, no `.style.json`, or no source
+  data) or `orphan` (built, config gone), with notes, build time, archive
+  size, zooms, feature count and largest tile. `run.sh --remove layer ...`
+  drops each layer's manifest entry (atomically, `manifest_remove`), then
+  its archive, and rewrites `style.json`; configs are left to `git rm`.
+  Tested in `status.bats` (59 bats tests in all). New project skills
+  `build-layers`, `layer-status`, `update-layer-data`, `remove-layer`,
+  `inspect-data`, `run-map` and `run-checks` call only documented
+  commands; the README gains "Using Claude Code (optional)" with a table
+  of each task's plain command and skill, and "Removing a layer";
+  `CONTRIBUTING.md` says how to add or change a skill.
+  `.claude/settings.json` allows the status, inspect, build, map,
+  screenshot and check commands, and puts `--remove` on the `ask` list.
 - Claude Code skills and helpers for adding and restyling layers (#41).
   Project skills `add-layer` and `restyle-layer` in `.claude/skills/`.
   `pipeline/bin/inspect.sh` (in the pipeline image, on its `PATH`):
@@ -232,6 +251,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- The local web check (`docker compose --profile dev run --rm --no-deps
+  web-dev ...`) failed 5 test files because `web-dev` mounted only `web/`
+  and the tests read the display schema and expected display fixture from
+  `../pipeline` (#52). Compose now mounts `pipeline/schema/` and
+  `pipeline/tests/fixtures/` read-only into `web-dev` at the same paths.
 - MapLibre worker failed to load ("Worker failed to load") in the built app
   (#26): maplibre-gl builds its worker URL at runtime, so Vite never emitted
   `maplibre-gl-worker.mjs`. `src/map/worker.ts` now imports it with `?url`

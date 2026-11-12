@@ -73,7 +73,8 @@ block; keep it in step with this section.
 
 - Pipeline: `docker compose run --rm pipeline [layer ...]` (no names builds
   every layer into `data/tiles/`, plus `manifest.json` and `style.json`).
-  Check display configs only: `docker compose run --rm --entrypoint sh
+  `--status [--json]` lists built and stale layers (read only);
+  `--remove <layer>` deletes a layer's build. Check display configs only: `docker compose run --rm --entrypoint sh
   pipeline -c 'node /opt/pipeline/style/cli.mjs check
   /opt/pipeline/layers/*.style.json'`.
 - Web map: `docker compose up -d --build web` (<http://localhost:8080>,
@@ -113,14 +114,17 @@ test case in `pipeline/tests/fixtures/`. `web/` never reads `data/raw/`.
 
 ## Adding or restyling a layer
 
-Use the project skills: `add-layer` (inspect a dataset in `data/raw/`, write
-`pipeline/layers/<layer>.env` and `<layer>.style.json`, build, check the
-build report and screenshots, draft PR) and `restyle-layer` (edit only
-`<layer>.style.json`, before and after screenshots, draft PR), in
-`.claude/skills/`. Their helpers are `pipeline/bin/inspect.sh` (in the
-pipeline image) and `scripts/screenshot.sh` (writes `tmp/screenshots/`).
-Data is never committed: a layer PR holds the two config files only, never
-anything from `data/`, `.pmtiles` or screenshots.
+Use the project skills in `.claude/skills/`: `add-layer`, `restyle-layer`,
+`build-layers`, `layer-status`, `update-layer-data`, `remove-layer`,
+`inspect-data`, `run-map` and `run-checks`. The README table (Using Claude
+Code) maps each to its plain command. Skills hold procedure only: they
+call documented commands (`pipeline/bin/run.sh` with `--status` and
+`--remove`, `pipeline/bin/inspect.sh`, `scripts/screenshot.sh` writing
+`tmp/screenshots/`, the `CONTRIBUTING.md` checks); new logic goes into the
+pipeline or `scripts/` with tests first. Claude Code stays optional.
+`remove-layer` always confirms with the user. Data is never committed: a
+layer PR holds the two config files only, never anything from `data/`,
+`.pmtiles` or screenshots.
 
 ## Working rules
 

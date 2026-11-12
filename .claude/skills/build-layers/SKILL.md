@@ -1,0 +1,68 @@
+---
+name: build-layers
+description: Build or rebuild map layer tiles with the pipeline (one layer, several, or all), then read the build report in data/tiles/manifest.json and explain any failure, such as a drop guard failure, and what to change. Use when asked to build, rebuild, regenerate or refresh layers or tiles, or why a layer build failed.
+---
+
+# Build layers
+
+The pipeline turns each `pipeline/layers/<name>.env` plus
+`<name>.style.json` into `data/tiles/<name>.pmtiles` and a
+`manifest.json` entry. Commands run from the repo root in Git Bash.
+Nothing under `data/` is ever committed.
+
+## 1. Decide what to build
+
+If the user did not name layers, see what needs it:
+
+```sh
+docker compose run --rm --build pipeline --status
+```
+
+`stale` and `not built` layers need a build; `invalid` ones will fail
+until their config is fixed (the notes say why); `orphan` is for the
+remove-layer skill.
+
+## 2. Build
+
+```sh
+docker compose run --rm --build pipeline <name> [<name> ...]   # or no names: every layer
+```
+
+Exit 0: all built. Exit 1: at least one layer failed, the others still
+built, and a failed layer keeps its previous archive and manifest entry.
+Exit 2: a usage error (a name with no `.env`), nothing built.
+
+## 3. Explain failures
+
+Find each `[ERROR] <name>:` line in the log and match it:
+
+- `invalid display config`: the lines before it list each problem in
+  `<name>.style.json` (schema, legend, MapLibre). Fix the style (see the
+  restyle-layer skill); check without building with the style check in
+  `CONTRIBUTING.md` (Adding or changing a layer).
+- `input not found` or `ogr2ogr failed`: `LAYER_INPUT` is wrong, the data
+  is missing from `data/raw/`, or a field in `LAYER_FIELDS` no longer
+  exists. Run the inspect-data skill on the input and compare.
+- `drop guard: required features missing`: at the zooms named in the
+  `zN: X of Y required feature(s) missing, ids include ...` lines,
+  tippecanoe dropped polygons big enough to see. Options, best first:
+  remove the dropping flag (`--drop-densest-as-needed`) or use
+  `LAYER_PROFILE=coverage` for a contiguous coverage; raise
+  `LAYER_MIN_ZOOM`; raise `LAYER_MIN_VISIBLE_PX` (accepts bigger
+  invisible gaps). Explain the trade-off; let the user choose.
+- `tippecanoe failed`: a bad flag in `LAYER_TIPPECANOE_FLAGS`, or a
+  tile too large with no dropping flag; the tippecanoe message says which.
+- `LAYER_... is not set` or `must be an integer`: fix the `.env`
+  (every setting is described in `pipeline/lib/config.sh`).
+
+## 4. Read the report
+
+```sh
+docker compose run --rm --build pipeline --status <name> ...
+```
+
+Then the layer's entry in `data/tiles/manifest.json`: `feature_count`
+against what the source holds, and per zoom in `zooms[]` that
+`required_present` equals `required` and `max_tile_bytes` stays under
+about 500 kB. Summarise per layer: state, features, zooms, largest tile,
+and anything to act on. To see the result, use the run-map skill.

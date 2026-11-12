@@ -2,6 +2,7 @@
 # docs/design/01_architecture.md (Docker Compose section).
 #
 #   docker compose run --rm pipeline [layer ...]   build tiles into data/tiles/
+#   docker compose run --rm pipeline --status      what is built, what is stale
 #   docker compose up -d web                       map at http://localhost:8080
 #   docker compose --profile dev up web-dev        Vite dev server on :5173
 #
@@ -77,6 +78,10 @@ services:
       - web-dev-node-modules:/repo/web/node_modules
       # Same layout as the repo, so vite.config.ts finds ../data/tiles.
       - ./data/tiles:/repo/data/tiles:ro
+      # The web tests read the display config schema and the expected
+      # display fixture from ../pipeline (web/src/test/fixtures.ts).
+      - ./pipeline/schema:/repo/pipeline/schema:ro
+      - ./pipeline/tests/fixtures:/repo/pipeline/tests/fixtures:ro
 
 volumes:
   web-dev-node-modules:

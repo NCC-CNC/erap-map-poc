@@ -45,16 +45,42 @@ docker compose run --rm --entrypoint sh pipeline -c \
   'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.style.json'
 ```
 
-With Claude Code, the `add-layer` and `restyle-layer` skills
-(`.claude/skills/`) walk through this. Their helpers also work by hand:
+Helpers for checking a layer by hand (Claude Code's skills use the same
+ones, see below):
 
 ```sh
 # Summarise a source dataset (path relative to data/raw/; --json for more)
 docker compose run --rm --build --entrypoint inspect.sh pipeline my/data.shp
+# What is built and what is stale; remove a layer's build (README.md)
+docker compose run --rm pipeline --status
+docker compose run --rm pipeline --remove mylayer
 # Screenshot the map at zoom/lat/lon views, light and dark basemaps,
 # into tmp/screenshots/ (a private web container on port 8090 or higher)
 scripts/screenshot.sh -n mylayer 4/55/-110 8/53.9/-114.2
 ```
+
+### Adding or changing a Claude Code skill
+
+Claude Code is optional (`README.md`, Using Claude Code). Its project
+skills live in `.claude/skills/<name>/SKILL.md`. To add or change one:
+
+- Procedure only, logic in scripts. A skill says which documented
+  commands to run, in what order, and what to check in their output. If
+  it needs something no command does yet (a new check, a report, a
+  change to files), add that to the pipeline (`pipeline/bin/run.sh`,
+  `pipeline/lib/`, with bats tests) or `scripts/` first, with shellcheck
+  and docs, then call it from the skill.
+- Keep it short (under about 80 lines), with `name` (the folder name) and
+  a `description` frontmatter that says what it does and the natural
+  requests it should answer, since that is how Claude Code picks it.
+- Follow the data and Docker rules: no input or output data in git,
+  draft PRs only, no extra image tags, `--rm` on every container.
+- Keep the README table (Using Claude Code) in step: every skill has a
+  row with the plain command, so the task can be done without Claude
+  Code.
+- `.claude/settings.json` allow-lists read-only and build commands only.
+  Never allow-list a destructive one; `--remove` is on the `ask` list so
+  it always prompts.
 
 ### Checks
 
@@ -68,7 +94,7 @@ same tools at the same versions as CI, all in Docker:
 export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
-# pipeline job: shellcheck, hadolint, bats (48 tests, including the display
+# pipeline job: shellcheck, hadolint, bats (59 tests, including the display
 # tool's node:test unit tests), runtime image
 docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
   pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \
