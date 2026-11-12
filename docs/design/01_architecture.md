@@ -90,7 +90,9 @@ contract in `02_data_layers_and_popups.md`. It never reads `data/raw/`.
   5. Run tippecanoe with the layer's profile and flags (for example
      `LAYER_PROFILE=coverage` for contiguous polygon coverages; see 02),
      reading the GeoJSONSeq in parallel (`--read-parallel`), into a temp
-     archive.
+     archive. With `LAYER_GENERALISE_MAX_ZOOM`, the low zooms come from a
+     GDAL-generalised copy (small parts dropped, coverage simplified;
+     `lib/generalise.sh`, see 02) in the same input.
   6. Drop guard: read the archive zoom by zoom (GDAL's PMTiles driver, feature
      ids only) and fail the build if any feature big enough to see at a zoom
      (`LAYER_MIN_VISIBLE_PX`, default 1 screen pixel at 256 px tiles) is

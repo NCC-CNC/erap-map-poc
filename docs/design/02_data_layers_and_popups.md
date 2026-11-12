@@ -406,16 +406,103 @@ Tile size is also kept down by keeping only the attributes needed (only
 if needed a moderate `--maximum-tile-bytes` in `LAYER_TIPPECANOE_FLAGS`
 (default 500 KB).
 
-Not built yet, but the option for very detailed layers: a GDAL-generalised
-overview layer for low zooms (dissolved, or coverage-simplified with
-`gdal vector simplify-coverage`, which GDAL 3.13 has and which keeps shared
-borders shared), switched by zoom in the web app. GDAL 3.13 also has
-`gdal vector check-coverage` and `gdal vector clean-coverage` to check and
-repair an input coverage before tiling. Do not pre-simplify with
-`ogr2ogr -simplify`: it works per feature and opens gaps.
+For detailed layers with many small parts (islands), generalise the low
+zooms in GDAL before tiling (`LAYER_GENERALISE_MAX_ZOOM`; see Low-zoom
+generalisation below). GDAL 3.13 also has `gdal vector check-coverage` and
+`gdal vector clean-coverage` to check and repair an input coverage before
+tiling. Do not pre-simplify with `ogr2ogr -simplify`: it works per feature
+and opens gaps.
 
 The `sample` layer does not use the profile: its polygons do not touch, so
 it is not a coverage.
+
+### Low-zoom generalisation
+
+A detailed coverage can carry thousands of small parts (islands, skerries)
+that read as clutter at low zooms: each draws its own outline, so a coast
+with many islands turns into a dark smear. Every feature must still be
+there (the drop guard), but its small parts and fine border detail need
+not be. Three optional settings in the layer's `.env` (documented in
+`pipeline/lib/config.sh`, code in `pipeline/lib/generalise.sh`):
+
+- `LAYER_GENERALISE_MAX_ZOOM`: generalise from `LAYER_MIN_ZOOM` up to this
+  zoom (below `LAYER_MAX_ZOOM`). Empty (the default) changes nothing.
+- `LAYER_GENERALISE_MIN_PART_PX` (default 4): at each generalised zoom,
+  drop polygon parts smaller than this many screen pixels, except each
+  feature's largest part.
+- `LAYER_GENERALISE_SIMPLIFY_PX` (default 1): coverage simplification
+  tolerance, in screen pixels, at each generalised zoom. 0 skips it, for
+  polygons that overlap (not a coverage).
+
+Pixels are at 256 px tiles, the unit of `LAYER_MIN_VISIBLE_PX`, so the same
+numbers suit any layer: at zoom z a pixel is `40075016.686 / (256 * 2^z)` m
+in EPSG:3857. For each generalised zoom, from the highest down (each from
+the one above, so only the first pass reads the full data), the pipeline:
+
+1. explodes each multipolygon into parts in EPSG:3857, keeps the parts at
+   least `MIN_PART_PX` pixels in area plus each feature's largest part, and
+   collects them back into one multipolygon per feature (one GDAL SQLite
+   dialect statement with a window function);
+2. simplifies the result as a coverage, `gdal vector simplify-coverage`
+   (GEOS CoverageSimplifier): each shared border is simplified once, the
+   same in both neighbours, so no gaps or slivers open;
+3. tags each feature for that zoom only (`"tippecanoe": {"minzoom": z,
+   "maxzoom": z}`), and the full input follows from the next zoom up.
+
+One tippecanoe run then reads it all, so there is no `tile-join` and no
+second archive, the coverage profile's shared-node handling applies as
+before, and the web app sees one source. The drop guard still measures each
+feature's largest part in the full input; as that part is never dropped,
+the guard holds at any threshold. Holes a dropped part leaves (a small
+exclave inside a neighbour) are under `MIN_PART_PX` pixels.
+
+Measured on the local `ecoregions` preview (149 ecoregions, 90,170 polygon
+parts, 7.5 million vertices; 89,786 parts are under 1 pixel at z4 and
+85,776 under 1 pixel even at z8), z0 to z10 with the coverage profile:
+
+| | Before | Tippecanoe flags only | Generalised to z7 |
+| --- | --- | --- | --- |
+| Settings | (none) | `--tiny-polygon-size=16 --simplification=4` | `LAYER_GENERALISE_MAX_ZOOM=7`, defaults 4 px and 1 px |
+| Parts at z7 (input to tippecanoe) | 90,170 | 90,170 | 1,013 (100,645 vertices) |
+| Largest tile z0 to z7 | 25 to 52 KB | 13 to 25 KB (z0 to z8 build) | 5 to 16 KB |
+| Largest tile z8 to z10 | 44 to 59 KB | n/a | 44 to 59 KB (unchanged) |
+| Archive | 17.0 MB | 2.5 MB (z0 to z8 build) | 15.3 MB |
+| Generalisation step | none | none | 37 s (z7 from the full data; z6 to z0 under 1 s each) |
+| Whole build, wall clock | 325 s | 67 s (z0 to z8 build) | 407 s |
+| Whole build, CPU | 226 s | not measured | 229 s |
+| Drop guard | passes | passes (fails with size 32) | passes, every required feature at every zoom |
+
+The full-detail zooms (z8 to z10) are untouched, so the archive stays near
+its size: they hold most of it. The builds ran back to back in one
+container on a busy shared machine, so wall clock is noisy; CPU time is the
+same, as the generalisation step costs about what tippecanoe saves on the
+low zooms. Screenshots at z2,
+z4, z6 and z8 (Canada, the BC coast, Georgian Bay) show the islands along
+the BC coast and in Georgian Bay as a solid outline smear before, and at
+z4 and z6 after only the larger islands, cleanly outlined, with no gaps
+along shared borders; z8 is identical (full detail).
+
+Why not tippecanoe flags alone. Tiny polygon reduction does act on each
+part of a multipolygon (tippecanoe 2.79.0, `reduce_tiny_poly` in
+`clip.cpp`, ring by ring), but it is area-preserving: parts under the
+threshold are summed per tile and drawn as a square of the threshold size
+wherever the running sum passes it, so raising `--tiny-polygon-size` turns
+the islands into a scatter of square dots rather than removing them, and
+the threshold area grows as the square of the setting (16 is 1 pixel).
+It also takes whole features whose largest part is under the threshold, so
+a size of 32 (4 pixels) failed the guard at z0 to z3 (16 required features
+missing at z0). `--simplification` has a single tolerance for every zoom
+(`--simplify-only-low-zooms` exempts only the max zoom), so stronger low-
+zoom simplification also coarsens the high zooms. Tippecanoe has no
+zoom-dependent part threshold. The GDAL step costs one extra pass but
+keeps every rule in screen pixels per zoom and leaves high zooms alone.
+
+When to use it: a polygon layer with many small parts, set the max zoom a
+little below where those parts matter (for `ecoregions`, 7 with a max zoom
+of 10). Raise `LAYER_GENERALISE_MIN_PART_PX` for a cleaner map, lower it to
+keep more islands. Generalisation needs polygons; with
+`LAYER_GENERALISE_SIMPLIFY_PX` above 0 it also needs a valid coverage
+(check with `inspect.sh` or `gdal vector check-coverage`).
 
 ### Drop guard and visibility threshold
 
@@ -473,6 +560,17 @@ z0), all sharing exact vertices along their borders. The tests check:
 - the guard failing the build, and keeping the previous archive, when
   `--maximum-tile-bytes=1500` makes tippecanoe drop large polygons, and when
   `LAYER_MIN_VISIBLE_PX=0` meets tiny polygon reduction.
+
+`pipeline/tests/generalise.bats` covers low-zoom generalisation on a second
+synthetic coverage, `pipeline/tests/fixtures/make_islands.sh`: two blocks
+sharing a zigzag border, each a multipolygon with 12 islands of three sizes,
+and a feature made only of small islets. It checks that without the
+settings every island is tiled (today's behaviour); that with them each
+generalised zoom keeps only the parts above the pixel threshold plus each
+feature's largest, and the zoom above is full detail again; that a
+generalised zoom is still a valid coverage with the zigzag simplified away
+(and untouched with `LAYER_GENERALISE_SIMPLIFY_PX=0`); and that bad
+settings are rejected.
 
 `pipeline/tests/inputs.bats` covers the input options with shapefiles made
 in the test by `ogr2ogr` (nothing binary is committed).

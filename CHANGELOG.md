@@ -30,6 +30,19 @@ All notable changes to this project are documented here. The format is based on
   `docker compose run --rm pipeline --style-only`. Tests: `style_only.bats`
   (10 tests), and `status.bats` and `run.bats` updated.
 
+- Low-zoom generalisation for polygon layers (#63), optional and off by
+  default: `LAYER_GENERALISE_MAX_ZOOM`, `LAYER_GENERALISE_MIN_PART_PX`
+  (default 4) and `LAYER_GENERALISE_SIMPLIFY_PX` (default 1), in screen
+  pixels per zoom. Up to that zoom, GDAL drops polygon parts under the
+  threshold (each feature keeps its largest, so the drop guard holds) and
+  simplifies borders with `gdal vector simplify-coverage`; the zooms are
+  tagged for tippecanoe and tiled in the same run as the full-detail
+  zooms above. Chosen over tippecanoe flags alone, whose tiny polygon
+  reduction keeps islands as area-preserving square dots and whose
+  simplification has one tolerance for all zooms; measurements in design
+  note 02. New `pipeline/lib/generalise.sh`, tests in `generalise.bats`
+  with a synthetic island coverage.
+
 - Binary raster layers, display only (#50, ADR 0008). `LAYER_TYPE=raster`
   in `<layer>.env` (with `LAYER_MIN_ZOOM`, `LAYER_MAX_ZOOM` up to 14, and
   optional `LAYER_NODATA`) builds `<layer>.pmtiles` of grey PNG tiles whose

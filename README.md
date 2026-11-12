@@ -245,6 +245,12 @@ worked examples, and
    - `LAYER_MIN_VISIBLE_PX` (default 1): the drop guard threshold. The
      build fails if tippecanoe drops a polygon at a zoom where it would
      cover at least this many pixels.
+   - `LAYER_GENERALISE_MAX_ZOOM` (optional) for polygons with many small
+     parts, such as islands: up to this zoom, parts under
+     `LAYER_GENERALISE_MIN_PART_PX` (default 4) pixels are dropped (each
+     feature keeps its largest) and borders are simplified as a coverage
+     by `LAYER_GENERALISE_SIMPLIFY_PX` (default 1) pixels; higher zooms
+     keep full detail. See design note 02, Low-zoom generalisation.
 3. Write `pipeline/layers/<layer>.style.json`, starting with
    `"$schema": "../schema/layer-style.schema.json"` for completion and
    checking in an editor: `title`, `defaultVisible`, `order` (draw order),
