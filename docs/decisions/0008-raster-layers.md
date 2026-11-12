@@ -64,9 +64,16 @@ clip's 2,000):
 | `forest`, route C | about 29 min | about 10 to 15 min | about 40 to 45 min | about 2 to 3 GB |
 | `forest`, route A | about 29 min | about 16 min | about 45 min | about 3.5 GB |
 | `forest`, route B | about 29 min | about 56 min | about 85 min | about 2 GB |
-| `agriculture` | longer: one full read of the Float32 file took over 25 min | see the PR | over 1 hour | similar to forest or larger |
+| `agriculture`, route C | over 50 min | about 10 to 20 min | over 1 hour | about 2 to 4 GB |
 
-Neither full build was run (both estimates are over 30 minutes).
+The agriculture figures are rougher: a single pass over its Float32 file
+did not finish in 22 minutes (sampling every 20th row, nearest) or 25
+minutes (a coarse `-r max` warp), against 4 minutes for the same pass over
+the Byte forest file, so decoding the Float32 strips (about 130 GB
+uncompressed, single-threaded) adds at least 20 minutes to the forest's
+prepare time. Its tile count could not be measured; similar coverage to
+forest is assumed. Neither full build was run (both estimates are over 30
+minutes).
 
 ## Decision
 
