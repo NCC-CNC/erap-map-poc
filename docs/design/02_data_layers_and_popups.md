@@ -463,12 +463,16 @@ parts, 7.5 million vertices; 89,786 parts are under 1 pixel at z4 and
 | Largest tile z0 to z7 | 25 to 52 KB | 13 to 25 KB (z0 to z8 build) | 5 to 16 KB |
 | Largest tile z8 to z10 | 44 to 59 KB | n/a | 44 to 59 KB (unchanged) |
 | Archive | 17.0 MB | 2.5 MB (z0 to z8 build) | 15.3 MB |
-| Generalisation step | none | none | 47 s CPU for z7 from the full data, under 1 s for z6 to z0 |
+| Generalisation step | none | none | 37 s (z7 from the full data; z6 to z0 under 1 s each) |
+| Whole build, wall clock | 325 s | 67 s (z0 to z8 build) | 407 s |
+| Whole build, CPU | 226 s | not measured | 229 s |
 | Drop guard | passes | passes (fails with size 32) | passes, every required feature at every zoom |
 
 The full-detail zooms (z8 to z10) are untouched, so the archive stays near
-its size: they hold most of it. Build times on a shared machine vary too
-much to compare wall clock; see the PR for CPU times. Screenshots at z2,
+its size: they hold most of it. The builds ran back to back in one
+container on a busy shared machine, so wall clock is noisy; CPU time is the
+same, as the generalisation step costs about what tippecanoe saves on the
+low zooms. Screenshots at z2,
 z4, z6 and z8 (Canada, the BC coast, Georgian Bay) show the islands along
 the BC coast and in Georgian Bay as a solid outline smear before, and at
 z4 and z6 after only the larger islands, cleanly outlined, with no gaps
