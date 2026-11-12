@@ -11,6 +11,7 @@ setup() {
   RUN="${PIPELINE_ROOT}/bin/run.sh"
   export PIPELINE_INPUT_DIR="${BATS_TEST_TMPDIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
+  export PIPELINE_WORK_DIR="${BATS_TEST_TMPDIR}/work"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
   MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR"

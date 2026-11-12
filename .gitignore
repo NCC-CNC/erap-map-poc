@@ -44,7 +44,8 @@ data/tiles/*
 *.tiff
 *.vrt
 *.gdb/
-data/work/
+data/work/*
+!data/work/.gitkeep
 
 # Local map config and local-only layer configs (ADR 0009): yours, not
 # shared. map.config.example.json is the committed starting point.

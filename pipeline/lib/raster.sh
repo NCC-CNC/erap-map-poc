@@ -6,18 +6,27 @@
 # so the colour and opacity live in the style (from <layer>.style.json) and
 # changing them needs no re-tiling. Display only: no pop-up.
 #
-#   1. prepare: gdalwarp to EPSG:3857 at the max zoom's resolution, aligned
-#      to the tile grid, as an internally tiled Byte GeoTIFF: 1 where the
-#      source is 1, 0 for 0 and nodata (the source is expected to hold only
-#      0, 1 and nodata). Reading the source once, in order, is what makes a
-#      strip-layout source (1-row blocks) bearable.
-#   2. levels: for each lower zoom, the share covered, averaged (Float32,
+#   1. prepare (once per source, cached): the source as an internally
+#      tiled, compressed Byte GeoTIFF in its own CRS and grid, 1 where the
+#      source is 1 and 0 for 0 and nodata (the source is expected to hold
+#      only 0, 1 and nodata), with no nodata value. One read of the source,
+#      in order, which is what a strip-layout source (1-row blocks, often
+#      Float32) needs: warping it directly re-decodes each strip for every
+#      warp window and took over 2 hours for a Canada-wide 30 m file. The
+#      prepared file is kept in the work dir (PIPELINE_WORK_DIR/raster),
+#      keyed by the source's path, size and modification time and the
+#      layer's LAYER_SOURCE_SRS and LAYER_NODATA, so a rebuild (another zoom
+#      range, a code change) skips it. See raster_source.
+#   2. warp: gdalwarp the prepared file to EPSG:3857 at the max zoom's
+#      resolution, aligned to the tile grid, multithreaded (-multi and
+#      NUM_THREADS; a tiled input reads fast in any order).
+#   3. levels: for each lower zoom, the share covered, averaged (Float32,
 #      gdalwarp -r average) from the zoom above. Each level aligns with the
 #      tile grid, so tiling it copies pixels.
-#   3. tile: each level through `gdal raster tile` (multithreaded) at its own
+#   4. tile: each level through `gdal raster tile` (multithreaded) at its own
 #      zoom, scaled to grey 0 to 255 with 0 as nodata, so --skip-blank leaves
 #      out empty tiles and empty pixels are transparent.
-#   4. pack: the tiles into an MBTiles file with sqlite3, then
+#   5. pack: the tiles into an MBTiles file with sqlite3, then
 #      `pmtiles convert`, verified, then moved into place. GDAL's PMTiles
 #      driver writes vector tiles only.
 #
@@ -25,41 +34,128 @@
 # the overviews, keeps the levels exact: its average skips nodata, so it
 # would make every partly covered pixel fully covered.
 #
-# Intermediates live in the per-run scratch dir (under TMPDIR) and go as
-# soon as they are packed. The archive is written to a hidden temp file in
-# the output dir and renamed into place, so a failed build keeps the
-# previous archive.
+# Intermediates of steps 2 to 5 live in the per-run scratch dir (under
+# TMPDIR) and go as soon as they are packed. The archive is written to a
+# hidden temp file in the output dir and renamed into place, so a failed
+# build keeps the previous archive. Prepared sources (step 1) are written
+# the same way (temp file, then rename) and stay in the work dir until their
+# source changes; delete PIPELINE_WORK_DIR/raster to reclaim the space.
 
 # Width of the z0 tile in EPSG:3857 metres (2 * pi * 6378137).
 RASTER_WORLD_M=40075016.68557849
+
+# Bump when the prepare step's output changes, so cached files are remade.
+RASTER_PREPARE_VERSION=1
 
 # raster_resolution ZOOM: EPSG:3857 metres per pixel of a 256 px tile at ZOOM.
 raster_resolution() {
   awk -v z="$1" -v w="$RASTER_WORLD_M" 'BEGIN { printf "%.10f\n", w / 256 / 2 ^ z }'
 }
 
-# raster_prepare INPUT SOURCE_SRS NODATA MAX_ZOOM OUT: write OUT, the source
-# in EPSG:3857 at MAX_ZOOM's resolution, aligned to the tile grid, Byte,
-# the source's 0 and 1 kept and nodata as 0 (no nodata value).
-# SOURCE_SRS and NODATA may be empty to use what the source declares.
-raster_prepare() {
-  local input=$1 src_srs=$2 nodata=$3 maxzoom=$4 out=$5
-  local res opts=()
-  res=$(raster_resolution "$maxzoom")
-  [[ -z $src_srs ]] || opts+=(-s_srs "$src_srs")
-  [[ -z $nodata ]] || opts+=(-srcnodata "$nodata")
+# raster_source_file DATASET: the local file behind DATASET (the zip for a
+# /vsizip/ path), whose size and modification time key the cache. Prints
+# nothing for other /vsi paths, which are not cached.
+raster_source_file() {
+  local dataset=$1
+  if [[ $dataset =~ ^/vsizip/(.*[.][Zz][Ii][Pp])(/.*)?$ ]]; then
+    printf '%s\n' "${BASH_REMATCH[1]}"
+  elif [[ $dataset != /vsi* ]]; then
+    printf '%s\n' "$dataset"
+  fi
+}
 
-  # -r near: no new values. Source nodata cells are not written, so they
-  # keep INIT_DEST=0, and -dstnodata None leaves 0 a value, which the levels
-  # average. GDAL_CACHEMAX holds the strips under the warp window, so each
-  # is decoded once.
-  log_info "preparing $input (EPSG:3857, z${maxzoom} resolution)"
-  GDAL_CACHEMAX=${GDAL_CACHEMAX:-2048} gdalwarp -q -overwrite \
-    "${opts[@]}" -t_srs EPSG:3857 -tr "$res" "$res" -tap \
+# raster_source_key DATASET SOURCE_SRS NODATA: print the cache key of a
+# prepared source as compact JSON: the prepare version, the dataset path,
+# the size and modification time (seconds) of its file, and the settings
+# that change the prepared values. Returns 1 for a dataset that cannot be
+# cached (a /vsi path other than /vsizip/).
+raster_source_key() {
+  local dataset=$1 src_srs=$2 nodata=$3 file size mtime
+  file=$(raster_source_file "$dataset")
+  [[ -n $file ]] || return 1
+  read -r size mtime < <(stat -c '%s %Y' "$file") || return 1
+  jq -nc --argjson v "$RASTER_PREPARE_VERSION" --arg path "$dataset" \
+    --argjson size "$size" --argjson mtime "$mtime" \
+    --arg srs "$src_srs" --arg nodata "$nodata" \
+    '{version: $v, path: $path, size: $size, mtime: $mtime, source_srs: $srs, nodata: $nodata}'
+}
+
+# _raster_hash TEXT: the first 16 hex digits of TEXT's SHA-256.
+_raster_hash() {
+  printf '%s' "$1" | sha256sum | cut -c1-16
+}
+
+# raster_source DATASET SOURCE_SRS NODATA CACHE_DIR SCRATCH: print the path
+# of DATASET prepared (step 1 at the top of this file), making it if needed.
+# The file is CACHE_DIR/<path hash>-<key hash>.tif, with its key beside it
+# as .json; older files for the same path are removed once the new one is
+# in place. An empty CACHE_DIR, or a dataset that cannot be keyed, prepares
+# into SCRATCH instead (not kept). SOURCE_SRS and NODATA may be empty to
+# use what the source declares.
+raster_source() {
+  local dataset=$1 src_srs=$2 nodata=$3 cache=$4 scratch=$5
+  local key="" dir=$scratch stem=prepared
+  if [[ -n $cache ]] && key=$(raster_source_key "$dataset" "$src_srs" "$nodata"); then
+    dir=$cache
+    stem="$(_raster_hash "$dataset")-$(_raster_hash "$key")"
+    if [[ -f "${dir}/${stem}.tif" ]]; then
+      log_info "prepared source cached: ${dir}/${stem}.tif"
+      printf '%s\n' "${dir}/${stem}.tif"
+      return 0
+    fi
+    mkdir -p "$dir" || die "cannot create $dir"
+    [[ -w $dir ]] || die "work dir not writable: $dir"
+  else
+    key=""
+  fi
+
+  # A ComplexSource with the source's nodata (or LAYER_NODATA) under a VRT
+  # band with none: nodata cells are not written, so they read as 0.
+  local vrt="${scratch}/${stem}.vrt" opts=(-vrtnodata None)
+  [[ -z $src_srs ]] || opts+=(-a_srs "$src_srs")
+  [[ -z $nodata ]] || opts+=(-srcnodata "$nodata")
+  gdalbuildvrt -q "${opts[@]}" "$vrt" "$dataset" >/dev/null \
+    || die "cannot read $dataset"
+
+  log_info "preparing $dataset (tiled 0/1 Byte, once per source)"
+  _RASTER_SOURCE_TMP="${dir}/.${stem}.$$.tmp.tif"
+  trap 'rm -f "${_RASTER_SOURCE_TMP:-}"' EXIT
+  # GDAL_NUM_THREADS decodes the source's blocks in parallel.
+  GDAL_NUM_THREADS=ALL_CPUS gdal_translate -q -ot Byte -a_nodata none \
+    -co TILED=YES -co BLOCKXSIZE=512 -co BLOCKYSIZE=512 \
+    -co COMPRESS=ZSTD -co ZSTD_LEVEL=1 -co NUM_THREADS=ALL_CPUS -co BIGTIFF=IF_SAFER \
+    "$vrt" "$_RASTER_SOURCE_TMP" >/dev/null \
+    || die "cannot prepare $dataset"
+  rm -f "$vrt"
+
+  local final="${dir}/${stem}.tif"
+  [[ -z $key ]] || printf '%s\n' "$key" >"${dir}/${stem}.json"
+  mv -f "$_RASTER_SOURCE_TMP" "$final" || die "cannot write $final"
+  _RASTER_SOURCE_TMP=""
+  if [[ -n $key ]]; then
+    local old
+    for old in "${dir}/${stem%%-*}"-*; do
+      [[ -e $old && $old != "${dir}/${stem}".* ]] || continue
+      rm -f "$old"
+    done
+  fi
+  printf '%s\n' "$final"
+}
+
+# raster_warp PREPARED MAX_ZOOM OUT: write OUT, PREPARED (0/1, no nodata) in
+# EPSG:3857 at MAX_ZOOM's resolution, aligned to the tile grid, Byte.
+raster_warp() {
+  local input=$1 maxzoom=$2 out=$3
+  local res
+  res=$(raster_resolution "$maxzoom")
+  # -r near: no new values. Cells outside the source keep INIT_DEST=0, and
+  # -dstnodata None leaves 0 a value, which the levels average.
+  log_info "warping to EPSG:3857 (z${maxzoom} resolution)"
+  gdalwarp -q -overwrite -srcnodata None -t_srs EPSG:3857 -tr "$res" "$res" -tap \
     -r near -ot Byte -dstnodata None -wo INIT_DEST=0 \
     -multi -wo NUM_THREADS=ALL_CPUS -wm 1024 \
     -co TILED=YES -co BLOCKXSIZE=256 -co BLOCKYSIZE=256 \
-    -co COMPRESS=ZSTD -co NUM_THREADS=ALL_CPUS -co BIGTIFF=IF_SAFER \
+    -co COMPRESS=ZSTD -co ZSTD_LEVEL=1 -co SPARSE_OK=TRUE -co NUM_THREADS=ALL_CPUS -co BIGTIFF=IF_SAFER \
     "$input" "$out" \
     || die "gdalwarp failed for $input"
 }
@@ -73,7 +169,7 @@ raster_level() {
   gdalwarp -q -overwrite -srcnodata None -dstnodata None -wo INIT_DEST=0 \
     -tr "$res" "$res" -tap -r average -ot Float32 \
     -multi -wo NUM_THREADS=ALL_CPUS \
-    -co TILED=YES -co COMPRESS=ZSTD -co PREDICTOR=3 -co BIGTIFF=IF_SAFER \
+    -co TILED=YES -co COMPRESS=ZSTD -co ZSTD_LEVEL=1 -co PREDICTOR=3 -co NUM_THREADS=ALL_CPUS -co BIGTIFF=IF_SAFER \
     "$src" "$out" \
     || die "cannot average $src to z${zoom}"
 }
@@ -139,7 +235,7 @@ raster_mbtiles() {
   } | sqlite3 -bail "$out" >/dev/null || die "cannot write $out"
 }
 
-# raster_bounds PREPARED: `west,south,east,north` of PREPARED in EPSG:4326.
+# raster_bounds RASTER: `west,south,east,north` of RASTER in EPSG:4326.
 raster_bounds() {
   gdalinfo -json "$1" \
     | jq -er '.wgs84Extent.coordinates[0]
@@ -147,24 +243,33 @@ raster_bounds() {
         | map(. * 1e7 | round / 1e7) | join(",")'
 }
 
-# build_raster_tiles LAYER INPUT SOURCE_SRS NODATA MIN_ZOOM MAX_ZOOM OUT_DIR TMP_DIR REPORT
+# build_raster_tiles LAYER INPUT SOURCE_SRS NODATA MIN_ZOOM MAX_ZOOM OUT_DIR TMP_DIR REPORT [CACHE_DIR]
 # Build OUT_DIR/LAYER.pmtiles from INPUT (see the top of this file) and
-# write the build report (raster_tile_report) to REPORT.
+# write the build report (raster_tile_report) to REPORT. CACHE_DIR holds
+# prepared sources (raster_source); empty or absent, nothing is cached.
 build_raster_tiles() {
   local layer=$1 input=$2 src_srs=$3 nodata=$4 minzoom=$5 maxzoom=$6
-  local out_dir=$7 tmp=$8 report=$9
-  local dataset
+  local out_dir=$7 tmp=$8 report=$9 cache=${10:-}
+  local dataset step=$SECONDS
   dataset=$(gdal_input_path "$input") || exit 1
 
   local levels="${tmp}/levels" tiles="${tmp}/tiles" mbtiles="${tmp}/${layer}.mbtiles"
   mkdir -p "$levels"
-  local prepared="${levels}/${maxzoom}.tif"
-  raster_prepare "$dataset" "$src_srs" "$nodata" "$maxzoom" "$prepared"
-  local bounds
-  bounds=$(raster_bounds "$prepared") || die "cannot read the extent of $prepared"
+  local source
+  source=$(raster_source "$dataset" "$src_srs" "$nodata" "$cache" "$tmp") || exit 1
+  log_info "prepare: $((SECONDS - step)) s"
 
+  step=$SECONDS
+  local warped="${levels}/${maxzoom}.tif"
+  raster_warp "$source" "$maxzoom" "$warped"
+  [[ $source == "${cache}"/* && -n $cache ]] || rm -f "$source"
+  log_info "warp: $((SECONDS - step)) s"
+  local bounds
+  bounds=$(raster_bounds "$warped") || die "cannot read the extent of $warped"
+
+  step=$SECONDS
   log_info "tiling z${minzoom}-z${maxzoom}"
-  local z level=$prepared next
+  local z level=$warped next
   for ((z = maxzoom; z >= minzoom; z--)); do
     if ((z < maxzoom)); then
       next="${levels}/${z}.tif"
@@ -176,6 +281,7 @@ build_raster_tiles() {
     raster_tile "$level" "$z" "$tiles"
   done
   rm -rf "$levels"
+  log_info "levels and tiles: $((SECONDS - step)) s"
 
   [[ -d $tiles ]] || mkdir -p "$tiles"
   raster_tile_report "$tiles" >"$report"
@@ -184,6 +290,7 @@ build_raster_tiles() {
   ((count > 0)) || die "no tiles: no 1 cells in $input at z${minzoom}-z${maxzoom}"
   log_info "${count} tiles"
 
+  step=$SECONDS
   raster_mbtiles "$tiles" "$layer" "$minzoom" "$maxzoom" "$bounds" "$mbtiles"
   rm -rf "$tiles"
 
@@ -199,5 +306,6 @@ build_raster_tiles() {
 
   mv -f "$_BUILD_TILES_TMP" "$final"
   _BUILD_TILES_TMP=""
+  log_info "pack: $((SECONDS - step)) s"
   log_info "wrote $final"
 }

@@ -13,6 +13,7 @@ setup() {
   EXPECTED="${PIPELINE_ROOT}/tests/fixtures/expected_raster_display.json"
   export PIPELINE_INPUT_DIR="${BATS_TEST_TMPDIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
+  export PIPELINE_WORK_DIR="${BATS_TEST_TMPDIR}/work"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
   MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
   STYLE="${PIPELINE_OUTPUT_DIR}/style.json"
@@ -272,4 +273,106 @@ assert_no_temp_files() {
   [ "$status" -eq 0 ]
   [[ $output == *"forest.style.json: ok"* ]]
   [[ $output == *"agriculture.style.json: ok"* ]]
+}
+
+@test "prepare: the source becomes a tiled 0/1 Byte GeoTIFF with no nodata, kept in the work dir" {
+  raster_layer cover byte
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [[ $output == *"preparing"* ]]
+  local cache="${PIPELINE_WORK_DIR}/raster"
+  run find "$cache" -name '*.tif'
+  [ "$(wc -l <<<"$output")" -eq 1 ]
+  local prepared=$output
+  # Nodata (255) became 0; the 1 cells stay 1.
+  run jq -e '.bands[0] | .type == "Byte" and .block == [512, 512]
+    and (has("noDataValue") | not) and .minimum == 0 and .maximum == 1' \
+    <<<"$(gdalinfo -json -stats "$prepared")"
+  [ "$status" -eq 0 ]
+  # The key beside it names the source.
+  run jq -e --arg p "${PIPELINE_INPUT_DIR}/cover.tif" '.path == $p and .size > 0 and .mtime > 0' \
+    "${prepared%.tif}.json"
+  [ "$status" -eq 0 ]
+  run find "$cache" -name '*.tmp*'
+  [ -z "$output" ]
+}
+
+@test "prepare: a Float32 source with NaN nodata becomes 0/1 Byte" {
+  raster_layer ag float
+  run "$RUN" ag
+  [ "$status" -eq 0 ]
+  local prepared
+  prepared=$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')
+  run jq -e '.bands[0] | .type == "Byte" and (has("noDataValue") | not)
+    and .minimum == 0 and .maximum == 1' <<<"$(gdalinfo -json -stats "$prepared")"
+  [ "$status" -eq 0 ]
+}
+
+@test "prepare: a rebuild reuses the prepared source and gives the same tiles" {
+  raster_layer cover byte
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  local prepared before tiles
+  prepared=$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')
+  before=$(stat -c %y "$prepared")
+  tiles=$(jq -c '.layers[0].zooms' "$MANIFEST")
+
+  # Another zoom range: the same prepared source.
+  sed -i 's/^LAYER_MAX_ZOOM=8$/LAYER_MAX_ZOOM=7/' "${PIPELINE_LAYERS_DIR}/cover.env"
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [[ $output == *"prepared source cached"* ]]
+  [[ $output != *"preparing"* ]]
+  [ "$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')" = "$prepared" ]
+  [ "$(stat -c %y "$prepared")" = "$before" ]
+
+  sed -i 's/^LAYER_MAX_ZOOM=7$/LAYER_MAX_ZOOM=8/' "${PIPELINE_LAYERS_DIR}/cover.env"
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.layers[0].zooms' "$MANIFEST")" = "$tiles" ]
+}
+
+@test "prepare: a changed source or LAYER_NODATA is prepared again, replacing the old file" {
+  raster_layer cover byte
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  local first
+  first=$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')
+
+  # Same path, new modification time.
+  touch -d '2020-01-01' "${PIPELINE_INPUT_DIR}/cover.tif"
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [[ $output == *"preparing"* ]]
+  local second
+  second=$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')
+  [ -n "$second" ] && [ "$second" != "$first" ]
+  [ "$(find "${PIPELINE_WORK_DIR}/raster" -type f | wc -l)" -eq 2 ] # .tif and .json
+
+  echo 'LAYER_NODATA=255' >>"${PIPELINE_LAYERS_DIR}/cover.env"
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [[ $output == *"preparing"* ]]
+  [ "$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif' | wc -l)" -eq 1 ]
+  [ "$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')" != "$second" ]
+}
+
+@test "prepare: an empty PIPELINE_WORK_DIR caches nothing" {
+  raster_layer cover byte
+  PIPELINE_WORK_DIR="" run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [[ $output == *"preparing"* ]]
+  [ ! -e "${PIPELINE_WORK_DIR}/raster" ]
+  [ -s "${PIPELINE_OUTPUT_DIR}/cover.pmtiles" ]
+}
+
+@test "prepare: an unwritable work dir fails the layer before tiling" {
+  raster_layer cover byte
+  mkdir -p "${PIPELINE_WORK_DIR}"
+  chmod a-w "${PIPELINE_WORK_DIR}"
+  run "$RUN" cover
+  chmod u+w "${PIPELINE_WORK_DIR}"
+  [ "$status" -eq 1 ]
+  [[ $output == *"cannot create ${PIPELINE_WORK_DIR}/raster"* ]]
+  [ ! -e "${PIPELINE_OUTPUT_DIR}/cover.pmtiles" ]
 }

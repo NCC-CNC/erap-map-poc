@@ -50,6 +50,9 @@
 #   PIPELINE_LAYERS_DIR  layer configs                 (default <pipeline>/layers)
 #   PIPELINE_MAP_CONFIG  local map config; none if unset or the file is
 #                        missing                       (default unset)
+#   PIPELINE_WORK_DIR    cache kept between runs: raster sources prepared
+#                        once (raster/; lib/raster.sh). Empty for no cache.
+#                                                      (default /data/work)
 #   TMPDIR               parent of the scratch dir     (default /tmp)
 #
 # A build or style-only run attempts every layer; the exit status is 1 if
@@ -87,6 +90,7 @@ source "${PIPELINE_ROOT}/lib/mapconfig.sh"
 PIPELINE_INPUT_DIR=${PIPELINE_INPUT_DIR:-/data/raw}
 PIPELINE_OUTPUT_DIR=${PIPELINE_OUTPUT_DIR:-/data/tiles}
 PIPELINE_LAYERS_DIR=${PIPELINE_LAYERS_DIR:-${PIPELINE_ROOT}/layers}
+PIPELINE_WORK_DIR=${PIPELINE_WORK_DIR-/data/work}
 
 usage() {
   # The header comment block, skipping the shebang and shellcheck lines.
@@ -177,7 +181,8 @@ build_raster_layer() {
   resolve_display "$name" "$style" - "$display" raster
 
   build_raster_tiles "$name" "$LAYER_INPUT" "$LAYER_SOURCE_SRS" "$LAYER_NODATA" \
-    "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" "$PIPELINE_OUTPUT_DIR" "$layer_scratch" "$report"
+    "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" "$PIPELINE_OUTPUT_DIR" "$layer_scratch" "$report" \
+    "${PIPELINE_WORK_DIR:+${PIPELINE_WORK_DIR}/raster}"
 }
 
 # restyle_layer NAME SCRATCH: the --style-only steps for one built layer, in
