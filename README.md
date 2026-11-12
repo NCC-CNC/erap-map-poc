@@ -90,19 +90,23 @@ tippecanoe) is needed on the host. Compose builds two local images,
 they are not pushed anywhere.
 
 ```sh
-# Build tiles into data/tiles/: every layer, or only the ones named.
-# The synthetic `sample` and `sample_points` layers are baked into the
-# image, so these work with an empty data/raw/.
-docker compose run --rm --build pipeline sample sample_points
-# The real layers (`forest`, `agriculture`) read their source from RAW_DIR,
-# here the folder holding the November 2026 play data (see .env.example).
-RAW_DIR=C:/data/ERAP_play_data docker compose run --rm pipeline forest
-docker compose run --rm pipeline   # every layer
+# Build tiles into data/tiles/: every layer in pipeline/layers/, or only
+# the ones named. The layers (`forest`, `agriculture`) read their source
+# from RAW_DIR, here the folder holding the November 2026 play data (see
+# .env.example).
+RAW_DIR=C:/data/ERAP_play_data docker compose run --rm --build pipeline forest
+RAW_DIR=C:/data/ERAP_play_data docker compose run --rm pipeline   # every layer
+
+# Demo tiles without any data: the synthetic test layers `sample` and
+# `sample_points` (pipeline/tests/layers/, baked into the image) are not
+# built by default; point the layers dir at them. Remove them again with
+# `--remove sample` and `--remove sample_points`.
+docker compose run --rm -e PIPELINE_LAYERS_DIR=/opt/pipeline/tests/layers pipeline
 
 # After editing only a layer's .style.json (colours, legend, pop-up, title,
 # order): update its display in seconds, no re-tiling. No names: every
 # built layer.
-docker compose run --rm pipeline --style-only sample
+docker compose run --rm pipeline --style-only forest
 
 # What is configured and built, which builds are stale (the .env or the
 # source data changed since) and which need only --style-only (`restyle`);
@@ -211,7 +215,9 @@ available". Hiding a layer closes its pop-up.
 
 A layer is two files in `pipeline/layers/`, and nothing in `web/`: the map
 reads every layer from `data/tiles/manifest.json` at startup (ADR 0007).
-`sample.env` and `sample.style.json` are worked examples, and
+`forest.env` and `forest.style.json` (raster) and the test layers in
+`pipeline/tests/layers/` (`sample.env` and `sample.style.json`, vector) are
+worked examples, and
 `docs/design/02_data_layers_and_popups.md` is the full data contract.
 
 1. Put the source data in `data/raw/`: a shapefile (with its sidecar

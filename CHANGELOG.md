@@ -257,6 +257,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- The synthetic `sample` and `sample_points` layers are test layers now
+  (#17): their configs moved from `pipeline/layers/` to
+  `pipeline/tests/layers/`, so a pipeline run with no layer names builds
+  only the real layers. The bats tests copy them from there; for demo tiles
+  without any data, run the pipeline with
+  `-e PIPELINE_LAYERS_DIR=/opt/pipeline/tests/layers`. A test checks that
+  no config in `pipeline/layers/` reads the synthetic fixtures.
 - README pass (#37): a screenshot of the map (synthetic layers, a pop-up
   open), a project map in place of the template's "What's included", and
   new "Using the map" and "Adding a layer" sections for per-layer `.env`

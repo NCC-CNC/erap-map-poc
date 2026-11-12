@@ -10,7 +10,8 @@ A layer is `pipeline/layers/<name>.env` (input, fields, zooms, tiling) plus
 Nothing in `web/` changes. Reference: `pipeline/lib/config.sh` (every `.env`
 setting), `docs/design/02_data_layers_and_popups.md` and
 `pipeline/schema/layer-style.schema.json` (display config), and the
-existing `sample*` layers as worked examples (`forest` for a raster).
+test layers `pipeline/tests/layers/sample*` as worked examples (`forest` in
+`pipeline/layers/` for a raster).
 
 Never commit data: `data/raw/`, `data/tiles/`, `.pmtiles` and screenshots
 stay out of git. Commands below run from the repo root in Git Bash; give
