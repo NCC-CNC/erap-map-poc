@@ -180,6 +180,11 @@ All notable changes to this project are documented here. The format is based on
   images with `--build`, since `docker compose run` otherwise reuses a stale
   image after a pull. The auto-merge, branch update and cache warming notes
   move to `CONTRIBUTING.md` (Repo automation).
+- Base images in `pipeline/Dockerfile` and `web/Dockerfile` (GDAL, Node,
+  nginx) are pinned by tag and digest in literal `FROM` lines instead of
+  `ARG ..._IMAGE` defaults, so Dependabot's docker ecosystem can propose
+  updates (it does not resolve `ARG` values in `FROM`). The pipeline's GDAL
+  stages build from one `gdal` stage, so its pin is in one place (#28).
 - Auto-merge and branch updates run from `.github/workflows/` through the NCC
   ConsTech Automation GitHub App (org-level `AUTOMATION_APP_CLIENT_ID`
   variable and `AUTOMATION_APP_PRIVATE_KEY` secret) instead of the template's
