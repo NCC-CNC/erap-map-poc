@@ -3,9 +3,14 @@
 A proof of concept for processing spatial data into vector tiles and viewing
 them in an interactive web map.
 
+![The web map with the two synthetic layers on the Light basemap, the layer
+panel with legends on the left, and the pop-up of a clicked polygon showing
+its stats and a bar chart](docs/images/map-popup.png)
+
 - **Pipeline** (`pipeline/`): bash scripts using GDAL, tippecanoe, and the
   `pmtiles` CLI turn source data in `data/raw/` into one `.pmtiles` file per
-  layer in `data/tiles/`, plus any summary stats the pop-ups need.
+  layer in `data/tiles/`, plus a `manifest.json` that tells the map how to
+  draw each layer.
 - **Web map** (`web/`): a React + MapLibre GL JS app that loads those layers
   straight from the `.pmtiles` files and opens pop-ups with summary stats and
   Chart.js charts when a feature is clicked.
@@ -13,10 +18,30 @@ them in an interactive web map.
 Both run in their own Docker containers, tied together by
 `docker-compose.yml`.
 
-Status: M1 skeleton. A synthetic sample layer runs from raw file to clickable
-feature; the source data, styling, and pop-up content are still to be
-confirmed. Setup and checks are in `CONTRIBUTING.md`. See `docs/design/` for the brief, architecture, and
-milestones, and `docs/decisions/` for the ADRs.
+Status: M1 skeleton. Two synthetic layers (made-up polygons and points, no
+real data) run from raw file to clickable feature; the source data, styling,
+and pop-up content are still to be confirmed. Setup, checks and the pull
+request process are in `CONTRIBUTING.md`. See `docs/design/` for the brief,
+architecture, and milestones, and `docs/decisions/` for the ADRs.
+
+## Project map
+
+- `pipeline/`: the tile builder image. `bin/run.sh` is the entry point,
+  `lib/` the build steps (normalise, display config, tiles, drop guard,
+  manifest), `layers/` one `<layer>.env` and `<layer>.style.json` per layer,
+  `schema/` the JSON Schema for display configs, `style/` the Node tool that
+  checks them, and `tests/` the bats tests and synthetic fixtures.
+- `web/`: the map app (`src/map/` the map, layer panel and pop-up wiring,
+  `src/layers/` the manifest reader, `src/popup/` pop-up content and charts)
+  and the nginx image that serves it along with `data/tiles/`.
+- `data/`: `raw/` for source data, `tiles/` for pipeline output. Neither is
+  committed.
+- `docs/`: design notes (`design/`), ADRs (`decisions/`), session handoffs
+  (`handoffs/`) and images.
+- `.github/`: CI (`ci.yml`), auto-merge, branch update and cache warming
+  workflows, Dependabot config, issue forms and the PR template.
+- `scripts/bootstrap-repo-settings.sh`: one-time repo settings (branch
+  protection, auto-merge, labels).
 
 ## Usage
 
@@ -27,25 +52,23 @@ they are not pushed anywhere.
 
 ```sh
 # Build tiles into data/tiles/: every layer, or only the ones named.
-# The synthetic `sample` layer is baked into the image, so this works with
-# an empty data/raw/.
-docker compose run --rm pipeline
-docker compose run --rm pipeline sample
+# The synthetic `sample` and `sample_points` layers are baked into the
+# image, so this works with an empty data/raw/.
+docker compose run --rm --build pipeline
+docker compose run --rm pipeline sample sample_points
 
 # Run the web map at http://localhost:8080 (WEB_PORT changes the port).
-docker compose up -d web
+docker compose up -d --build web
 docker compose logs -f web
 docker compose down
 ```
 
-Rebuild the images after changing `pipeline/` or `web/` with
-`docker compose build` (or `docker compose up -d --build web`). A rebuilt
-layer needs no restart: nginx serves `data/tiles/` straight from the host
-folder, so reload the page. Layers are not defined in the web app: each is
-`pipeline/layers/<layer>.env` plus `<layer>.style.json` (how it is drawn,
-its legend and pop-up; see `docs/design/02_data_layers_and_popups.md`), and
-compose mounts `pipeline/layers/`, so restyling or adding a layer needs only
-a pipeline run and a reload, no image rebuild.
+`docker compose run` and `up` reuse an existing image, so after pulling or
+changing code in `pipeline/` or `web/`, rebuild it: with `--build` as above,
+or `docker compose build`. The first pipeline build takes about 4 minutes
+(it compiles tippecanoe); later ones take seconds. A rebuilt layer needs no
+restart: nginx serves `data/tiles/` straight from the host folder, so
+reload the page.
 
 ### Where data goes
 
@@ -56,13 +79,14 @@ a pipeline run and a reload, no image rebuild.
   standalone MapLibre style of the data layers, for other tools). The `web`
   service serves it read-only at `/tiles/`.
 
-Both folders are git-ignored apart from `.gitkeep`.
+Both folders are git-ignored apart from `.gitkeep`. Real data and
+`.pmtiles` never go in git.
 
 ### Basemap and settings
 
-The basemap is OpenFreeMap's keyless Positron (light, the default) or Dark
-style, switchable in the map (ADR 0006). It needs no key or other setup, but
-the browser must reach `tiles.openfreemap.org`.
+The basemap is OpenFreeMap's keyless Positron (Light, the default) or Dark
+style (ADR 0006). It needs no key or other setup, but the browser must reach
+`tiles.openfreemap.org`.
 
 The optional settings (host ports, Linux UIDs, dev server polling) can go in
 a git-ignored `.env` in the repo root; copy `.env.example` to start.
@@ -96,70 +120,90 @@ docker compose --profile dev down
 The first start runs `npm ci` into the volume; later starts skip it until
 `package-lock.json` changes. Vite polls for file changes because file events
 do not reach the container from Windows bind mounts; on Linux set
-`VITE_USE_POLLING=0` to use events instead. Once the volume is populated, the
-web checks run the same way:
-`docker compose --profile dev run --rm --no-deps web-dev npm test` (or
-`npm run lint`, `npm run typecheck`). With Node 26 on the host,
+`VITE_USE_POLLING=0` to use events instead. The web checks run the same way;
+see Checks in `CONTRIBUTING.md`. With Node 26 on the host,
 `cd web && npm ci && npm run dev` works too.
 
-## Auto-merge and branch updates
+## Using the map
 
-Two workflows in `.github/workflows/` make green PRs merge themselves. Both
-act through the NCC ConsTech Automation GitHub App, owned by the `NCC-CNC`
-org, so there is no personal access token to create or rotate.
+Open <http://localhost:8080> once the pipeline has built `data/tiles/`. The
+panel at the top left, "Map layers", holds the map controls (click its
+heading to collapse it; it starts collapsed on narrow screens):
 
-- `auto-merge.yml` arms squash auto-merge on every PR into `main` opened from
-  a branch in this repo (pushing one needs write access, so this covers the
-  owner and maintainers) and brings the PR level with `main`. PRs from forks
-  and from Dependabot are never armed and merge by hand. A draft is armed
-  when it is marked ready for review.
-- `update-branches.yml` updates every armed PR after each push to `main`, so
-  strict "up to date" branch protection does not leave them stuck BEHIND.
+- **Basemap**: Light or Dark. Switching keeps the data layers and their
+  visibility.
+- **Layers**: a checkbox per data layer, with its legend underneath, listed
+  with the layer drawn on top first. Each starts on or off as its display
+  config says. If `manifest.json` is missing or not valid, the panel says
+  so.
 
-One-time setup (org or repo admin):
+Click a feature of a visible layer to open its pop-up: a title, summary
+stats, and any charts. Where features overlap, the layer drawn on top wins
+(a sample point over a sample polygon). Missing values show as "Not
+available". Hiding a layer closes its pop-up.
 
-- Install the NCC ConsTech Automation app on this repo.
-- Give this repo access to the org-level `AUTOMATION_APP_CLIENT_ID` variable
-  (the app's Client ID, not its App ID) and the org-level
-  `AUTOMATION_APP_PRIVATE_KEY` secret; both are shared with selected
-  repositories.
-- Turn on "Allow auto-merge" in the repo settings
-  (`scripts/bootstrap-repo-settings.sh` does this).
+## Adding a layer
 
-`GITHUB_TOKEN` cannot be used because GitHub starts no workflows for pushes or
-merges made with it: "Closes #N" would not close issues, and the PR's checks
-would never run on an updated branch. `ci.yml` runs on PRs only: with strict
-protection every PR is tested against current `main` before it merges.
+A layer is two files in `pipeline/layers/`, and nothing in `web/`: the map
+reads every layer from `data/tiles/manifest.json` at startup (ADR 0007).
+`sample.env` and `sample.style.json` are worked examples, and
+`docs/design/02_data_layers_and_popups.md` is the full data contract.
 
-## Cache warming
+1. Put the source data in `data/raw/`: a shapefile (with its sidecar
+   files), a zipped shapefile, a GeoPackage, GeoJSON, or anything else
+   GDAL reads.
+2. Write `pipeline/layers/<layer>.env`, a bash file (every variable is
+   described at the top of `pipeline/lib/config.sh`). The layer name
+   (lower case letters, digits, `_` and `-`) names the output files and
+   the tile layer.
+   - `LAYER_INPUT`: path relative to `data/raw/`. A `.zip` is read in
+     place: `boundaries.zip`, or `boundaries.zip/folder/file.shp` for one
+     file in it. `LAYER_SOURCE_LAYER` picks a layer in a multi-layer source.
+   - `LAYER_SOURCE_SRS` (for example `EPSG:3347`) for an input with no
+     usable CRS, such as a shapefile without a `.prj`; `LAYER_ENCODING`
+     (for example `ISO-8859-1`) for a shapefile without a `.cpg`.
+   - `LAYER_FIELDS`: the attributes to keep, as `src` or `src:dest`. Use
+     `src:dest` to restore names cut to 10 characters by shapefile, for
+     example `descriptio:description`. Everything else is dropped.
+   - `LAYER_FEATURE_ID`: an integer attribute (after renames) used as the
+     feature id.
+   - `LAYER_MIN_ZOOM`, `LAYER_MAX_ZOOM`: the zoom range of the tiles.
+   - `LAYER_PROFILE=coverage` for a contiguous polygon coverage (shared
+     borders, no overlaps), so no gaps open along borders when tiles are
+     simplified; `LAYER_TIPPECANOE_FLAGS` adds tippecanoe flags after it.
+   - `LAYER_MIN_VISIBLE_PX` (default 1): the drop guard threshold. The
+     build fails if tippecanoe drops a polygon at a zoom where it would
+     cover at least this many pixels.
+3. Write `pipeline/layers/<layer>.style.json`, starting with
+   `"$schema": "../schema/layer-style.schema.json"` for completion and
+   checking in an editor: `title`, `defaultVisible`, `order` (draw order),
+   either the `symbology` shorthand (single, categorical or stepped colours,
+   with stepped breaks fixed or computed from the data) or raw MapLibre
+   style-spec `layers`, an optional `legend` (derived when left out), and
+   an optional `popup` (title, stats, bar or line charts; without one the
+   layer is not clickable). Check display configs without building:
 
-`.github/workflows/warm-cache.yml` saves the CI caches from `main`, because a
-PR can read caches saved on `main` but not caches saved by another PR. It
-builds the pipeline `test` image and the web image with the same Docker
-layer cache scopes as `ci.yml` (`pipeline`, `web`), so a new PR does not
-rebuild tippecanoe from source, and fills the npm cache for `web/`. It runs
-on pushes to `main` that touch `pipeline/` or `web/`, twice a week (unused
-caches expire after 7 days), and by hand. If you change a cache scope or
-build setting in `ci.yml`, change it here too.
+   ```sh
+   docker compose run --rm --entrypoint sh pipeline -c \
+     'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.style.json'
+   ```
 
-## What's included
+4. Build it with `docker compose run --rm pipeline <layer>` and reload the
+   map. Compose mounts `pipeline/layers/`, so neither image needs a
+   rebuild. A layer that fails (bad config, missing input, the drop guard)
+   keeps its previous archive and manifest entry, and the run exits 1.
+5. Check the build report in the layer's `data/tiles/manifest.json` entry:
+   `feature_count`, and per zoom in `zooms` the features `input`,
+   `present`, `required` by the drop guard and `required_present`, and the
+   largest tile in bytes.
 
-- `CLAUDE.md`: working rules and durable context, loaded automatically by
-  Claude Code.
-- `.claude/settings.json`: default tool permissions for Claude Code sessions
-  in this repo.
-- `docs/design/`: design notes, starting with a project brief template.
-- `docs/decisions/`: Architecture Decision Records (ADRs).
-- `docs/handoffs/`: session handoff template for continuity between work
-  sessions.
-- `.github/`: issue forms, PR template, Dependabot config, a stack-neutral CI
-  workflow (docs-only PRs skip stack jobs, one required `checks` status),
-  app-based auto-merge and branch-update workflows, and a cache-warming
-  workflow.
-- `CONTRIBUTING.md`, `SECURITY.md`, `CHANGELOG.md`, `LICENSE`.
-- `scripts/bootstrap-repo-settings.sh`: one-time repo settings setup (branch
-  protection, auto-merge, labels) that a template cannot carry over on its
-  own.
+Restyling a layer is the same loop: edit its `.style.json`, rerun the
+pipeline for it, reload.
+
+## Maintainers
+
+Repo automation (auto-merge, branch updates, cache warming) and its
+one-time setup are in `CONTRIBUTING.md` (Repo automation).
 
 ## License
 

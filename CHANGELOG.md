@@ -173,6 +173,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- README pass (#37): a screenshot of the map (synthetic layers, a pop-up
+  open), a project map in place of the template's "What's included", and
+  new "Using the map" and "Adding a layer" sections for per-layer `.env`
+  and `.style.json` configs. Usage names both synthetic layers and rebuilds
+  images with `--build`, since `docker compose run` otherwise reuses a stale
+  image after a pull. The auto-merge, branch update and cache warming notes
+  move to `CONTRIBUTING.md` (Repo automation).
 - Auto-merge and branch updates run from `.github/workflows/` through the NCC
   ConsTech Automation GitHub App (org-level `AUTOMATION_APP_CLIENT_ID`
   variable and `AUTOMATION_APP_PRIVATE_KEY` secret) instead of the template's
