@@ -7,6 +7,24 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Claude Code skills and helpers for adding and restyling layers (#41).
+  Project skills `add-layer` and `restyle-layer` in `.claude/skills/`.
+  `pipeline/bin/inspect.sh` (in the pipeline image, on its `PATH`):
+  a summary of a source dataset (layers, feature count, geometry type, CRS,
+  WGS84 extent, shapefile encoding, field stats and low-cardinality values,
+  feature id candidates, and for polygons invalid geometries, union parts
+  and holes, overlap and GDAL's coverage check), as text or `--json`, with
+  hints for the layer config; tested in `inspect.bats`.
+  `scripts/screenshot.sh`: screenshots of the map at given `zoom/lat/lon`
+  views on the light and dark basemaps, from a private copy of the web image
+  (`erap-map-web:screenshot`) on a spare port (8090 up) and a pinned
+  Playwright image (`mcr.microsoft.com/playwright:v1.55.0-noble`, by
+  digest) on a private network, both removed afterwards; output in the
+  git-ignored `tmp/screenshots/`. The web map keeps its view in the URL hash
+  (`#zoom/lat/lon`, MapLibre `hash`), which the screenshots use and which
+  makes a view shareable. `.claude/settings.json` allows the pipeline run,
+  `inspect.sh` and `screenshot.sh`.
+
 - Data-driven layer styles (#39, ADR 0007). Each layer gains
   `pipeline/layers/<layer>.style.json`: `title`, `defaultVisible`, `order`
   (draw order, default 0, ties by name), `popup`, and either the `symbology`
