@@ -452,12 +452,13 @@ load_setup() {
 }
 
 @test "--init builds only layers not built or stale, and skips those it cannot build" {
-  export STUB_LAYER_STATES='forest\tinvalid\nlakes\tcurrent\nroads\tstale\nparks\tnot built\nwetlands\tinvalid\n'
+  export STUB_LAYER_STATES='forest\tsource missing\nlakes\tcurrent\nroads\tstale\nparks\tnot built\nwetlands\tinvalid\ndunes\tdisabled\n'
   run bash "$SETUP" --init --yes
   [ "$status" -eq 0 ]
   grep -qx "docker compose run --rm pipeline roads parks" "$STUB_LOG"
   [[ $output == *"Already built and up to date: lakes."* ]]
   [[ $output == *"Skipped, cannot be built yet: forest and wetlands."* ]]
+  [[ $output == *"Left out by your map config (map.config.json): dunes."* ]]
   [[ $output == *"Building roads and parks"* ]]
 }
 

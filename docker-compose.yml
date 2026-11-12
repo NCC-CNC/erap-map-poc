@@ -52,6 +52,15 @@ services:
       # The layer configs (.env and .style.json) from the repo, so editing a
       # layer needs no image rebuild: rerun the pipeline and reload the map.
       - ./pipeline/layers:/opt/pipeline/layers:ro
+      # The repo, read only, for your local map config (map.config.json,
+      # git-ignored, ADR 0009) and the local-only layer folders it names.
+      # The folder rather than the file: a bind mount of a missing file
+      # would make a directory in its place, and the config is optional.
+      - .:/repo:ro
+    environment:
+      # MAP_CONFIG (in .env) picks another config file, relative to the
+      # repo root. No file there means every committed layer, as they are.
+      PIPELINE_MAP_CONFIG: /repo/${MAP_CONFIG:-map.config.json}
 
   # Frontend development: Vite with hot reload on http://localhost:5173,
   # serving data/tiles/ at /tiles/ like the web image.
@@ -85,6 +94,8 @@ services:
       # (web/src/test/fixtures.ts).
       - ./pipeline/schema:/repo/pipeline/schema:ro
       - ./pipeline/tests/fixtures:/repo/pipeline/tests/fixtures:ro
+      # ...and check the example map config against its schema.
+      - ./map.config.example.json:/repo/map.config.example.json:ro
 
 volumes:
   web-dev-node-modules:

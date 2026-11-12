@@ -17,6 +17,13 @@ Never commit data: `data/raw/`, `data/tiles/`, `.pmtiles` and screenshots
 stay out of git. Commands below run from the repo root in Git Bash; give
 paths relative to `data/raw/` (no leading `/`).
 
+First ask, unless the user already said: is the layer just for them, or
+for everyone? Just for them (data only they have, a trial): write the
+same two files in the git-ignored `pipeline/layers.local/` and make sure
+their `map.config.json` lists it in `layerDirs` (README, Your map config;
+ADR 0009), or put the settings inline under `localLayers`. Build and check
+as below, and skip the draft PR. For everyone: the steps below.
+
 ## Raster sources (GeoTIFF)
 
 A binary raster (cells of 1 on 0 or nodata, for example a forest or

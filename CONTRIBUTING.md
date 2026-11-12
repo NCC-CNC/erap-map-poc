@@ -26,6 +26,7 @@ disk, `.env`, `RAW_DIR`, ports, line endings) and changes nothing. By hand:
 ```sh
 git clone https://github.com/NCC-CNC/erap-map-poc.git && cd erap-map-poc
 cp .env.example .env                      # optional: ports, Linux UIDs, RAW_DIR
+cp map.config.example.json map.config.json   # optional: your own map (README)
 
 # Demo tiles into data/tiles/ from the synthetic test layers (no data needed)
 docker compose run --rm --build -e PIPELINE_LAYERS_DIR=/opt/pipeline/tests/layers pipeline
@@ -56,8 +57,11 @@ the pipeline for that layer and reload the page; compose mounts
 `<layer>.style.json` only (colours, legend, pop-up, title, order,
 visibility, for vector and raster layers) needs no re-tiling:
 `docker compose run --rm pipeline --style-only <layer>` updates the
-manifest entry and `style.json` in seconds. Check display configs without
-building:
+manifest entry and `style.json` in seconds. A change for your own map
+only (fewer layers, your copy of the data, other colours, a layer only
+you have, the opening view) goes in your git-ignored `map.config.json`
+instead, with no pull request: see `README.md` (Your map config) and ADR
+0009. Check display configs without building:
 
 ```sh
 docker compose run --rm --entrypoint sh pipeline -c \
@@ -116,7 +120,7 @@ same tools at the same versions as CI, all in Docker:
 export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
-# pipeline job: shellcheck, hadolint, bats (84 tests, including the display
+# pipeline job: shellcheck, hadolint, bats (100 tests, including the display
 # tool's node:test unit tests; 41 more for scripts/setup.sh), runtime image
 docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
   pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \

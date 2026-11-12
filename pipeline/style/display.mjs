@@ -12,6 +12,9 @@ import Ajv2020 from 'ajv/dist/2020.js';
 /** The shared JSON Schema, also read by the web app's tests. */
 export const SCHEMA_URL = new URL('../schema/layer-style.schema.json', import.meta.url);
 
+/** The local map config's JSON Schema (ADR 0009), which refers to the one above. */
+export const MAP_CONFIG_SCHEMA_URL = new URL('../schema/map-config.schema.json', import.meta.url);
+
 /** Default draw order of a layer without `order`. */
 export const DEFAULT_ORDER = 0;
 
@@ -30,22 +33,28 @@ export class DisplayError extends Error {
 
 let validators;
 
-/** Compiled schema validators for the config file and the resolved block. */
-function schemaValidators() {
+/**
+ * Compiled schema validators: `config` for a .style.json, `display` for the
+ * resolved block and `mapConfig` for the local map config.
+ */
+export function schemaValidators() {
   if (!validators) {
     const schema = JSON.parse(readFileSync(SCHEMA_URL, 'utf8'));
+    const mapSchema = JSON.parse(readFileSync(MAP_CONFIG_SCHEMA_URL, 'utf8'));
     const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false });
     ajv.addSchema(schema);
+    ajv.addSchema(mapSchema);
     validators = {
       config: ajv.getSchema(schema.$id),
       display: ajv.getSchema(`${schema.$id}#/$defs/display`),
+      mapConfig: ajv.getSchema(mapSchema.$id),
     };
   }
   return validators;
 }
 
 /** Readable schema errors, without the noise of failed `if` branches. */
-function schemaProblems(errors) {
+export function schemaProblems(errors) {
   const seen = new Set();
   for (const e of errors ?? []) {
     if (e.keyword === 'if') continue;
@@ -453,15 +462,18 @@ export function layerSource(type, file) {
  * A standalone MapLibre style of data layers, each entry being
  * `{name, file, type, display}` (`type` as in the manifest, `vector` when
  * missing), drawn in the order given. Sources are `pmtiles://<file>`,
- * relative to the folder holding the style.
+ * relative to the folder holding the style. `view`, the map config's
+ * opening `center` and `zoom` (ADR 0009), sets the style's own when given.
  */
-export function buildStyle(entries) {
+export function buildStyle(entries, view = {}) {
   const layers = entries.flatMap((e) =>
     sourcedLayers(e.name, e.display.layers, e.display.defaultVisible, e.type ?? 'vector'),
   );
   return {
     version: 8,
     name: 'ERAP Map data layers',
+    ...(view.center ? { center: view.center } : {}),
+    ...(view.zoom !== undefined ? { zoom: view.zoom } : {}),
     ...(usesText(layers) ? { glyphs: GLYPHS_URL } : {}),
     sources: Object.fromEntries(
       entries.map((e) => [e.name, layerSource(e.type ?? 'vector', e.file)]),

@@ -1,4 +1,4 @@
-import type { Display, LayerDefinition, LayerType } from './types';
+import type { BasemapName, Display, LayerDefinition, LayerType, MapDefaults } from './types';
 
 /**
  * Reads the layers from the pipeline's `manifest.json` (ADR 0007), the
@@ -7,7 +7,9 @@ import type { Display, LayerDefinition, LayerType } from './types';
  * `<layer>.style.json`. The pipeline has already validated it against the
  * shared JSON Schema; this checks it again, by hand, so a stale or edited
  * manifest cannot break the map. `schema.test.ts` keeps these checks in
- * step with the schema.
+ * step with the schema. An entry with `enabled: false` (built, then left
+ * out by the local map config, ADR 0009) is not shown, and the manifest's
+ * `map` gives the opening view and basemap.
  */
 
 /** A layer list that could not be read at all. */
@@ -24,6 +26,8 @@ export interface ManifestLayers {
   layers: LayerDefinition[];
   /** A short message for the layer panel when something is wrong, else null. */
   problem: string | null;
+  /** How the map opens, from the manifest's `map`; null when it sets none. */
+  map: MapDefaults | null;
 }
 
 /** Messages shown in the layer panel. */
@@ -33,6 +37,7 @@ export const MESSAGES = {
   invalid:
     'Data layers are not available: the layer list (manifest.json) is not valid. Rebuild the tiles with the pipeline, then reload.',
   empty: 'No data layers have been built yet.',
+  allDisabled: 'Every built data layer is turned off in your map config (map.config.json).',
   skipped: (n: number) =>
     n === 1
       ? '1 layer in manifest.json could not be read and is not shown.'
@@ -273,7 +278,8 @@ export function drawOrder(defs: readonly LayerDefinition[]): LayerDefinition[] {
 /**
  * Reads a parsed `manifest.json` into layer definitions in draw order.
  * Entries that are not valid (or repeat a name) are left out with a
- * console warning and counted in `problem`.
+ * console warning and counted in `problem`; entries with `enabled: false`
+ * are left out quietly.
  *
  * @throws {ManifestError} when the manifest has no `layers` list.
  */
@@ -283,7 +289,12 @@ export function parseManifest(json: unknown): ManifestLayers {
   }
   const defs: LayerDefinition[] = [];
   let skipped = 0;
+  let disabled = 0;
   json.layers.forEach((entry, i) => {
+    if (isObject(entry) && entry.enabled === false) {
+      disabled++;
+      return;
+    }
     const result = toDefinition(entry, i);
     if (Array.isArray(result)) {
       console.warn(`manifest.json: layer ${i} skipped:\n${result.join('\n')}`);
@@ -297,8 +308,46 @@ export function parseManifest(json: unknown): ManifestLayers {
   });
   let problem: string | null = null;
   if (skipped) problem = MESSAGES.skipped(skipped);
-  else if (defs.length === 0) problem = MESSAGES.empty;
-  return { layers: drawOrder(defs), problem };
+  else if (defs.length === 0) problem = disabled ? MESSAGES.allDisabled : MESSAGES.empty;
+  return { layers: drawOrder(defs), problem, map: mapDefaults(json.map) };
+}
+
+/** The basemaps the map config may name (`map.config.schema.json`). */
+export const BASEMAP_NAMES: readonly BasemapName[] = ['light', 'dark'];
+
+const inRange = (v: unknown, min: number, max: number): v is number =>
+  typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
+
+/**
+ * The manifest's `map` (the local map config's opening view and basemap,
+ * ADR 0009) as map defaults, or null when there is none. A field that is
+ * not valid is left out with a console warning, so the app's own default
+ * applies to it.
+ */
+export function mapDefaults(value: unknown): MapDefaults | null {
+  if (value === undefined || value === null) return null;
+  if (!isObject(value)) {
+    console.warn('manifest.json: map ignored: not an object.');
+    return null;
+  }
+  const defaults: MapDefaults = {};
+  const { center, zoom, basemap } = value;
+  if (center !== undefined) {
+    if (Array.isArray(center) && center.length === 2 && inRange(center[0], -180, 180) && inRange(center[1], -90, 90)) {
+      defaults.center = [center[0], center[1]];
+    } else {
+      console.warn('manifest.json: map.center ignored: not [longitude, latitude].');
+    }
+  }
+  if (zoom !== undefined) {
+    if (inRange(zoom, 0, 22)) defaults.zoom = zoom;
+    else console.warn('manifest.json: map.zoom ignored: not a number from 0 to 22.');
+  }
+  if (basemap !== undefined) {
+    if (BASEMAP_NAMES.includes(basemap as BasemapName)) defaults.basemap = basemap as BasemapName;
+    else console.warn(`manifest.json: map.basemap ignored: not one of ${BASEMAP_NAMES.join(', ')}.`);
+  }
+  return defaults;
 }
 
 /** The `manifest.json` URL in the folder holding the archives. */
@@ -320,7 +369,7 @@ export interface LoadOptions {
  */
 export async function loadManifest(url: string, options: LoadOptions = {}): Promise<ManifestLayers> {
   const { signal, fetch: fetchFn = fetch } = options;
-  const none = (problem: string | null): ManifestLayers => ({ layers: [], problem });
+  const none = (problem: string | null): ManifestLayers => ({ layers: [], problem, map: null });
   let response: Response;
   try {
     response = await fetchFn(url, { cache: 'no-cache', signal });

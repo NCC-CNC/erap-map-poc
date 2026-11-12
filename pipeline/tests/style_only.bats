@@ -88,10 +88,11 @@ assert_no_temp_files() {
   add_layer alpha beta
   run "$RUN"
   [ "$status" -eq 0 ]
-  local tiles beta_entry alpha_report
+  local tiles beta_entry alpha_report built_from
   tiles=$(sha256sum "${PIPELINE_OUTPUT_DIR}"/*.pmtiles)
   beta_entry=$(entry_without beta)
-  alpha_report=$(entry_without alpha display display_updated_at)
+  alpha_report=$(entry_without alpha display display_updated_at provenance)
+  built_from=$(entry_without alpha | jq -c ".provenance | del(.style_sha256)")
 
   restyle alpha '.title = "Alpha restyled"
     | .symbology.color.stops[0].color = "#ff0000"
@@ -103,7 +104,10 @@ assert_no_temp_files() {
 
   [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}"/*.pmtiles)" = "$tiles" ]
   [ "$(entry_without beta)" = "$beta_entry" ]
-  [ "$(entry_without alpha display display_updated_at)" = "$alpha_report" ]
+  [ "$(entry_without alpha display display_updated_at provenance)" = "$alpha_report" ]
+  # The provenance keeps what the tiles were built from; only the display
+  # hash moves.
+  [ "$(entry_without alpha | jq -c ".provenance | del(.style_sha256)")" = "$built_from" ]
   run jq -e '.layers[] | select(.name == "alpha")
     | .display.title == "Alpha restyled"
       and (.display.popup.stats | length) == 1
@@ -201,14 +205,14 @@ assert_no_temp_files() {
   [ "$status" -eq 0 ]
   local archive="${PIPELINE_OUTPUT_DIR}/cover.pmtiles" before report
   before=$(sha256sum "$archive")
-  report=$(entry_without cover display display_updated_at)
+  report=$(entry_without cover display display_updated_at provenance)
 
   restyle cover '.symbology.color = "#ff0000" | .symbology.opacity = 0.4'
   run "$RUN" --style-only cover
   [ "$status" -eq 0 ]
   [[ $output != *"reading the source data"* ]]
   [ "$(sha256sum "$archive")" = "$before" ]
-  [ "$(entry_without cover display display_updated_at)" = "$report" ]
+  [ "$(entry_without cover display display_updated_at provenance)" = "$report" ]
   run jq -r '.layers[] | select(.source == "cover") | .paint["color-relief-color"][6]' "$STYLE"
   [ "$output" = "rgba(255, 0, 0, 1)" ]
   run jq -r '.layers[] | select(.name == "cover") | .type' "$MANIFEST"

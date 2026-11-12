@@ -6,6 +6,7 @@ import {
   displayProblems,
   loadManifest,
   manifestUrl,
+  mapDefaults,
   parseManifest,
 } from './manifest';
 
@@ -68,7 +69,7 @@ describe('parseManifest', () => {
   });
 
   it('says when no layers have been built', () => {
-    expect(parseManifest({ layers: [] })).toEqual({ layers: [], problem: MESSAGES.empty });
+    expect(parseManifest({ layers: [] })).toEqual({ layers: [], problem: MESSAGES.empty, map: null });
   });
 
   it('throws when there is no layers list', () => {
@@ -130,6 +131,7 @@ describe('loadManifest', () => {
     expect(await loadManifest(url, { fetch: respond('Not found', 404) })).toEqual({
       layers: [],
       problem: MESSAGES.missing,
+      map: null,
     });
     const offline = vi.fn<typeof fetch>(async () => {
       throw new TypeError('Failed to fetch');
@@ -137,6 +139,7 @@ describe('loadManifest', () => {
     expect(await loadManifest(url, { fetch: offline })).toEqual({
       layers: [],
       problem: MESSAGES.missing,
+      map: null,
     });
   });
 
@@ -145,6 +148,7 @@ describe('loadManifest', () => {
       expect(await loadManifest(url, { fetch: respond(body) })).toEqual({
         layers: [],
         problem: MESSAGES.invalid,
+        map: null,
       });
     }
   });
@@ -158,6 +162,7 @@ describe('loadManifest', () => {
     expect(await loadManifest(url, { fetch: fetchFn, signal: controller.signal })).toEqual({
       layers: [],
       problem: null,
+      map: null,
     });
   });
 });
@@ -222,5 +227,37 @@ describe('raster layers', () => {
     expect(displayProblems(expectedRasterDisplay)).toEqual([
       'display.layers[0].type is not a vector layer type',
     ]);
+  });
+});
+
+describe('map config (ADR 0009)', () => {
+  it('leaves out disabled entries quietly', () => {
+    const manifest = sampleManifest() as { layers: Record<string, unknown>[] };
+    manifest.layers[0]!.enabled = false;
+    manifest.layers[1]!.enabled = true;
+    manifest.layers.push({ name: 'Bad Name', enabled: false });
+    const { layers, problem } = parseManifest(manifest);
+    expect(layers.map((d) => d.id)).toEqual(['sample_points']);
+    expect(problem).toBeNull();
+    expect(console.warn).not.toHaveBeenCalled();
+  });
+
+  it('says when every built layer is turned off', () => {
+    const manifest = sampleManifest() as { layers: Record<string, unknown>[] };
+    for (const entry of manifest.layers) entry.enabled = false;
+    expect(parseManifest(manifest)).toEqual({ layers: [], problem: MESSAGES.allDisabled, map: null });
+  });
+
+  it('reads the map view and basemap', () => {
+    const manifest = { ...sampleManifest(), map: { center: [-80.5, 45.25], zoom: 5.5, basemap: 'dark' } };
+    expect(parseManifest(manifest).map).toEqual({ center: [-80.5, 45.25], zoom: 5.5, basemap: 'dark' });
+    expect(parseManifest(sampleManifest()).map).toBeNull();
+  });
+
+  it('drops map fields that are not valid, keeping the rest', () => {
+    expect(mapDefaults({ center: [200, 0], zoom: 30, basemap: 'satellite' })).toEqual({});
+    expect(mapDefaults({ center: [-80, 45, 3], zoom: 2 })).toEqual({ zoom: 2 });
+    expect(mapDefaults('north')).toBeNull();
+    expect(console.warn).toHaveBeenCalledTimes(5);
   });
 });

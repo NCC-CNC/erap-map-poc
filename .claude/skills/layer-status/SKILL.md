@@ -17,21 +17,28 @@ Each layer has one state, with notes under it saying why:
 
 - `current`: built after its `.env` and source data last changed, and its
   display updated after its `.style.json` last changed.
-- `stale`: the `.env` or the source data changed since the build (by file
-  time), or the archive is missing. Rebuild it (build-layers skill). A
+- `stale`: the `.env`, the map config's `input` or `env` override for the
+  layer, or the source data changed since the build, or the archive is
+  missing. Rebuild it (build-layers skill). A
   `.style.json` change is noted too; the rebuild covers it.
-- `restyle`: only the `.style.json` changed since the display was last
-  updated. No rebuild:
+- `restyle`: only the `.style.json` (or the map config's display
+  overrides) changed since the display was last updated. No rebuild:
   `docker compose run --rm pipeline --style-only <name>` (restyle-layer
   skill, step 3).
 - `not built`: configured, never built (or every build failed).
-- `invalid`: cannot build as configured: the `.env` does not load, the
-  `.style.json` is missing, or the source data is not in `data/raw/`. Any
-  previous build is still served.
+- `invalid`: cannot build as configured: the `.env` does not load or the
+  `.style.json` is missing. Any previous build is still served.
+- `source missing`: configured, but its source data is not found (for
+  example `RAW_DIR` not set, or data the user does not have). A full build
+  skips it with a warning; a previous build is still served.
+- `disabled`: left out by the user's map config (`enabled` or `disabled`
+  in `map.config.json`, ADR 0009): not built, and hidden from the map if
+  built before.
 - `orphan`: built, but its `.env` is gone. Offer the remove-layer skill.
 
-Staleness goes by file times only: a pipeline code change, or a source
-file replaced by an older copy, does not show. When in doubt, rebuild.
+Staleness goes by file times, plus hashes of the settings and display
+config for map config changes: a pipeline code change, or a source file
+replaced by an older copy, does not show. When in doubt, rebuild.
 
 ## Report
 

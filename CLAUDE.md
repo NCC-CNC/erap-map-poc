@@ -62,7 +62,11 @@ design note in `docs/design/` or an ADR in `docs/decisions/`.
   pipeline writes are atomic (temp file then move); no layer is defined in
   `web/`: each is `pipeline/layers/<layer>.env` plus `<layer>.style.json`
   (schema `pipeline/schema/layer-style.schema.json`), and the app reads
-  them from `data/tiles/manifest.json` at runtime (ADR 0007).
+  them from `data/tiles/manifest.json` at runtime (ADR 0007). A user's
+  own changes (layer selection, overrides, local-only layers, map view) go
+  in the git-ignored `map.config.json` (schema
+  `pipeline/schema/map-config.schema.json`, ADR 0009), never into the
+  committed layer files.
 
 ## Commands
 
@@ -75,7 +79,10 @@ block; keep it in step with this section.
 - First-time setup on Windows: `scripts/setup.sh --init` (checks, `.env`,
   images, layers, map); `scripts/setup.sh` alone checks only, read only.
 - Pipeline: `docker compose run --rm pipeline [layer ...]` (no names builds
-  every layer into `data/tiles/`, plus `manifest.json` and `style.json`).
+  every enabled layer into `data/tiles/`, plus `manifest.json` and
+  `style.json`, skipping layers whose source data is missing). The map
+  config is `map.config.json` at the repo root (`MAP_CONFIG` in `.env`),
+  read from the repo mounted read-only at `/repo`.
   Source data comes from `RAW_DIR` (`.env`; default `./data/raw`), mounted
   read-only at `/data/raw`; the play data lives outside the repo.
   `--status [--json]` lists built, stale and `restyle` layers (read only);
@@ -132,7 +139,9 @@ and `--remove`, `pipeline/bin/inspect.sh`, `scripts/setup.sh` with
 pipeline or `scripts/` with tests first. Claude Code stays optional.
 `remove-layer` always confirms with the user. Data is never committed: a
 layer PR holds the two config files only, never anything from `data/`,
-`.pmtiles` or screenshots.
+`.pmtiles` or screenshots. Skills that change a layer ask whether the
+change is just for the user (their `map.config.json`, no PR) or for
+everyone (the committed files and a draft PR).
 
 ## Working rules
 

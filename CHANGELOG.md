@@ -7,6 +7,34 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Local map config (#59, ADR 0009): a git-ignored `map.config.json` at
+  the repo root (`MAP_CONFIG` in `.env` picks another file;
+  `map.config.example.json` is committed), with a JSON Schema
+  (`pipeline/schema/map-config.schema.json`) checked by the display config
+  tool (`cli.mjs layers`, `style/mapconfig.mjs`, `lib/mapconfig.sh`). It
+  selects layers (`enabled`, `disabled`), overrides them (`input` and
+  `env` change the tiles; `title`, `order`, `defaultVisible` and a `style`
+  merge patch change only the display), adds local-only layers
+  (`localLayers` inline, or `layerDirs` such as the git-ignored
+  `pipeline/layers.local/`) and sets the map's opening view and basemap
+  (`map`). The whole config is checked before anything is built (exit 2
+  and one line per problem). No file means the previous behaviour.
+  Compose mounts the repo read-only at `/repo` in the pipeline container
+  for it. A full build now skips layers whose source data is missing
+  (warning and summary; exit 1 only if nothing could be built), while a
+  named layer still fails; `--status` gains the states `source missing`
+  and `disabled`, and compares hashes of the effective settings and
+  display config so map config changes show as `stale` or `restyle`.
+  Manifest entries gain `enabled` (a layer left out by the config is kept
+  but hidden) and `provenance` (origin, source path, size and time, the
+  overrides applied, the hashes); the manifest gains `map`, which
+  `style.json` also takes. The web app hides disabled entries, opens at
+  the config's view (unless the URL has one) and on its basemap. Tests:
+  `mapconfig.bats`, `style/test/mapconfig.test.mjs`, web
+  `mapconfig.test.ts` and `view.test.ts`. The skills offer "just for me"
+  (the map config) next to "for everyone" (the committed files and a PR).
+  `scripts/setup.sh` skips `source missing` layers like `invalid` ones,
+  reports `disabled` ones, and knows `MAP_CONFIG` as a `.env` setting.
 - `pipeline --style-only [layer ...]` (#53): apply `<layer>.style.json`
   changes to built layers, vector or raster, without re-tiling. Each
   config is checked as in a build, the `display` block of the layer's
