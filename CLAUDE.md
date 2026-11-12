@@ -18,13 +18,19 @@ now; conservation planning staff more widely if it continues. See
 
 ## Project status
 
-M1 (skeleton end to end) is nearly done: the pipeline, web app, OpenFreeMap
-basemaps, feature pop-ups, docker-compose and CI are merged, and the
-synthetic `sample` layer goes from raw file to clickable feature (the MapLibre
-worker fix, #26, is merged; a hands-on browser check is pending). Next is M2, real
-data, blocked on confirmed source datasets (#13); styling and pop-up content
-are still TBC. Open GitHub issues are the live task tracker;
-`docs/design/03_milestones.md` is the shape of the plan.
+M1 (skeleton end to end) is essentially done: the pipeline, web app,
+OpenFreeMap basemaps, pop-ups, docker-compose and CI are merged, plus the
+layer selector with legends (#38), the coverage-safe tippecanoe profile and
+shapefile options (#40), and data-driven per-layer styles (#42, ADR 0007).
+The synthetic `sample` and `sample_points` layers go from raw file to
+clickable feature; a headless browser check passed (features drawn, pop-up
+with chart). Left: Dependabot for base images (#28) and a hands-on browser
+check. Next is M2, real data (#13): first play data arrived in November
+2026 (two binary 30 m Canada-wide GeoTIFFs, forest and agriculture, plus
+ecoregion and protected-area polygons in file geodatabases), so raster
+layers need a pipeline path (GDAL MBTiles then `pmtiles convert`; display
+only, no pop-ups). Styling and pop-up content are TBC (#14). Open GitHub issues are the live
+task tracker; `docs/design/03_milestones.md` is the shape of the plan.
 
 ## Scope
 

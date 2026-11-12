@@ -191,6 +191,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- README pass (#37): a screenshot of the map (synthetic layers, a pop-up
+  open), a project map in place of the template's "What's included", and
+  new "Using the map" and "Adding a layer" sections for per-layer `.env`
+  and `.style.json` configs. Usage names both synthetic layers and rebuilds
+  images with `--build`, since `docker compose run` otherwise reuses a stale
+  image after a pull. The auto-merge, branch update and cache warming notes
+  move to `CONTRIBUTING.md` (Repo automation).
 - Base images in `pipeline/Dockerfile` and `web/Dockerfile` (GDAL, Node,
   nginx) are pinned by tag and digest in literal `FROM` lines instead of
   `ARG ..._IMAGE` defaults, so Dependabot's docker ecosystem can propose
