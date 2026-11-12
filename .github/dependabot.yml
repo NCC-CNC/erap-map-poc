@@ -43,9 +43,10 @@ updates:
       style-tool:
         update-types: [minor, patch]
 
-  # Base images in the Dockerfiles. They are pinned by tag and digest in
-  # `ARG ..._IMAGE=` lines; if Dependabot does not pick those up, bump them
-  # by hand (see the header of each Dockerfile).
+  # Base images in the Dockerfiles (GDAL, Node, nginx), pinned by tag and
+  # digest in literal `FROM` lines. Keep them literal: Dependabot does not
+  # resolve `ARG` values in `FROM`. Node appears in both Dockerfiles and
+  # docker-compose.yml; keep the three on the same version.
   - package-ecosystem: docker
     directories:
       - '/pipeline'
