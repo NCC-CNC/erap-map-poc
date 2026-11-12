@@ -17,6 +17,12 @@ Prerequisites: Git and Docker with Docker Compose v2. Nothing else (no Node,
 GDAL or tippecanoe) is needed on the host. On Windows, use Git Bash: the
 `bash` in PowerShell may be WSL, without `gh` or your Git credentials.
 
+`scripts/setup.sh --init` does the first-time steps below for you (README,
+Getting started): it checks the machine, writes `.env`, builds the images
+and the layers whose source data it finds, and starts the map.
+`scripts/setup.sh` alone only checks (Docker Desktop, WSL 2, resources,
+disk, `.env`, `RAW_DIR`, ports, line endings) and changes nothing. By hand:
+
 ```sh
 git clone https://github.com/NCC-CNC/erap-map-poc.git && cd erap-map-poc
 cp .env.example .env                      # optional: ports, Linux UIDs, RAW_DIR
@@ -104,14 +110,16 @@ export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
 # pipeline job: shellcheck, hadolint, bats (73 tests, including the display
-# tool's node:test unit tests), runtime image
+# tool's node:test unit tests; 41 more for scripts/setup.sh), runtime image
 docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
   pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \
-  pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh
+  pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh \
+  scripts/setup.sh scripts/tests/*.bats
 docker run --rm -v "$repo":/mnt -w /mnt hadolint/hadolint:v2.15.1 \
   hadolint --config .hadolint.yaml pipeline/Dockerfile web/Dockerfile
 docker build --target test -t erap-map-pipeline:test pipeline
 docker run --rm erap-map-pipeline:test
+docker run --rm -v "$repo":/repo:ro erap-map-pipeline:test /repo/scripts/tests
 docker compose build pipeline
 
 # web job: npm ci, lint, typecheck, test, build, audit (Node 26.13.0)
