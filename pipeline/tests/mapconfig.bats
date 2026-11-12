@@ -19,9 +19,12 @@ setup() {
   STYLE="${PIPELINE_OUTPUT_DIR}/style.json"
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR" "${BATS_TEST_TMPDIR}/repo"
   cp "${PIPELINE_ROOT}/tests/fixtures/sample.geojson" "${PIPELINE_INPUT_DIR}/"
-  # Small and quick: z0 to z4 is enough here.
+  # The sample layer's configs (in tests/layers/ once they move there,
+  # #17). Small and quick: z0 to z4 is enough here.
+  SAMPLE_DIR="${PIPELINE_ROOT}/tests/layers"
+  [[ -f "${SAMPLE_DIR}/sample.env" ]] || SAMPLE_DIR="${PIPELINE_ROOT}/layers"
   SAMPLE_ENV=$(sed -e 's|^LAYER_INPUT=.*|LAYER_INPUT=sample.geojson|' \
-    -e 's|^LAYER_MAX_ZOOM=.*|LAYER_MAX_ZOOM=4|' "${PIPELINE_ROOT}/layers/sample.env")
+    -e 's|^LAYER_MAX_ZOOM=.*|LAYER_MAX_ZOOM=4|' "${SAMPLE_DIR}/sample.env")
 }
 
 # add_layer NAME...: copies of the sample layer in DIR (default the layers
@@ -35,7 +38,7 @@ add_layer() {
   fi
   for name in "$@"; do
     printf '%s\n' "$SAMPLE_ENV" >"${dir}/${name}.env"
-    cp "${PIPELINE_ROOT}/layers/sample.style.json" "${dir}/${name}.style.json"
+    cp "${SAMPLE_DIR}/sample.style.json" "${dir}/${name}.style.json"
   done
 }
 
@@ -215,7 +218,7 @@ notes_of() {
   add_layer alpha
   add_layer --dir "${BATS_TEST_TMPDIR}/repo/layers.local" delta
   local style
-  style=$(cat "${PIPELINE_ROOT}/layers/sample.style.json")
+  style=$(cat "${SAMPLE_DIR}/sample.style.json")
   config "{\"layerDirs\": [\"layers.local\"],
     \"localLayers\": {\"gamma\": {
       \"env\": {\"LAYER_INPUT\": \"sample.geojson\", \"LAYER_FIELDS\": [\"id\", \"NAME_EN:name\", \"score\"],
