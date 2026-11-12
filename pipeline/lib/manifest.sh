@@ -117,3 +117,28 @@ vector_report() {
        zooms: .
      }' "$stats_file" || die "cannot read $stats_file"
 }
+
+# manifest_remove OUT_DIR LAYER: drop LAYER's entry from OUT_DIR/manifest.json
+# (atomically, like manifest_update) and keep the others. Nothing to do if
+# there is no manifest or no entry.
+manifest_remove() {
+  local out_dir=$1 layer=$2
+  local manifest="${out_dir}/manifest.json"
+  [[ -s $manifest ]] || return 0
+  jq -e '.layers | type == "array"' "$manifest" >/dev/null 2>&1 \
+    || die "cannot read $manifest"
+  jq -e --arg name "$layer" 'any(.layers[]; .name == $name)' "$manifest" >/dev/null \
+    || return 0
+
+  local now tmp="${manifest}.$$.tmp"
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  jq --arg name "$layer" --arg now "$now" \
+    '.updated_at = $now | .layers |= map(select(.name != $name))' \
+    "$manifest" >"$tmp" \
+    || {
+      rm -f "$tmp"
+      die "cannot write $manifest"
+    }
+  mv -f "$tmp" "$manifest"
+  log_info "removed $layer from $manifest"
+}

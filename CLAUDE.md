@@ -18,13 +18,19 @@ now; conservation planning staff more widely if it continues. See
 
 ## Project status
 
-M1 (skeleton end to end) is nearly done: the pipeline, web app, OpenFreeMap
-basemaps, feature pop-ups, docker-compose and CI are merged, and the
-synthetic `sample` layer goes from raw file to clickable feature (the MapLibre
-worker fix, #26, is merged; a hands-on browser check is pending). Next is M2, real
-data, blocked on confirmed source datasets (#13); styling and pop-up content
-are still TBC. Open GitHub issues are the live task tracker;
-`docs/design/03_milestones.md` is the shape of the plan.
+M1 (skeleton end to end) is essentially done: the pipeline, web app,
+OpenFreeMap basemaps, pop-ups, docker-compose and CI are merged, plus the
+layer selector with legends (#38), the coverage-safe tippecanoe profile and
+shapefile options (#40), and data-driven per-layer styles (#42, ADR 0007).
+The synthetic `sample` and `sample_points` layers go from raw file to
+clickable feature; a headless browser check passed (features drawn, pop-up
+with chart). Left: Dependabot for base images (#28) and a hands-on browser
+check. Next is M2, real data (#13): first play data arrived in November
+2026 (two binary 30 m Canada-wide GeoTIFFs, forest and agriculture, plus
+ecoregion and protected-area polygons in file geodatabases), so raster
+layers need a pipeline path (GDAL MBTiles then `pmtiles convert`; display
+only, no pop-ups). Styling and pop-up content are TBC (#14). Open GitHub issues are the live
+task tracker; `docs/design/03_milestones.md` is the shape of the plan.
 
 ## Scope
 
@@ -69,7 +75,8 @@ block; keep it in step with this section.
   every layer into `data/tiles/`, plus `manifest.json` and `style.json`).
   Source data comes from `RAW_DIR` (`.env`; default `./data/raw`), mounted
   read-only at `/data/raw`; the play data lives outside the repo.
-  Check display configs only: `docker compose run --rm --entrypoint sh
+  `--status [--json]` lists built and stale layers (read only);
+  `--remove <layer>` deletes a layer's build. Check display configs only: `docker compose run --rm --entrypoint sh
   pipeline -c 'node /opt/pipeline/style/cli.mjs check
   /opt/pipeline/layers/*.style.json'`.
 - Web map: `docker compose up -d --build web` (<http://localhost:8080>,
@@ -106,6 +113,20 @@ Planned layout is in `docs/design/01_architecture.md`. In short: `pipeline/`
 and `web/` are independent components; `data/raw/` and `data/tiles/` are not
 committed; real data and `.pmtiles` never go in git. CI uses a synthetic
 test case in `pipeline/tests/fixtures/`. `web/` never reads `data/raw/`.
+
+## Adding or restyling a layer
+
+Use the project skills in `.claude/skills/`: `add-layer`, `restyle-layer`,
+`build-layers`, `layer-status`, `update-layer-data`, `remove-layer`,
+`inspect-data`, `run-map` and `run-checks`. The README table (Using Claude
+Code) maps each to its plain command. Skills hold procedure only: they
+call documented commands (`pipeline/bin/run.sh` with `--status` and
+`--remove`, `pipeline/bin/inspect.sh`, `scripts/screenshot.sh` writing
+`tmp/screenshots/`, the `CONTRIBUTING.md` checks); new logic goes into the
+pipeline or `scripts/` with tests first. Claude Code stays optional.
+`remove-layer` always confirms with the user. Data is never committed: a
+layer PR holds the two config files only, never anything from `data/`,
+`.pmtiles` or screenshots.
 
 ## Working rules
 

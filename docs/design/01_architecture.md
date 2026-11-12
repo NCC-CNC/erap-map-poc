@@ -30,9 +30,10 @@ runtime.
 ```text
 pipeline/
   Dockerfile          GDAL base image plus tippecanoe, pmtiles CLI and Node
-  bin/run.sh          entry point: runs every layer, or the ones named
+  bin/run.sh          entry point: runs every layer, or the ones named;
+                      --status (built, stale) and --remove (a build)
   lib/*.sh            shared functions (logging, ogr helpers, tile build,
-                      raster tiles)
+                      raster tiles, status)
   layers/<name>.env   one config per layer: type (vector or raster), input,
                       filters, tippecanoe flags
   layers/<name>.style.json
@@ -160,7 +161,8 @@ optional.
   read-only over the image's copy (so editing a layer's `.env` or
   `.style.json` needs no image rebuild), under the `pipeline` profile so
   `docker compose up` does not start it. Run on demand with
-  `docker compose run --rm pipeline [layer ...]`. It runs as
+  `docker compose run --rm pipeline [layer ...]` (`--status` lists what is
+  built and stale, `--remove <layer>` deletes a build). It runs as
   `${PIPELINE_UID:-10001}:${PIPELINE_GID:-10001}`; on Linux set both to the
   host user so the tiles are owned by them. Docker Desktop needs nothing.
 - `web-dev` (profile `dev`): the frontend dev workflow, decided in M1 as a
@@ -169,7 +171,9 @@ optional.
   image the web build uses, with `./web` bind-mounted at `/repo/web`, its
   Linux `node_modules` in the named volume `web-dev-node-modules` (`npm ci`
   only when `package-lock.json` changed), and `./data/tiles` read-only at
-  `/repo/data/tiles`, where `vite.config.ts` looks by default. Port
+  `/repo/data/tiles`, where `vite.config.ts` looks by default, plus
+  `./pipeline/schema` and `./pipeline/tests/fixtures` read-only at the same
+  paths under `/repo`, which the web tests read. Port
   `${WEB_DEV_PORT:-5173}`. File events do not reach the container from
   Windows bind mounts, so `VITE_USE_POLLING` (default 1) turns on Vite's
   polling watcher. `npm run dev` on the host still works for anyone with

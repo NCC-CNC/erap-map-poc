@@ -28,8 +28,46 @@ All notable changes to this project are documented here. The format is based on
   the new `RAW_DIR` setting (compose mounts `${RAW_DIR:-./data/raw}`
   read-only); `.gitignore` gains `*.tif`, `*.tiff`, `*.vrt`, `*.gdb/` and
   `data/work/`. Tests: `raster.bats` (13 tests on synthetic rasters made at
-  test time) and web tests for the raster path. The `web-dev` service now
-  mounts `pipeline/` read-only, which the web tests read.
+  test time; 73 bats tests in all), a raster case in `status.bats`
+  (`--status` shows `type`, `format` and `tile_count`; `--remove` works for
+  rasters too) and web tests for the raster path.
+- Pipeline `--status` and `--remove`, and Claude Code skills for most
+  pipeline and app tasks (#54). `run.sh --status [--json] [layer ...]`
+  (alias `--list`, read only, `lib/status.sh`) lists every configured or
+  built layer as `current`, `stale` (its `.env`, `.style.json` or source
+  data, including shapefile sidecars or the zip, is newer than the
+  manifest's `built_at`, or the archive is missing), `not built`,
+  `invalid` (the `.env` does not load, no `.style.json`, or no source
+  data) or `orphan` (built, config gone), with notes, build time, archive
+  size, zooms, feature count and largest tile. `run.sh --remove layer ...`
+  drops each layer's manifest entry (atomically, `manifest_remove`), then
+  its archive, and rewrites `style.json`; configs are left to `git rm`.
+  Tested in `status.bats` (59 bats tests in all). New project skills
+  `build-layers`, `layer-status`, `update-layer-data`, `remove-layer`,
+  `inspect-data`, `run-map` and `run-checks` call only documented
+  commands; the README gains "Using Claude Code (optional)" with a table
+  of each task's plain command and skill, and "Removing a layer";
+  `CONTRIBUTING.md` says how to add or change a skill.
+  `.claude/settings.json` allows the status, inspect, build, map,
+  screenshot and check commands, and puts `--remove` on the `ask` list.
+- Claude Code skills and helpers for adding and restyling layers (#41).
+  Project skills `add-layer` and `restyle-layer` in `.claude/skills/`.
+  `pipeline/bin/inspect.sh` (in the pipeline image, on its `PATH`):
+  a summary of a source dataset (layers, feature count, geometry type, CRS,
+  WGS84 extent, shapefile encoding, field stats and low-cardinality values,
+  feature id candidates, and for polygons invalid geometries, union parts
+  and holes, overlap and GDAL's coverage check), as text or `--json`, with
+  hints for the layer config; tested in `inspect.bats`.
+  `scripts/screenshot.sh`: screenshots of the map at given `zoom/lat/lon`
+  views on the light and dark basemaps, from a private copy of the web image
+  (`erap-map-web:screenshot`) on a spare port (8090 up) and a pinned
+  Playwright image (`mcr.microsoft.com/playwright:v1.55.0-noble`, by
+  digest) on a private network, both removed afterwards; output in the
+  git-ignored `tmp/screenshots/`. The web map keeps its view in the URL hash
+  (`#zoom/lat/lon`, MapLibre `hash`), which the screenshots use and which
+  makes a view shareable. `.claude/settings.json` allows the pipeline run,
+  `inspect.sh` and `screenshot.sh`.
+
 - Data-driven layer styles (#39, ADR 0007). Each layer gains
   `pipeline/layers/<layer>.style.json`: `title`, `defaultVisible`, `order`
   (draw order, default 0, ties by name), `popup`, and either the `symbology`
@@ -196,6 +234,13 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- README pass (#37): a screenshot of the map (synthetic layers, a pop-up
+  open), a project map in place of the template's "What's included", and
+  new "Using the map" and "Adding a layer" sections for per-layer `.env`
+  and `.style.json` configs. Usage names both synthetic layers and rebuilds
+  images with `--build`, since `docker compose run` otherwise reuses a stale
+  image after a pull. The auto-merge, branch update and cache warming notes
+  move to `CONTRIBUTING.md` (Repo automation).
 - Base images in `pipeline/Dockerfile` and `web/Dockerfile` (GDAL, Node,
   nginx) are pinned by tag and digest in literal `FROM` lines instead of
   `ARG ..._IMAGE` defaults, so Dependabot's docker ecosystem can propose
@@ -230,6 +275,11 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- The local web check (`docker compose --profile dev run --rm --no-deps
+  web-dev ...`) failed 5 test files because `web-dev` mounted only `web/`
+  and the tests read the display schema and expected display fixture from
+  `../pipeline` (#52). Compose now mounts `pipeline/schema/` and
+  `pipeline/tests/fixtures/` read-only into `web-dev` at the same paths.
 - MapLibre worker failed to load ("Worker failed to load") in the built app
   (#26): maplibre-gl builds its worker URL at runtime, so Vite never emitted
   `maplibre-gl-worker.mjs`. `src/map/worker.ts` now imports it with `?url`

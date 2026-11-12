@@ -21,12 +21,13 @@ GDAL or tippecanoe) is needed on the host. On Windows, use Git Bash: the
 git clone https://github.com/NCC-CNC/erap-map-poc.git && cd erap-map-poc
 cp .env.example .env                      # optional: ports, Linux UIDs, RAW_DIR
 
-docker compose run --rm pipeline sample sample_points   # tiles into data/tiles/
+docker compose run --rm --build pipeline sample sample_points   # tiles into data/tiles/
 docker compose up -d --build web          # map at http://localhost:8080
 docker compose --profile dev up web-dev   # or Vite with hot reload on :5173
 ```
 
-See `README.md` (Usage) for ports, `.env` settings and Linux file ownership.
+See `README.md` (Usage) for ports, `.env` settings, rebuilding images after
+a pull, and Linux file ownership.
 
 Real source data stays outside the repo: set `RAW_DIR` in `.env` (or the
 shell) to the folder holding it, which compose mounts read-only at
@@ -40,16 +41,55 @@ shell) to the folder holding it, which compose mounts read-only at
 A layer is `pipeline/layers/<layer>.env` (input and tiling) plus
 `pipeline/layers/<layer>.style.json` (title, draw order, style, legend,
 pop-up), described in `docs/design/02_data_layers_and_popups.md`, ADR 0007
-and, for binary raster layers (`LAYER_TYPE=raster`), ADR 0008. Nothing in
-`web/` changes: the map reads every layer from
-`data/tiles/manifest.json`. Rerun the pipeline for that layer and reload the
-page; compose mounts `pipeline/layers/`, so neither image needs a rebuild.
-Check display configs without building:
+and, for binary raster layers (`LAYER_TYPE=raster`), ADR 0008, with a
+step-by-step guide in `README.md` (Adding a layer). Nothing in `web/`
+changes: the map reads every layer from `data/tiles/manifest.json`. Rerun
+the pipeline for that layer and reload the page; compose mounts
+`pipeline/layers/`, so neither image needs a rebuild. Check display configs
+without building:
 
 ```sh
 docker compose run --rm --entrypoint sh pipeline -c \
   'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.style.json'
 ```
+
+Helpers for checking a layer by hand (Claude Code's skills use the same
+ones, see below):
+
+```sh
+# Summarise a source dataset (path relative to data/raw/; --json for more)
+docker compose run --rm --build --entrypoint inspect.sh pipeline my/data.shp
+# What is built and what is stale; remove a layer's build (README.md)
+docker compose run --rm pipeline --status
+docker compose run --rm pipeline --remove mylayer
+# Screenshot the map at zoom/lat/lon views, light and dark basemaps,
+# into tmp/screenshots/ (a private web container on port 8090 or higher)
+scripts/screenshot.sh -n mylayer 4/55/-110 8/53.9/-114.2
+```
+
+### Adding or changing a Claude Code skill
+
+Claude Code is optional (`README.md`, Using Claude Code). Its project
+skills live in `.claude/skills/<name>/SKILL.md`. To add or change one:
+
+- Procedure only, logic in scripts. A skill says which documented
+  commands to run, in what order, and what to check in their output. If
+  it needs something no command does yet (a new check, a report, a
+  change to files), add that to the pipeline (`pipeline/bin/run.sh`,
+  `pipeline/lib/`, with bats tests) or `scripts/` first, with shellcheck
+  and docs, then call it from the skill.
+- Keep it short (under about 80 lines), with `name` (the folder name) and
+  a `description` frontmatter that says what it does and the natural
+  requests it should answer, since that is how Claude Code picks it.
+- Follow the data and Docker rules: no input or output data in git,
+  draft PRs only, no extra image tags, `--rm` on every container.
+- Keep the README table (Using Claude Code) in step: every skill has a
+  row with the plain command, so the task can be done without Claude
+  Code.
+- `.claude/settings.json` allow-lists read-only and build commands only.
+  Never allow-list a destructive one; `--remove` is on the `ask` list so
+  it always prompts. Never put a wildcard before the image name in a
+  `docker run` rule: it would also match `--entrypoint` or extra mounts.
 
 ### Checks
 
@@ -63,11 +103,11 @@ same tools at the same versions as CI, all in Docker:
 export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
-# pipeline job: shellcheck, hadolint, bats (53 tests, including the display
+# pipeline job: shellcheck, hadolint, bats (73 tests, including the display
 # tool's node:test unit tests), runtime image
 docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
-  pipeline/bin/run.sh pipeline/lib/*.sh pipeline/layers/*.env \
-  pipeline/tests/fixtures/*.sh pipeline/tests/*.bats
+  pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \
+  pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh
 docker run --rm -v "$repo":/mnt -w /mnt hadolint/hadolint:v2.15.1 \
   hadolint --config .hadolint.yaml pipeline/Dockerfile web/Dockerfile
 docker build --target test -t erap-map-pipeline:test pipeline
@@ -102,8 +142,51 @@ web smoke test of the nginx image is CI only); see the Commands section of
 The NCC ConsTech Automation app arms auto-merge on every non-draft PR from a
 branch in this repo, so the PR merges itself as soon as `checks` passes. If
 it is not ready, open it as a draft and mark it ready for review later. PRs
-from forks and from Dependabot merge by hand. See `README.md` (Auto-merge and
-branch updates).
+from forks and from Dependabot merge by hand. See Repo automation below.
+
+## Repo automation
+
+For maintainers. None of this is needed to use the map or add data.
+
+### Auto-merge and branch updates
+
+Two workflows in `.github/workflows/` make green PRs merge themselves. Both
+act through the NCC ConsTech Automation GitHub App, owned by the `NCC-CNC`
+org, so there is no personal access token to create or rotate.
+
+- `auto-merge.yml` arms squash auto-merge on every PR into `main` opened from
+  a branch in this repo (pushing one needs write access, so this covers the
+  owner and maintainers) and brings the PR level with `main`. PRs from forks
+  and from Dependabot are never armed and merge by hand. A draft is armed
+  when it is marked ready for review.
+- `update-branches.yml` updates every armed PR after each push to `main`, so
+  strict "up to date" branch protection does not leave them stuck BEHIND.
+
+One-time setup (org or repo admin):
+
+- Install the NCC ConsTech Automation app on this repo.
+- Give this repo access to the org-level `AUTOMATION_APP_CLIENT_ID` variable
+  (the app's Client ID, not its App ID) and the org-level
+  `AUTOMATION_APP_PRIVATE_KEY` secret; both are shared with selected
+  repositories.
+- Turn on "Allow auto-merge" in the repo settings
+  (`scripts/bootstrap-repo-settings.sh` does this).
+
+`GITHUB_TOKEN` cannot be used because GitHub starts no workflows for pushes or
+merges made with it: "Closes #N" would not close issues, and the PR's checks
+would never run on an updated branch. `ci.yml` runs on PRs only: with strict
+protection every PR is tested against current `main` before it merges.
+
+### Cache warming
+
+`.github/workflows/warm-cache.yml` saves the CI caches from `main`, because a
+PR can read caches saved on `main` but not caches saved by another PR. It
+builds the pipeline `test` image and the web image with the same Docker
+layer cache scopes as `ci.yml` (`pipeline`, `web`), so a new PR does not
+rebuild tippecanoe from source, and fills the npm cache for `web/`. It runs
+on pushes to `main` that touch `pipeline/` or `web/`, twice a week (unused
+caches expire after 7 days), and by hand. If you change a cache scope or
+build setting in `ci.yml`, change it here too.
 
 ## Conventions
 

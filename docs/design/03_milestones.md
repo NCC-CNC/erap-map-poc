@@ -8,7 +8,7 @@ milestone below should become a GitHub milestone with issues under it.
 - Fill in the brief, CLAUDE.md, architecture note, and the stack ADRs.
 - Run `scripts/bootstrap-repo-settings.sh` once (branch protection,
   auto-merge, labels). Needs a GitHub admin on `NCC-CNC/erap-map-poc`.
-- Decide on solo-maintainer auto-merge (see README).
+- Decide on solo-maintainer auto-merge (see Repo automation in CONTRIBUTING.md).
 
 ## M1: Skeleton end to end
 
