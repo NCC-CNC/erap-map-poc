@@ -21,7 +21,7 @@ import {
   rgba,
 } from '../display.mjs';
 
-const layersDir = new URL('../../layers/', import.meta.url);
+const layersDir = new URL('../../tests/layers/', import.meta.url);
 const readConfig = (name) => JSON.parse(readFileSync(new URL(`${name}.style.json`, layersDir)));
 const expected = JSON.parse(
   readFileSync(new URL('../../tests/fixtures/expected_display.json', import.meta.url)),

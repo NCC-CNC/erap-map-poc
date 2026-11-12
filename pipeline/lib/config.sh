@@ -3,7 +3,7 @@
 #
 # A layer config is a bash file, pipeline/layers/<layer>.env, sourced in a
 # subshell per layer. The layer name is the file name without `.env`.
-# Variables (see layers/sample.env for a worked vector example and
+# Variables (see tests/layers/sample.env for a worked vector example and
 # layers/forest.env for a raster one):
 #
 #   LAYER_TYPE              optional, `vector` (default) or `raster`. A raster

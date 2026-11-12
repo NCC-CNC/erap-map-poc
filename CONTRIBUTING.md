@@ -21,7 +21,8 @@ GDAL or tippecanoe) is needed on the host. On Windows, use Git Bash: the
 git clone https://github.com/NCC-CNC/erap-map-poc.git && cd erap-map-poc
 cp .env.example .env                      # optional: ports, Linux UIDs, RAW_DIR
 
-docker compose run --rm --build pipeline sample sample_points   # tiles into data/tiles/
+# Demo tiles into data/tiles/ from the synthetic test layers (no data needed)
+docker compose run --rm --build -e PIPELINE_LAYERS_DIR=/opt/pipeline/tests/layers pipeline
 docker compose up -d --build web          # map at http://localhost:8080
 docker compose --profile dev up web-dev   # or Vite with hot reload on :5173
 ```
@@ -103,11 +104,11 @@ same tools at the same versions as CI, all in Docker:
 export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
-# pipeline job: shellcheck, hadolint, bats (73 tests, including the display
+# pipeline job: shellcheck, hadolint, bats (74 tests, including the display
 # tool's node:test unit tests), runtime image
 docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
   pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \
-  pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh
+  pipeline/tests/layers/*.env pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh
 docker run --rm -v "$repo":/mnt -w /mnt hadolint/hadolint:v2.15.1 \
   hadolint --config .hadolint.yaml pipeline/Dockerfile web/Dockerfile
 docker build --target test -t erap-map-pipeline:test pipeline
