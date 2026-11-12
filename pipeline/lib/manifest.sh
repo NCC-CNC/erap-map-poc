@@ -9,6 +9,7 @@
 #         "minzoom": 0, "maxzoom": 8,
 #         "bounds": [west, south, east, north], "center": [lon, lat, zoom],
 #         "built_at": "2026-01-01T00:00:00Z",
+#         "display_updated_at": "2026-01-01T00:00:00Z",
 #         "display": { "title": ..., "defaultVisible": true, "order": 10,
 #                      "popup": {...}, "layers": [...], "legend": {...} },
 #         "build_seconds": 3, "bytes": 12345,
@@ -19,7 +20,11 @@
 # `type` is the layer's LAYER_TYPE (`vector` or `raster`) and `format` the
 # archive's tile type from its PMTiles header (`mvt` or `png`). The fields
 # up to display are the ones the web app reads (display is the resolved
-# <layer>.style.json, lib/display.sh). The rest is the build report:
+# <layer>.style.json, lib/display.sh). `display_updated_at` is when display
+# was last written: by a build (then equal to built_at) or by `run.sh
+# --style-only` (manifest_set_display), which changes nothing else in the
+# entry. An entry from before it existed has none; read it as built_at. The
+# rest is the build report:
 #
 #   vector: "feature_count": 15, "profile": null, "min_visible_px": 1,
 #           "max_tile_bytes": 1234,
@@ -87,6 +92,7 @@ manifest_update() {
              bounds: $header.bounds,
              center: $header.center,
              built_at: $now,
+             display_updated_at: $now,
              display: $display,
              build_seconds: $seconds,
              bytes: $bytes
@@ -116,6 +122,33 @@ vector_report() {
        max_tile_bytes: ([.[].max_tile_bytes] | max),
        zooms: .
      }' "$stats_file" || die "cannot read $stats_file"
+}
+
+# manifest_set_display OUT_DIR LAYER DISPLAY_FILE: replace the `display`
+# block of LAYER's entry in OUT_DIR/manifest.json with the resolved one in
+# DISPLAY_FILE and set its display_updated_at, for `run.sh --style-only`.
+# built_at and the build report are kept. Atomic, like manifest_update.
+manifest_set_display() {
+  local out_dir=$1 layer=$2 display_file=$3
+  local manifest="${out_dir}/manifest.json"
+  jq -e --arg name "$layer" '.layers | type == "array" and any(.[]; .name == $name)' \
+    "$manifest" >/dev/null 2>&1 || die "no entry for $layer in $manifest"
+
+  local now display tmp="${manifest}.$$.tmp"
+  now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  display=$(jq -c '.' "$display_file") || die "cannot read $display_file"
+  jq --arg name "$layer" --arg now "$now" --argjson display "$display" \
+    '.updated_at = $now
+     | .layers |= map(if .name == $name
+         then .display = $display | .display_updated_at = $now
+         else . end)' \
+    "$manifest" >"$tmp" \
+    || {
+      rm -f "$tmp"
+      die "cannot write $manifest"
+    }
+  mv -f "$tmp" "$manifest"
+  log_info "updated the display of $layer in $manifest"
 }
 
 # manifest_remove OUT_DIR LAYER: drop LAYER's entry from OUT_DIR/manifest.json

@@ -106,7 +106,7 @@ jobs:
           shellcheck --version
           shellcheck -x pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \
             pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh \
-            scripts/setup.sh scripts/tests/*.bats
+            scripts/check-tiles-cache.sh scripts/setup.sh scripts/tests/*.bats
 
       - name: hadolint
         run: hadolint --config .hadolint.yaml pipeline/Dockerfile
@@ -196,7 +196,12 @@ jobs:
 
       - name: Smoke test the web image
         run: |
-          docker run -d --name web -p 8080:8080 --read-only --tmpfs /tmp erap-map-web:ci
+          # A scratch tiles dir, mounted as docker-compose mounts data/tiles.
+          tiles="$RUNNER_TEMP/tiles"
+          mkdir -p "$tiles"
+          chmod a+rx "$tiles"
+          docker run -d --name web -p 8080:8080 --read-only --tmpfs /tmp \
+            -v "$tiles:/srv/tiles:ro" erap-map-web:ci
           base=http://127.0.0.1:8080
           ok=
           for _ in $(seq 1 20); do
@@ -216,6 +221,8 @@ jobs:
           curl -fsS -o /dev/null -D "$RUNNER_TEMP/worker.headers" "$base/$worker"
           cat "$RUNNER_TEMP/worker.headers"
           grep -qi '^content-type: application/javascript' "$RUNNER_TEMP/worker.headers"
+          # A reload picks up a new manifest.json and style.json (#53).
+          ../scripts/check-tiles-cache.sh "$base" "$tiles"
           docker rm -f web
 
   # Compose: the file and every profile resolve.

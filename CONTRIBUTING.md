@@ -51,8 +51,12 @@ and, for binary raster layers (`LAYER_TYPE=raster`), ADR 0008, with a
 step-by-step guide in `README.md` (Adding a layer). Nothing in `web/`
 changes: the map reads every layer from `data/tiles/manifest.json`. Rerun
 the pipeline for that layer and reload the page; compose mounts
-`pipeline/layers/`, so neither image needs a rebuild. Check display configs
-without building:
+`pipeline/layers/`, so neither image needs a rebuild. A change to
+`<layer>.style.json` only (colours, legend, pop-up, title, order,
+visibility, for vector and raster layers) needs no re-tiling:
+`docker compose run --rm pipeline --style-only <layer>` updates the
+manifest entry and `style.json` in seconds. Check display configs without
+building:
 
 ```sh
 docker compose run --rm --entrypoint sh pipeline -c \
@@ -65,8 +69,10 @@ ones, see below):
 ```sh
 # Summarise a source dataset (path relative to data/raw/; --json for more)
 docker compose run --rm --build --entrypoint inspect.sh pipeline my/data.shp
-# What is built and what is stale; remove a layer's build (README.md)
+# What is built and what is stale; apply a .style.json change without
+# re-tiling; remove a layer's build (README.md)
 docker compose run --rm pipeline --status
+docker compose run --rm pipeline --style-only mylayer
 docker compose run --rm pipeline --remove mylayer
 # Screenshot the map at zoom/lat/lon views, light and dark basemaps,
 # into tmp/screenshots/ (a private web container on port 8090 or higher)
@@ -109,12 +115,12 @@ same tools at the same versions as CI, all in Docker:
 export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
-# pipeline job: shellcheck, hadolint, bats (73 tests, including the display
+# pipeline job: shellcheck, hadolint, bats (83 tests, including the display
 # tool's node:test unit tests; 41 more for scripts/setup.sh), runtime image
 docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
   pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \
   pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh \
-  scripts/setup.sh scripts/tests/*.bats
+  scripts/check-tiles-cache.sh scripts/setup.sh scripts/tests/*.bats
 docker run --rm -v "$repo":/mnt -w /mnt hadolint/hadolint:v2.15.1 \
   hadolint --config .hadolint.yaml pipeline/Dockerfile web/Dockerfile
 docker build --target test -t erap-map-pipeline:test pipeline
@@ -142,8 +148,10 @@ docker run --rm -v "$repo":/repo -w /repo node:26.13.0-bookworm-slim \
 The first pipeline image build takes about 4 minutes (it compiles
 tippecanoe); later builds are cached and take seconds. The web checks take
 about 15 seconds once the Node image is pulled. CI runs the same steps (the
-web smoke test of the nginx image is CI only); see the Commands section of
-`CLAUDE.md` for CI timings.
+web smoke test of the nginx image is CI only, including
+`scripts/check-tiles-cache.sh`, which checks that a reload picks up a new
+`manifest.json` and `style.json`); see the Commands section of `CLAUDE.md`
+for CI timings.
 
 ### Pull requests
 
