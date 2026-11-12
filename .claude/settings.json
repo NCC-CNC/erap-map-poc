@@ -27,6 +27,8 @@
       "Bash(docker compose run --rm --build pipeline *)",
       "Bash(docker compose run --rm pipeline)",
       "Bash(docker compose run --rm pipeline *)",
+      "Bash(docker compose run --rm pipeline --style-only)",
+      "Bash(docker compose run --rm pipeline --style-only *)",
       "Bash(docker compose run --rm --build --entrypoint inspect.sh pipeline *)",
       "Bash(docker compose run --rm --entrypoint inspect.sh pipeline *)",
       "Bash(scripts/screenshot.sh *)",

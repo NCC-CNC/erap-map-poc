@@ -92,8 +92,8 @@ touch_later() {
   rm "${PIPELINE_OUTPUT_DIR}/gamma.pmtiles"
   [ "$(state_of alpha)" = stale ]
   [ "$(notes_of alpha)" = "alpha.env changed since the build" ]
-  [ "$(state_of beta)" = stale ]
-  [ "$(notes_of beta)" = "beta.style.json changed since the build" ]
+  [ "$(state_of beta)" = restyle ]
+  [ "$(notes_of beta)" = "beta.style.json changed since the display was last updated (--style-only updates it)" ]
   [ "$(state_of gamma)" = stale ]
   [ "$(notes_of gamma)" = "archive missing" ]
   [ "$(state_of delta)" = current ]
@@ -106,8 +106,8 @@ touch_later() {
   run "$RUN" --status beta
   [ "$status" -eq 0 ]
   [[ ${lines[1]} == "beta "*stale* ]]
-  [ "${lines[2]}" = "  - beta.style.json changed since the build" ]
-  [ "${lines[3]}" = "  - source data changed since the build" ]
+  [ "${lines[2]}" = "  - source data changed since the build" ]
+  [ "${lines[3]}" = "  - beta.style.json changed since the display was last updated (--style-only updates it)" ]
 }
 
 @test "--status checks every file of a shapefile and the zip of a zipped input" {

@@ -8,16 +8,25 @@
 #
 # Usage: run.sh [-h|--help] [layer ...]
 #        run.sh --status [--json] [layer ...]
+#        run.sh --style-only [layer ...]
 #        run.sh --remove layer ...
 #
 #   (no option)  build the named layers, or every layer with a config.
+#   --style-only update the named layers' display from their .style.json,
+#                or every built layer's, without re-tiling: check each
+#                config, replace the display block of its manifest.json
+#                entry (the build report is kept) and rewrite style.json.
+#                For a display change (colours, legend, pop-up, title,
+#                order, visibility) of a vector or raster layer. A config
+#                with `breaks` re-reads the source data, but not the tiles.
 #   --status     list every configured or built layer (or the named ones)
-#                with its state: current, stale (a config or the source
-#                data changed since the build), not built, invalid (cannot
-#                be built as configured) or orphan (built, config gone),
-#                plus build time, archive size, zooms, feature count (tile
-#                count for a raster layer) and largest tile. Read only.
-#                --list is the same.
+#                with its state: current, stale (the .env or the source
+#                data changed since the build), restyle (only the
+#                .style.json changed: --style-only is enough), not built,
+#                invalid (cannot be built as configured) or orphan (built,
+#                config gone), plus build time, archive size, zooms, feature
+#                count (tile count for a raster layer) and largest tile.
+#                Read only. --list is the same.
 #   --json       with --status: print JSON instead of a table.
 #   --remove     delete the named layers' archives and manifest entries
 #                and rewrite style.json. The configs in the layers dir are
@@ -31,9 +40,10 @@
 #   PIPELINE_LAYERS_DIR  layer configs                 (default <pipeline>/layers)
 #   TMPDIR               parent of the scratch dir     (default /tmp)
 #
-# A build attempts every layer; the exit status is 1 if any layer failed (or
-# anything else went wrong), 2 for a usage error (including a layer with no
-# config to build, or nothing built to remove), 0 otherwise.
+# A build or style-only run attempts every layer; the exit status is 1 if
+# any layer failed (or anything else went wrong), 2 for a usage error
+# (including a layer with no config to build, nothing built to restyle or
+# remove), 0 otherwise.
 set -euo pipefail
 
 PIPELINE_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -136,6 +146,132 @@ build_raster_layer() {
     "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" "$PIPELINE_OUTPUT_DIR" "$layer_scratch" "$report"
 }
 
+# restyle_layer NAME SCRATCH: the --style-only steps for one built layer, in
+# a subshell like build_layer: resolve <layer>.style.json for the type the
+# archive was built as, and put it in the manifest entry. The archive is not
+# touched; a bad config fails the layer and keeps its entry as it was.
+restyle_layer() {
+  local name=$1 scratch=$2
+  PIPELINE_LOG_PREFIX=$name
+  local manifest="${PIPELINE_OUTPUT_DIR}/manifest.json"
+  local style="${PIPELINE_LAYERS_DIR}/${name}.style.json"
+  local layer_scratch="${scratch}/${name}" type data=-
+  mkdir -p "$layer_scratch"
+  local display="${layer_scratch}/display.json"
+
+  type=$(jq -er --arg n "$name" 'first(.layers[] | select(.name == $n)) | .type // "vector"' \
+    "$manifest") || die "no entry for $name in $manifest"
+
+  # `breaks` are computed from the data, which the tiles do not give back.
+  if [[ $type == vector ]] \
+    && jq -e 'any(.symbology.color? | objects; .breaks != null)' "$style" >/dev/null 2>&1; then
+    data="${layer_scratch}/${name}.geojsonl"
+    restyle_data "$name" "$manifest" "$data"
+  fi
+
+  resolve_display "$name" "$style" "$data" "$display" "$type"
+  manifest_set_display "$PIPELINE_OUTPUT_DIR" "$name" "$display"
+}
+
+# restyle_data NAME MANIFEST OUT: normalise NAME's source data to OUT, as
+# its build did, for a display config with `breaks`. Fails if the .env or
+# the source data changed since the build, as the breaks would then not
+# match the tiles: rebuild the layer instead.
+restyle_data() {
+  local name=$1 manifest=$2 out=$3
+  local env="${PIPELINE_LAYERS_DIR}/${name}.env"
+  [[ -f $env ]] || die "the display config has breaks, which need ${name}.env and the source data"
+  load_layer_config "$env"
+
+  local built_at changed src
+  built_at=$(jq -r --arg n "$name" \
+    'first(.layers[] | select(.name == $n)) | (.built_at | fromdateiso8601?) // 0' "$manifest")
+  src=$(source_mtime "$LAYER_INPUT") || die "input not found: $LAYER_INPUT"
+  changed=$(_newest_mtime "$env")
+  if ((${src:-0} > changed)); then changed=$src; fi
+  ((changed <= built_at)) \
+    || die "the display config has breaks, computed from the data, and ${name}.env or the source data changed since the build: rebuild the layer"
+
+  log_info "reading the source data for breaks (no tiling)"
+  normalise "$LAYER_INPUT" "$LAYER_SOURCE_LAYER" "$LAYER_SOURCE_SRS" \
+    "$LAYER_ENCODING" "$out" "${LAYER_FIELDS[@]}"
+}
+
+# style_only_main LAYER...: the --style-only mode. With no names, every
+# layer in the manifest whose archive and .style.json exist. Every named
+# layer is checked before any is updated; then each is attempted, as in a
+# build, and style.json is rewritten from the manifest.
+style_only_main() {
+  require_tools jq node
+  local manifest="${PIPELINE_OUTPUT_DIR}/manifest.json" layers=("$@") name
+  if ((${#layers[@]} == 0)); then
+    if [[ ! -s $manifest ]]; then
+      log_error "no layers built in $PIPELINE_OUTPUT_DIR: build them first"
+      return 2
+    fi
+    local built
+    built=$(jq -r '.layers[]?.name' "$manifest") || die "cannot read $manifest"
+    while IFS= read -r name; do
+      [[ -n $name ]] || continue
+      if [[ ! -f "${PIPELINE_OUTPUT_DIR}/${name}.pmtiles" ]]; then
+        log_warn "skipping $name: archive missing (rebuild it)"
+      elif [[ ! -f "${PIPELINE_LAYERS_DIR}/${name}.style.json" ]]; then
+        log_warn "skipping $name: no ${name}.style.json in $PIPELINE_LAYERS_DIR"
+      else
+        layers+=("$name")
+      fi
+    done <<<"$built"
+    if ((${#layers[@]} == 0)); then
+      log_error "no built layers with a display config to update"
+      return 2
+    fi
+  fi
+
+  for name in "${layers[@]}"; do
+    if ! layer_name_valid "$name"; then
+      log_error "invalid layer name: $name"
+      return 2
+    fi
+    if [[ ! -f "${PIPELINE_OUTPUT_DIR}/${name}.pmtiles" ]] \
+      || ! jq -e --arg n "$name" 'any(.layers[]?; .name == $n)' "$manifest" >/dev/null 2>&1; then
+      log_error "layer '$name' is not built yet: build it first (run.sh $name)"
+      return 2
+    fi
+  done
+  [[ -w $PIPELINE_OUTPUT_DIR ]] || die "output dir not writable: $PIPELINE_OUTPUT_DIR"
+
+  local scratch
+  scratch=$(mktemp -d "${TMPDIR:-/tmp}/pipeline.XXXXXX")
+  # shellcheck disable=SC2064 # expand now: scratch is local to this function.
+  trap "rm -rf '${scratch}'" EXIT
+
+  local failed=() status
+  for name in "${layers[@]}"; do
+    set +e
+    (restyle_layer "$name" "$scratch")
+    status=$?
+    set -e
+    if ((status == 0)); then
+      log_info "layer $name: display updated"
+    else
+      log_error "layer $name: display not updated (exit $status)"
+      failed+=("$name")
+    fi
+  done
+
+  set +e
+  (write_style "$PIPELINE_OUTPUT_DIR")
+  local style_status=$?
+  set -e
+
+  if ((${#failed[@]} > 0)); then
+    log_error "${#failed[@]} of ${#layers[@]} layer(s) failed: ${failed[*]}"
+    return 1
+  fi
+  ((style_status == 0)) || return 1
+  log_info "display updated for ${#layers[@]} layer(s), no tiles rebuilt"
+}
+
 # require_tools TOOL...: fail unless every TOOL is on the PATH.
 require_tools() {
   local tool
@@ -213,11 +349,14 @@ main() {
         usage
         return 0
         ;;
-      --status | --list | --remove)
+      --status | --list | --remove | --style-only)
         local wanted=status
-        [[ $arg != --remove ]] || wanted=remove
+        case $arg in
+          --remove) wanted=remove ;;
+          --style-only) wanted=style ;;
+        esac
         if [[ $mode != build && $mode != "$wanted" ]]; then
-          log_error "--status and --remove cannot be used together"
+          log_error "--status, --remove and --style-only cannot be used together"
           return 2
         fi
         mode=$wanted
@@ -243,6 +382,10 @@ main() {
       ;;
     remove)
       remove_main "${layers[@]}"
+      return
+      ;;
+    style)
+      style_only_main "${layers[@]}"
       return
       ;;
   esac

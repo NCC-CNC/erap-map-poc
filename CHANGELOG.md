@@ -7,6 +7,29 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- `pipeline --style-only [layer ...]` (#53): apply `<layer>.style.json`
+  changes to built layers, vector or raster, without re-tiling. Each
+  config is checked as in a build, the `display` block of the layer's
+  `manifest.json` entry is replaced (atomically; `built_at` and the build
+  report are kept) and `style.json` is rewritten. No names means every
+  built layer with a display config. A layer with no archive is a usage
+  error (exit 2); a bad config fails that layer and leaves its entry
+  unchanged (exit 1). A stepped colour with `breaks` re-reads the source
+  data (no tiling), and fails if the source or `.env` changed since the
+  build. Manifest entries gain `display_updated_at` (a build sets it to
+  `built_at`). `--status` now compares `.style.json` with it: a layer
+  whose only change is its display config shows as the new state
+  `restyle`, while a changed `.env` or source still shows `stale` after a
+  style-only update. The CI web smoke test runs the new
+  `scripts/check-tiles-cache.sh`, which checks that nginx serves
+  `manifest.json` and `style.json` with `no-cache` and an ETag (304 while
+  unchanged, the new file once changed), so a reload is enough. The
+  `restyle-layer` skill uses `--style-only` (a full build only when the
+  `.env` must change), `build-layers` and `layer-status` know the
+  `restyle` state, and `.claude/settings.json` allow-lists
+  `docker compose run --rm pipeline --style-only`. Tests: `style_only.bats`
+  (10 tests), and `status.bats` and `run.bats` updated.
+
 - Binary raster layers, display only (#50, ADR 0008). `LAYER_TYPE=raster`
   in `<layer>.env` (with `LAYER_MIN_ZOOM`, `LAYER_MAX_ZOOM` up to 14, and
   optional `LAYER_NODATA`) builds `<layer>.pmtiles` of grey PNG tiles whose

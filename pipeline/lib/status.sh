@@ -5,10 +5,15 @@
 # Every layer with a config (<layer>.env in the layers dir), a manifest.json
 # entry or an archive (<layer>.pmtiles) is listed, in one of these states:
 #
-#   current    built after its configs and source data last changed.
-#   stale      built, but its .env, its .style.json or its source data has
-#              changed since (file modification time against the manifest's
-#              built_at), or its archive is missing. Rebuild it.
+#   current    built after its .env and source data last changed, and its
+#              display updated after its .style.json last changed.
+#   stale      built, but its .env or its source data has changed since
+#              (file modification time against the manifest's built_at), or
+#              its archive is missing. Rebuild it.
+#   restyle    built and not stale, but its .style.json has changed since
+#              the display was last updated (the manifest's
+#              display_updated_at, set by a build or by `run.sh
+#              --style-only`). `run.sh --style-only` updates it, no tiling.
 #   not built  configured, but not built yet (or every build failed).
 #   invalid    the config cannot be built as it is: the .env does not load,
 #              the .style.json is missing, or the source data is not found.
@@ -21,7 +26,8 @@
 #   { "layers": [ { "name": "sample", "state": "current", "notes": [],
 #       "configured": true, "built": true, "type": "vector", "format": "mvt",
 #       "input": "...",
-#       "built_at": "2026-01-01T00:00:00Z", "archive_bytes": 12345,
+#       "built_at": "2026-01-01T00:00:00Z",
+#       "display_updated_at": "2026-01-01T00:00:00Z", "archive_bytes": 12345,
 #       "minzoom": 0, "maxzoom": 8, "feature_count": 15, "tile_count": null,
 #       "max_tile_bytes": 1234 }, ... ] }
 #
@@ -96,12 +102,15 @@ _layer_status() {
   local name=$1 out_dir=$2 layers_dir=$3 entries=$4
   local env="${layers_dir}/${name}.env" style="${layers_dir}/${name}.style.json"
   local archive="${out_dir}/${name}.pmtiles"
-  local entry built_at=0 configured=false built=false state input="" type="" notes=()
+  local entry built_at=0 display_at=0 configured=false built=false state input="" type=""
+  local notes=() restyle=""
 
   entry=$(jq -c --arg n "$name" 'first(.[] | select(.name == $n)) // null' <<<"$entries")
   if [[ $entry != null ]]; then
     built=true
-    built_at=$(jq -r '(.built_at | fromdateiso8601?) // 0' <<<"$entry")
+    # An entry from before display_updated_at: the display is the build's.
+    read -r built_at display_at < <(jq -r '((.built_at | fromdateiso8601?) // 0) as $b
+      | "\($b) \((.display_updated_at | fromdateiso8601?) // $b)"' <<<"$entry")
   fi
   [[ ! -f $env ]] || configured=true
 
@@ -137,10 +146,21 @@ _layer_status() {
       local mtime
       mtime=$(_newest_mtime "$env")
       if ((${mtime:-0} > built_at)); then notes+=("${name}.env changed since the build"); fi
-      mtime=$(_newest_mtime "$style")
-      if ((${mtime:-0} > built_at)); then notes+=("${name}.style.json changed since the build"); fi
       if ((${src:-0} > built_at)); then notes+=("source data changed since the build"); fi
-      if ((${#notes[@]} > 0)); then state=stale; else state=current; fi
+      # The display config against the last display update, so a
+      # style-only update neither hides nor fakes a stale build.
+      mtime=$(_newest_mtime "$style")
+      if ((${mtime:-0} > display_at)); then
+        restyle="${name}.style.json changed since the display was last updated (--style-only updates it)"
+      fi
+      if ((${#notes[@]} > 0)); then
+        state=stale
+      elif [[ -n $restyle ]]; then
+        state=restyle
+      else
+        state=current
+      fi
+      if [[ -n $restyle ]]; then notes+=("$restyle"); fi
     fi
   fi
 
@@ -160,6 +180,7 @@ _layer_status() {
       format: $entry.format,
       input: (if $input == "" then null else $input end),
       built_at: $entry.built_at,
+      display_updated_at: ($entry.display_updated_at // $entry.built_at),
       archive_bytes: (if $bytes == "" then null else ($bytes | tonumber) end),
       minzoom: $entry.minzoom, maxzoom: $entry.maxzoom,
       feature_count: $entry.feature_count,
