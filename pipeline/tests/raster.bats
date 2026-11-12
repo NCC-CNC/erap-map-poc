@@ -275,7 +275,7 @@ assert_no_temp_files() {
   [[ $output == *"agriculture.style.json: ok"* ]]
 }
 
-@test "prepare: the source becomes a tiled 0/1 Byte GeoTIFF with no nodata, kept in the work dir" {
+@test "prepare: the source becomes a tiled 0/255 Byte GeoTIFF with no nodata, kept in the work dir" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
@@ -284,9 +284,9 @@ assert_no_temp_files() {
   run find "$cache" -name '*.tif'
   [ "$(wc -l <<<"$output")" -eq 1 ]
   local prepared=$output
-  # Nodata (255) became 0; the 1 cells stay 1.
+  # Nodata (255) became 0; the 1 cells became 255.
   run jq -e '.bands[0] | .type == "Byte" and .block == [512, 512]
-    and (has("noDataValue") | not) and .minimum == 0 and .maximum == 1' \
+    and (has("noDataValue") | not) and .minimum == 0 and .maximum == 255' \
     <<<"$(gdalinfo -json -stats "$prepared")"
   [ "$status" -eq 0 ]
   # The key beside it names the source.
@@ -297,14 +297,14 @@ assert_no_temp_files() {
   [ -z "$output" ]
 }
 
-@test "prepare: a Float32 source with NaN nodata becomes 0/1 Byte" {
+@test "prepare: a Float32 source with NaN nodata becomes 0/255 Byte" {
   raster_layer ag float
   run "$RUN" ag
   [ "$status" -eq 0 ]
   local prepared
   prepared=$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')
   run jq -e '.bands[0] | .type == "Byte" and (has("noDataValue") | not)
-    and .minimum == 0 and .maximum == 1' <<<"$(gdalinfo -json -stats "$prepared")"
+    and .minimum == 0 and .maximum == 255' <<<"$(gdalinfo -json -stats "$prepared")"
   [ "$status" -eq 0 ]
 }
 
@@ -375,4 +375,26 @@ assert_no_temp_files() {
   [ "$status" -eq 1 ]
   [[ $output == *"cannot create ${PIPELINE_WORK_DIR}/raster"* ]]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/cover.pmtiles" ]
+}
+
+@test "lower zooms average the share: the checkerboard reads as about half covered at z4" {
+  raster_layer cover byte
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  local archive="${PIPELINE_OUTPUT_DIR}/cover.pmtiles" png="${BATS_TEST_TMPDIR}/z4.png"
+  # The middle of the 20 km checkerboard of 2 km squares (make_raster.sh).
+  local x y px py
+  read -r x y px py < <(echo "150000 1330000" \
+    | gdaltransform -s_srs "$(gdalsrsinfo -o proj4 "${PIPELINE_INPUT_DIR}/cover.tif")" \
+      -t_srs EPSG:4326 -output_xy \
+    | awk '{
+        pi = atan2(0, -1); n = 2 ^ 4; r = $2 * pi / 180
+        fx = ($1 + 180) / 360 * n
+        fy = (1 - log(sin(r) / cos(r) + 1 / cos(r)) / pi) / 2 * n
+        printf "%d %d %d %d\n", fx, fy, (fx - int(fx)) * 256, (fy - int(fy)) * 256
+      }')
+  pmtiles tile "$archive" 4 "$x" "$y" >"$png"
+  run gdallocationinfo -valonly -b 1 "$png" "$px" "$py"
+  [ "$status" -eq 0 ]
+  ((output >= 90 && output <= 165))
 }

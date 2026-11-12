@@ -7,9 +7,10 @@
 # changing them needs no re-tiling. Display only: no pop-up.
 #
 #   1. prepare (once per source, cached): the source as an internally
-#      tiled, compressed Byte GeoTIFF in its own CRS and grid, 1 where the
-#      source is 1 and 0 for 0 and nodata (the source is expected to hold
-#      only 0, 1 and nodata), with no nodata value. One read of the source,
+#      tiled, compressed Byte GeoTIFF in its own CRS and grid, 255 where
+#      the source is 1 and 0 for 0 and nodata (the source is expected to
+#      hold only 0, 1 and nodata), with no nodata value: the grey level of
+#      full cover, so later steps need no scaling. One read of the source,
 #      in order, which is what a strip-layout source (1-row blocks, often
 #      Float32) needs: warping it directly re-decodes each strip for every
 #      warp window and took over 2 hours for a Canada-wide 30 m file. The
@@ -18,21 +19,28 @@
 #      layer's LAYER_SOURCE_SRS and LAYER_NODATA, so a rebuild (another zoom
 #      range, a code change) skips it. See raster_source.
 #   2. warp: gdalwarp the prepared file to EPSG:3857 at the max zoom's
-#      resolution, aligned to the tile grid, multithreaded (-multi and
-#      NUM_THREADS; a tiled input reads fast in any order).
-#   3. levels: for each lower zoom, the share covered, averaged (Float32,
-#      gdalwarp -r average) from the zoom above. Each level aligns with the
-#      tile grid, so tiling it copies pixels.
-#   4. tile: each level through `gdal raster tile` (multithreaded) at its own
-#      zoom, scaled to grey 0 to 255 with 0 as nodata, so --skip-blank leaves
-#      out empty tiles and empty pixels are transparent.
+#      resolution, multithreaded (-multi and
+#      NUM_THREADS; a tiled input reads fast in any order), over an extent
+#      snapped to the min zoom's pixel grid, so each overview below is
+#      exactly one zoom's grid.
+#   3. overviews: gdaladdo -r average, multithreaded, one per lower zoom,
+#      each averaging 2 x 2 pixels of the one above: the share covered, in
+#      256 grey levels.
+#   4. tile: each zoom, from its overview, through `gdal raster tile`
+#      (multithreaded) at that zoom only, with 0 as nodata, so --skip-blank
+#      leaves out empty tiles and empty pixels are transparent.
 #   5. pack: the tiles into an MBTiles file with sqlite3, then
 #      `pmtiles convert`, verified, then moved into place. GDAL's PMTiles
 #      driver writes vector tiles only.
 #
-# Averaging the share per zoom, rather than letting `gdal raster tile` build
-# the overviews, keeps the levels exact: its average skips nodata, so it
-# would make every partly covered pixel fully covered.
+# Averaging in overviews with no nodata, rather than letting `gdal raster
+# tile` build the lower zooms, keeps the share: its average skips nodata (0
+# here), so it would make every partly covered pixel fully covered. Each
+# overview rounds to a whole grey level, so a low zoom can be a level or two
+# off the exact share, which does not show.
+#
+# The intermediates are ZSTD level 1: the default (9) made the warp four
+# times slower. Full-Canada timings are in ADR 0009.
 #
 # Intermediates of steps 2 to 5 live in the per-run scratch dir (under
 # TMPDIR) and go as soon as they are packed. The archive is written to a
@@ -117,11 +125,13 @@ raster_source() {
   gdalbuildvrt -q "${opts[@]}" "$vrt" "$dataset" >/dev/null \
     || die "cannot read $dataset"
 
-  log_info "preparing $dataset (tiled 0/1 Byte, once per source)"
+  log_info "preparing $dataset (tiled 0/255 Byte, once per source)"
   _RASTER_SOURCE_TMP="${dir}/.${stem}.$$.tmp.tif"
   trap 'rm -f "${_RASTER_SOURCE_TMP:-}"' EXIT
-  # GDAL_NUM_THREADS decodes the source's blocks in parallel.
-  GDAL_NUM_THREADS=ALL_CPUS gdal_translate -q -ot Byte -a_nodata none \
+  # GDAL_NUM_THREADS decodes the source's blocks in parallel. 1 becomes 255
+  # (scaling in a VRT at the warp instead made the warp 16% slower).
+  GDAL_NUM_THREADS=ALL_CPUS gdal_translate -q -ot Byte -scale 0 1 0 255 \
+    -a_nodata none \
     -co TILED=YES -co BLOCKXSIZE=512 -co BLOCKYSIZE=512 \
     -co COMPRESS=ZSTD -co ZSTD_LEVEL=1 -co NUM_THREADS=ALL_CPUS -co BIGTIFF=IF_SAFER \
     "$vrt" "$_RASTER_SOURCE_TMP" >/dev/null \
@@ -142,52 +152,72 @@ raster_source() {
   printf '%s\n' "$final"
 }
 
-# raster_warp PREPARED MAX_ZOOM OUT: write OUT, PREPARED (0/1, no nodata) in
-# EPSG:3857 at MAX_ZOOM's resolution, aligned to the tile grid, Byte.
+# raster_warp PREPARED MIN_ZOOM MAX_ZOOM OUT: write OUT, PREPARED (0/255, no
+# nodata) in EPSG:3857 at MAX_ZOOM's resolution, Byte, no nodata. The extent is snapped outwards to MIN_ZOOM's
+# pixel grid (which is on the tile grid), so its width and height are
+# multiples of 2^(MAX_ZOOM - MIN_ZOOM) and every overview raster_overviews
+# builds is exactly one zoom's pixel grid.
 raster_warp() {
-  local input=$1 maxzoom=$2 out=$3
-  local res
+  local input=$1 minzoom=$2 maxzoom=$3 out=$4
+  local res coarse grid="${out%.*}.grid.vrt" te
   res=$(raster_resolution "$maxzoom")
+  coarse=$(raster_resolution "$minzoom")
+  # The EPSG:3857 extent on MIN_ZOOM's grid: -tap snaps to multiples of the
+  # resolution, and the tile grid's origin is a whole number of pixels
+  # from 0 at every zoom. A VRT, so no pixels are computed.
+  gdalwarp -q -overwrite -of VRT -t_srs EPSG:3857 -tr "$coarse" "$coarse" -tap \
+    "$input" "$grid" >/dev/null || die "cannot read the extent of $input"
+  te=$(gdalinfo -json "$grid" | jq -er '.cornerCoordinates
+    | "\(.upperLeft[0]) \(.lowerRight[1]) \(.lowerRight[0]) \(.upperLeft[1])"') \
+    || die "cannot read the extent of $input"
+  rm -f "$grid"
+
   # -r near: no new values. Cells outside the source keep INIT_DEST=0, and
-  # -dstnodata None leaves 0 a value, which the levels average.
+  # -dstnodata None leaves 0 a value, which the overviews average. ZSTD
+  # level 1 and SPARSE_OK (empty blocks not written): the default level 9
+  # took four times as long as the warp itself.
   log_info "warping to EPSG:3857 (z${maxzoom} resolution)"
-  gdalwarp -q -overwrite -srcnodata None -t_srs EPSG:3857 -tr "$res" "$res" -tap \
+  # shellcheck disable=SC2086 # te is four numbers.
+  gdalwarp -q -overwrite -srcnodata None -t_srs EPSG:3857 -te $te -tr "$res" "$res" \
     -r near -ot Byte -dstnodata None -wo INIT_DEST=0 \
     -multi -wo NUM_THREADS=ALL_CPUS -wm 1024 \
     -co TILED=YES -co BLOCKXSIZE=256 -co BLOCKYSIZE=256 \
-    -co COMPRESS=ZSTD -co ZSTD_LEVEL=1 -co SPARSE_OK=TRUE -co NUM_THREADS=ALL_CPUS -co BIGTIFF=IF_SAFER \
+    -co COMPRESS=ZSTD -co ZSTD_LEVEL=1 -co SPARSE_OK=TRUE \
+    -co NUM_THREADS=ALL_CPUS -co BIGTIFF=IF_SAFER \
     "$input" "$out" \
     || die "gdalwarp failed for $input"
 }
 
-# raster_level SRC ZOOM OUT: write OUT, the share of each ZOOM pixel covered,
-# averaged from SRC (the level above), Float32 0 to 1.
-raster_level() {
-  local src=$1 zoom=$2 out=$3
-  local res
-  res=$(raster_resolution "$zoom")
-  gdalwarp -q -overwrite -srcnodata None -dstnodata None -wo INIT_DEST=0 \
-    -tr "$res" "$res" -tap -r average -ot Float32 \
-    -multi -wo NUM_THREADS=ALL_CPUS \
-    -co TILED=YES -co COMPRESS=ZSTD -co ZSTD_LEVEL=1 -co PREDICTOR=3 -co NUM_THREADS=ALL_CPUS -co BIGTIFF=IF_SAFER \
-    "$src" "$out" \
-    || die "cannot average $src to z${zoom}"
+# raster_overviews RASTER LEVELS: add LEVELS overviews to RASTER (factors 2,
+# 4, ...), each the average of the one above, so a pixel's grey level is
+# the share of it covered. No nodata, so 0 counts in the average.
+raster_overviews() {
+  local raster=$1 levels=$2 factors=() i
+  ((levels > 0)) || return 0
+  for ((i = 1; i <= levels; i++)); do factors+=($((1 << i))); done
+  GDAL_NUM_THREADS=ALL_CPUS COMPRESS_OVERVIEW=ZSTD ZSTD_LEVEL_OVERVIEW=1 \
+    SPARSE_OK_OVERVIEW=YES BIGTIFF_OVERVIEW=IF_SAFER \
+    gdaladdo -q -r average "$raster" "${factors[@]}" >/dev/null \
+    || die "cannot build the overviews of $raster"
 }
 
-# raster_tile LEVEL ZOOM OUT_DIR: write LEVEL's tiles at ZOOM to
-# OUT_DIR/z/x/y.png (XYZ numbering) as grey 0 to 255 with transparent 0;
-# blank tiles are left out.
+# raster_tile RASTER LEVEL ZOOM OUT_DIR: write the tiles of RASTER at ZOOM,
+# from its overview LEVEL (0 for the full resolution, 1 for the first
+# overview, ...), to OUT_DIR/z/x/y.png (XYZ numbering) as grey 0 to 255 with
+# transparent 0; blank tiles are left out.
 raster_tile() {
-  local level=$1 zoom=$2 out=$3
-  local grey="${level%.*}.grey.vrt"
-  # Rounded to the nearest grey level; 0 (nothing covered) is nodata.
-  gdal_translate -q -of VRT -ot Byte -scale 0 1 0 255 -a_nodata 0 "$level" "$grey" \
-    || die "cannot scale $level"
+  local raster=$1 level=$2 zoom=$3 out=$4
+  local vrt="${raster%.*}.z${zoom}.vrt" opts=()
+  ((level == 0)) || opts+=(-oo "OVERVIEW_LEVEL=$((level - 1))")
+  # 0 (nothing covered) is nodata, so transparent and skipped when blank.
+  gdal_translate -q -of VRT "${opts[@]}" -a_nodata 0 "$raster" "$vrt" >/dev/null \
+    || die "cannot read $raster at z${zoom}"
   gdal raster tile --quiet \
     --min-zoom "$zoom" --max-zoom "$zoom" --resampling nearest \
     --skip-blank --webviewer none --num-threads ALL_CPUS \
-    "$grey" "$out" \
+    "$vrt" "$out" \
     || die "gdal raster tile failed at z${zoom}"
+  rm -f "$vrt"
 }
 
 # raster_tile_report TILE_DIR: print the raster build report as compact
@@ -260,28 +290,25 @@ build_raster_tiles() {
   log_info "prepare: $((SECONDS - step)) s"
 
   step=$SECONDS
-  local warped="${levels}/${maxzoom}.tif"
-  raster_warp "$source" "$maxzoom" "$warped"
-  [[ $source == "${cache}"/* && -n $cache ]] || rm -f "$source"
+  local warped="${levels}/z${maxzoom}.tif"
+  raster_warp "$source" "$minzoom" "$maxzoom" "$warped"
+  [[ -n $cache && $source == "${cache}"/* ]] || rm -f "$source"
   log_info "warp: $((SECONDS - step)) s"
   local bounds
   bounds=$(raster_bounds "$warped") || die "cannot read the extent of $warped"
 
   step=$SECONDS
+  raster_overviews "$warped" $((maxzoom - minzoom))
+  log_info "overviews: $((SECONDS - step)) s"
+
+  step=$SECONDS
   log_info "tiling z${minzoom}-z${maxzoom}"
-  local z level=$warped next
+  local z
   for ((z = maxzoom; z >= minzoom; z--)); do
-    if ((z < maxzoom)); then
-      next="${levels}/${z}.tif"
-      raster_level "$level" "$z" "$next"
-      # The level above is no longer needed.
-      rm -f "$level" "${level%.*}.grey.vrt"
-      level=$next
-    fi
-    raster_tile "$level" "$z" "$tiles"
+    raster_tile "$warped" $((maxzoom - z)) "$z" "$tiles"
   done
   rm -rf "$levels"
-  log_info "levels and tiles: $((SECONDS - step)) s"
+  log_info "tiles: $((SECONDS - step)) s"
 
   [[ -d $tiles ]] || mkdir -p "$tiles"
   raster_tile_report "$tiles" >"$report"
