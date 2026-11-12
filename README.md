@@ -24,6 +24,43 @@ and pop-up content are still to be confirmed. Setup, checks and the pull
 request process are in `CONTRIBUTING.md`. See `docs/design/` for the brief,
 architecture, and milestones, and `docs/decisions/` for the ADRs.
 
+## Getting started
+
+For a new user on Windows 11. You need two things, both from IT (each
+needs admin rights to install):
+
+- **Git for Windows** (also at <https://git-scm.com>), which gives you Git
+  Bash. Use Git Bash for every command here, not PowerShell.
+- **Docker Desktop**, with the WSL 2 engine. After it is installed,
+  restart Windows and start Docker Desktop once.
+
+The source data stays outside the repo, in a folder such as
+`C:/data/ERAP_play_data`. Then, in Git Bash:
+
+```sh
+git clone https://github.com/NCC-CNC/erap-map-poc.git
+cd erap-map-poc
+scripts/setup.sh --init
+```
+
+`--init` checks the machine (Git Bash, Docker Desktop running in Linux
+containers mode, WSL 2, Docker memory, CPUs and disk, the ports), asks
+for the data folder and ports (Enter keeps the default) and writes
+`.env`, builds the images and every layer whose source data it finds,
+starts the map and prints its address, <http://localhost:8080> by
+default. Each problem it finds comes with a one-line fix. The first run
+takes about 5 minutes plus the layers (a raster layer takes tens of
+minutes); it is safe to stop and rerun. `scripts/setup.sh` on its own
+only checks, changing nothing, and `--help` lists the options, such as
+`--raw-dir`, `--yes` and `--skip-layers`.
+
+### With Claude Code (optional)
+
+Claude Code is never needed, but if you have it, ask it to "clone
+NCC-CNC/erap-map-poc and set it up". Once the repo is cloned, its
+`setup` skill runs the same script, explains each problem in plain
+language, helps write `.env` and opens the map.
+
 ## Project map
 
 - `pipeline/`: the tile builder image. `bin/run.sh` is the entry point,
@@ -40,7 +77,9 @@ architecture, and milestones, and `docs/decisions/` for the ADRs.
   (`handoffs/`) and images.
 - `.github/`: CI (`ci.yml`), auto-merge, branch update and cache warming
   workflows, Dependabot config, issue forms and the PR template.
-- `scripts/bootstrap-repo-settings.sh`: one-time repo settings (branch
+- `scripts/`: `setup.sh` (first-time setup and machine check, Getting
+  started), `screenshot.sh` (map screenshots) and
+  `bootstrap-repo-settings.sh` (one-time repo settings: branch
   protection, auto-merge, labels).
 
 ## Usage
@@ -280,6 +319,7 @@ prompt; removing a layer always asks first.
 
 | Task | Plain command | Ask Claude Code |
 | --- | --- | --- |
+| Set up or check this machine | `scripts/setup.sh --init` (or `--check`) | "Set up the map on this machine" (`/setup`) |
 | See what is built or stale | `docker compose run --rm pipeline --status` | "Which layers are out of date?" (`/layer-status`) |
 | Look at a dataset | `docker compose run --rm --entrypoint inspect.sh pipeline <path>` | "What is in data/raw/parcels.gpkg?" (`/inspect-data`) |
 | Add a layer | Adding a layer, above | "Add data/raw/parcels.gpkg as a layer" (`/add-layer`) |
