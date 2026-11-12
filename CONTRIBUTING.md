@@ -80,7 +80,8 @@ skills live in `.claude/skills/<name>/SKILL.md`. To add or change one:
   Code.
 - `.claude/settings.json` allow-lists read-only and build commands only.
   Never allow-list a destructive one; `--remove` is on the `ask` list so
-  it always prompts.
+  it always prompts. Never put a wildcard before the image name in a
+  `docker run` rule: it would also match `--entrypoint` or extra mounts.
 
 ### Checks
 
