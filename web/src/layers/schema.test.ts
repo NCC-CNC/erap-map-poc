@@ -5,7 +5,7 @@
  */
 import Ajv2020 from 'ajv/dist/2020';
 import { describe, expect, it } from 'vitest';
-import { expectedDisplay, layerStyleSchema } from '../test/fixtures';
+import { expectedDisplay, expectedRasterDisplay, layerStyleSchema } from '../test/fixtures';
 import { displayProblems } from './manifest';
 import type {
   Display,
@@ -136,5 +136,20 @@ describe('the runtime checks agree with the schema', () => {
     ];
     expect(schemaDisplay(display)).toBe(true);
     expect(displayProblems(display)).toEqual(['display.layers[1].id a is used twice']);
+  });
+});
+
+describe('the raster display', () => {
+  it('as the pipeline builds it passes the schema and the app check', () => {
+    const display = structuredClone(expectedRasterDisplay);
+    expect(schemaDisplay(display), JSON.stringify(schemaDisplay.errors)).toBe(true);
+    expect(displayProblems(display, 'display', 'raster')).toEqual([]);
+  });
+
+  it('with a vector style layer fails the app check for a raster layer', () => {
+    const display = structuredClone(expectedRasterDisplay) as unknown as Record<string, unknown>;
+    display.layers = [{ id: 'fill', type: 'fill' }];
+    expect(schemaDisplay(display)).toBe(true);
+    expect(displayProblems(display, 'display', 'raster')).not.toEqual([]);
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LayerDefinition, PopupChart } from '../layers';
-import { sample, samplePoints } from '../test/fixtures';
+import { raster, sample, samplePoints } from '../test/fixtures';
 import {
   MISSING,
   buildChart,
@@ -153,5 +153,9 @@ describe('clickableLayers', () => {
     expect([...targets.keys()]).toEqual(['sample-fill', 'sample-outline', 'sample_points-circle']);
     expect(targets.get('sample-fill')?.popup).toBe(sample.popup);
     expect(targets.get('sample_points-circle')?.popup).toBe(samplePoints.popup);
+  });
+
+  it('never makes a raster layer clickable (display only)', () => {
+    expect([...clickableLayers([raster, sample]).keys()]).toEqual(['sample-fill', 'sample-outline']);
   });
 });

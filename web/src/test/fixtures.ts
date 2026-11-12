@@ -7,6 +7,8 @@
  *   `sample` and `sample_points` layers. The pipeline's tests check its
  *   output against this same file, so the app is tested against what the
  *   pipeline really produces.
+ * - `expectedRasterDisplay`: the same for the synthetic raster layer of the
+ *   pipeline's raster tests (`pipeline/tests/raster.bats`).
  * - `layerStyleSchema`: the shared JSON Schema.
  */
 import { readFileSync } from 'node:fs';
@@ -26,6 +28,10 @@ export const expectedDisplay = readJson('pipeline/tests/fixtures/expected_displa
   sample_points: Display;
 };
 
+export const expectedRasterDisplay = readJson(
+  'pipeline/tests/fixtures/expected_raster_display.json',
+) as Display;
+
 /** A manifest as the pipeline writes it for the two sample layers. */
 export function sampleManifest() {
   return {
@@ -41,9 +47,23 @@ export function sampleManifest() {
   };
 }
 
+/** The manifest entry the pipeline writes for a raster layer `cover`. */
+export function rasterEntry() {
+  return {
+    name: 'cover',
+    file: 'cover.pmtiles',
+    type: 'raster',
+    format: 'png',
+    display: structuredClone(expectedRasterDisplay),
+  };
+}
+
 const parsed = parseManifest(sampleManifest()).layers;
 
 /** The sample layers as the app reads them, in draw order. */
 export const sampleLayers: readonly LayerDefinition[] = parsed;
 export const sample = parsed.find((d) => d.id === 'sample') as LayerDefinition;
 export const samplePoints = parsed.find((d) => d.id === 'sample_points') as LayerDefinition;
+
+/** The raster layer `cover` as the app reads it. */
+export const raster = parseManifest({ layers: [rasterEntry()] }).layers[0] as LayerDefinition;

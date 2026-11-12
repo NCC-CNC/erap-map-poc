@@ -1,4 +1,4 @@
-import type { Display, LayerDefinition } from './types';
+import type { Display, LayerDefinition, LayerType } from './types';
 
 /**
  * Reads the layers from the pipeline's `manifest.json` (ADR 0007), the
@@ -44,7 +44,12 @@ export const MESSAGES = {
 const LAYER_NAME = /^[a-z0-9][a-z0-9_-]*$/;
 const ARCHIVE_FILE = /^[A-Za-z0-9_.-]+\.pmtiles$/;
 const STYLE_LAYER_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
-const STYLE_LAYER_TYPES = ['fill', 'line', 'symbol', 'circle', 'heatmap', 'fill-extrusion'];
+// Style layer types per layer type: a raster layer is drawn with the one
+// `color-relief` layer the pipeline expands from its raster shorthand.
+const STYLE_LAYER_TYPES: Record<LayerType, readonly string[]> = {
+  vector: ['fill', 'line', 'symbol', 'circle', 'heatmap', 'fill-extrusion'],
+  raster: ['color-relief'],
+};
 
 type Problems = string[];
 type Json = Record<string, unknown>;
@@ -172,7 +177,7 @@ function legend(value: unknown, path: string, problems: Problems): void {
   });
 }
 
-function styleLayers(value: unknown, path: string, problems: Problems): void {
+function styleLayers(value: unknown, path: string, problems: Problems, layerType: LayerType): void {
   const seen = new Set<string>();
   list(value, path, problems, 1).forEach((item, i) => {
     const where = `${path}[${i}]`;
@@ -184,7 +189,11 @@ function styleLayers(value: unknown, path: string, problems: Problems): void {
     // pipeline has checked them with the MapLibre style validator.
     const { id, type } = item;
     check(typeof id === 'string' && STYLE_LAYER_ID.test(id), `${where}.id is not a valid id`, problems);
-    check(STYLE_LAYER_TYPES.includes(type as string), `${where}.type is not a vector layer type`, problems);
+    check(
+      STYLE_LAYER_TYPES[layerType].includes(type as string),
+      `${where}.type is not a ${layerType} layer type`,
+      problems,
+    );
     check(!('source' in item) && !('source-layer' in item), `${where} must not set its source`, problems);
     if (typeof id === 'string') {
       check(!seen.has(id), `${where}.id ${id} is used twice`, problems);
@@ -196,18 +205,27 @@ function styleLayers(value: unknown, path: string, problems: Problems): void {
 /**
  * Problems with a manifest `display` block (schema `$defs/display`), as
  * plain text; empty when it is valid. Style layer ids must also be unique,
- * which the pipeline checks outside the schema.
+ * which the pipeline checks outside the schema. A raster layer has one
+ * `color-relief` style layer and no pop-up; a vector layer has vector style
+ * layers only.
  */
-export function displayProblems(value: unknown, path = 'display'): string[] {
+export function displayProblems(
+  value: unknown,
+  path = 'display',
+  layerType: LayerType = 'vector',
+): string[] {
   const problems: Problems = [];
   const d = object(value, path, problems, ['title', 'defaultVisible', 'order', 'layers', 'legend'], ['popup']);
   if (!d) return problems;
   check(isText(d.title), `${path}.title must be text`, problems);
   check(typeof d.defaultVisible === 'boolean', `${path}.defaultVisible must be true or false`, problems);
   check(Number.isInteger(d.order), `${path}.order must be a whole number`, problems);
-  styleLayers(d.layers, `${path}.layers`, problems);
+  styleLayers(d.layers, `${path}.layers`, problems, layerType);
   legend(d.legend, `${path}.legend`, problems);
-  if (d.popup !== undefined) popup(d.popup, `${path}.popup`, problems);
+  if (d.popup !== undefined) {
+    if (layerType === 'raster') problems.push(`${path}.popup is not allowed on a raster layer`);
+    else popup(d.popup, `${path}.popup`, problems);
+  }
   return problems;
 }
 
@@ -217,18 +235,25 @@ function toDefinition(entry: unknown, index: number): LayerDefinition | string[]
   if (!isObject(entry)) return [`${where} must be an object`];
   const problems: Problems = [];
   const { name, file } = entry;
+  // Entries written before raster layers have no type: they are vector.
+  const type = entry.type ?? 'vector';
   check(typeof name === 'string' && LAYER_NAME.test(name), `${where}.name is not a valid layer name`, problems);
   check(typeof file === 'string' && ARCHIVE_FILE.test(file), `${where}.file is not a .pmtiles file name`, problems);
+  if (type !== 'vector' && type !== 'raster') {
+    problems.push(`${where}.type must be vector or raster`);
+    return problems;
+  }
   if (entry.display === undefined || entry.display === null) {
     problems.push(`${where}.display is missing (built before display configs; rebuild the layer)`);
   } else {
-    problems.push(...displayProblems(entry.display, `${where}.display`));
+    problems.push(...displayProblems(entry.display, `${where}.display`, type));
   }
   if (problems.length) return problems;
 
   const display = entry.display as Display;
   return {
     id: name as string,
+    type,
     title: display.title,
     file: file as string,
     sourceLayer: name as string,

@@ -103,15 +103,24 @@ export interface Display {
   legend: Legend;
 }
 
+/**
+ * The kind of data layer, the manifest entry's `type`: `vector` tiles, or a
+ * `raster` layer whose archive holds the cover fraction as grey PNG tiles,
+ * drawn through a `raster-dem` source (ADR 0008).
+ */
+export type LayerType = 'vector' | 'raster';
+
 /** Everything the map needs to know about one data layer. */
 export interface LayerDefinition {
   /** The manifest layer name; also the MapLibre source id and id prefix. */
   id: string;
+  /** Vector or raster; decides the MapLibre source. */
+  type: LayerType;
   /** Human-readable name, for legends and layer controls. */
   title: string;
   /** Archive file name under `/tiles/`, as written by the pipeline. */
   file: string;
-  /** Vector tile layer name inside the archive (tippecanoe `-l`). */
+  /** Vector tile layer name inside the archive (tippecanoe `-l`); unused for a raster layer. */
   sourceLayer: string;
   /** Whether the layer is shown when the app opens. */
   defaultVisible: boolean;

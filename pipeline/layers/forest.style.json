@@ -1,0 +1,12 @@
+{
+  "$schema": "../schema/layer-style.schema.json",
+  "title": "Forest",
+  "defaultVisible": true,
+  "order": 1,
+  "symbology": {
+    "geometry": "raster",
+    "color": "#1b7837",
+    "opacity": 0.7,
+    "label": "Forest (2020 to 2022)"
+  }
+}

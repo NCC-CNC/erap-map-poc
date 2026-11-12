@@ -67,6 +67,8 @@ block; keep it in step with this section.
 
 - Pipeline: `docker compose run --rm pipeline [layer ...]` (no names builds
   every layer into `data/tiles/`, plus `manifest.json` and `style.json`).
+  Source data comes from `RAW_DIR` (`.env`; default `./data/raw`), mounted
+  read-only at `/data/raw`; the play data lives outside the repo.
   Check display configs only: `docker compose run --rm --entrypoint sh
   pipeline -c 'node /opt/pipeline/style/cli.mjs check
   /opt/pipeline/layers/*.style.json'`.

@@ -1,0 +1,10 @@
+{
+  "title": "Test raster",
+  "defaultVisible": true,
+  "order": 5,
+  "symbology": {
+    "geometry": "raster",
+    "color": "#1b7837",
+    "opacity": 0.7
+  }
+}

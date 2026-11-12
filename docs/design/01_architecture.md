@@ -31,8 +31,10 @@ runtime.
 pipeline/
   Dockerfile          GDAL base image plus tippecanoe, pmtiles CLI and Node
   bin/run.sh          entry point: runs every layer, or the ones named
-  lib/*.sh            shared functions (logging, ogr helpers, tile build)
-  layers/<name>.env   one config per layer: input, filters, tippecanoe flags
+  lib/*.sh            shared functions (logging, ogr helpers, tile build,
+                      raster tiles)
+  layers/<name>.env   one config per layer: type (vector or raster), input,
+                      filters, tippecanoe flags
   layers/<name>.style.json
                       display per layer: title, style, legend, pop-up (ADR 0007)
   schema/             JSON Schema of the .style.json files, shared with web/
@@ -49,6 +51,7 @@ web/
 data/                 never committed (only .gitkeep files)
   raw/                pipeline input
   tiles/              pipeline output, served by web
+  work/               scratch for manual trials (git-ignored)
 docker-compose.yml
 ```
 
@@ -95,6 +98,13 @@ contract in `02_data_layers_and_popups.md`. It never reads `data/raw/`.
      `data/tiles/manifest.json` listing the layers built, their bounds, zoom
      range, build time, resolved `display` config and per-zoom stats, which
      the web app reads at startup.
+- A raster layer (`LAYER_TYPE=raster`, a binary raster, display only; ADR
+  0008, `lib/raster.sh`) takes its own branch after step 2: gdalwarp to
+  EPSG:3857 at the max zoom's resolution, the share of each pixel covered
+  averaged per lower zoom, grey PNG tiles by `gdal raster tile` per zoom,
+  packed with `sqlite3` into MBTiles and `pmtiles convert` into the
+  archive. The colour is applied in the map (a `raster-dem` source and a
+  `color-relief` layer), not baked into the tiles.
 - After all layers, `data/tiles/style.json` is rewritten from the manifest:
   a standalone MapLibre style of every built layer (no basemap) for other
   tools.
@@ -145,7 +155,8 @@ optional.
   `wget`, and `restart: unless-stopped`. Started with
   `docker compose up -d web`.
 - `pipeline`: builds the `runtime` target of `pipeline/Dockerfile`, mounts
-  `./data/raw` read-only, `./data/tiles` read-write and `./pipeline/layers`
+  `${RAW_DIR:-./data/raw}` read-only at `/data/raw` (`RAW_DIR` points it at
+  source data outside the repo), `./data/tiles` read-write and `./pipeline/layers`
   read-only over the image's copy (so editing a layer's `.env` or
   `.style.json` needs no image rebuild), under the `pipeline` profile so
   `docker compose up` does not start it. Run on demand with

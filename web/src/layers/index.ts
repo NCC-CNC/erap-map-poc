@@ -8,6 +8,7 @@ export type {
   Color,
   Display,
   LayerDefinition,
+  LayerType,
   Legend,
   LegendItem,
   NumberFormat,
@@ -30,6 +31,7 @@ export {
   type ManifestLayers,
 } from './manifest';
 export {
+  RASTER_SOURCE,
   styleLayerId,
   styleLayerIds,
   toMapLibre,

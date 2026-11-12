@@ -44,7 +44,9 @@ services:
     # macOS) maps bind mount ownership itself, so the default is fine there.
     user: "${PIPELINE_UID:-10001}:${PIPELINE_GID:-10001}"
     volumes:
-      - ./data/raw:/data/raw:ro
+      # Source data, read only. RAW_DIR points it at a folder outside the
+      # repo (for example a shared data drive); the default is data/raw/.
+      - ${RAW_DIR:-./data/raw}:/data/raw:ro
       - ./data/tiles:/data/tiles
       # The layer configs (.env and .style.json) from the repo, so editing a
       # layer needs no image rebuild: rerun the pipeline and reload the map.
@@ -77,6 +79,8 @@ services:
       - web-dev-node-modules:/repo/web/node_modules
       # Same layout as the repo, so vite.config.ts finds ../data/tiles.
       - ./data/tiles:/repo/data/tiles:ro
+      # The shared schema and pipeline fixtures the web tests read.
+      - ./pipeline:/repo/pipeline:ro
 
 volumes:
   web-dev-node-modules:

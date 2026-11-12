@@ -19,21 +19,29 @@ GDAL or tippecanoe) is needed on the host. On Windows, use Git Bash: the
 
 ```sh
 git clone https://github.com/NCC-CNC/erap-map-poc.git && cd erap-map-poc
-cp .env.example .env                      # optional: ports, Linux UIDs
+cp .env.example .env                      # optional: ports, Linux UIDs, RAW_DIR
 
-docker compose run --rm pipeline          # build tiles into data/tiles/
+docker compose run --rm pipeline sample sample_points   # tiles into data/tiles/
 docker compose up -d --build web          # map at http://localhost:8080
 docker compose --profile dev up web-dev   # or Vite with hot reload on :5173
 ```
 
 See `README.md` (Usage) for ports, `.env` settings and Linux file ownership.
 
+Real source data stays outside the repo: set `RAW_DIR` in `.env` (or the
+shell) to the folder holding it, which compose mounts read-only at
+`/data/raw`, then build a layer by name, for example
+`docker compose run --rm pipeline forest`. Never copy data into the repo;
+`.gitignore` covers `data/raw/`, `data/tiles/`, `data/work/`, `*.tif`,
+`*.tiff`, `*.vrt` and `*.gdb/`, but check `git status` before each commit.
+
 ### Adding or changing a layer
 
 A layer is `pipeline/layers/<layer>.env` (input and tiling) plus
 `pipeline/layers/<layer>.style.json` (title, draw order, style, legend,
-pop-up), described in `docs/design/02_data_layers_and_popups.md` and ADR
-0007. Nothing in `web/` changes: the map reads every layer from
+pop-up), described in `docs/design/02_data_layers_and_popups.md`, ADR 0007
+and, for binary raster layers (`LAYER_TYPE=raster`), ADR 0008. Nothing in
+`web/` changes: the map reads every layer from
 `data/tiles/manifest.json`. Rerun the pipeline for that layer and reload the
 page; compose mounts `pipeline/layers/`, so neither image needs a rebuild.
 Check display configs without building:
@@ -55,7 +63,7 @@ same tools at the same versions as CI, all in Docker:
 export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
-# pipeline job: shellcheck, hadolint, bats (40 tests, including the display
+# pipeline job: shellcheck, hadolint, bats (53 tests, including the display
 # tool's node:test unit tests), runtime image
 docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
   pipeline/bin/run.sh pipeline/lib/*.sh pipeline/layers/*.env \

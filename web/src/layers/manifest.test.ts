@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { expectedDisplay, sampleManifest } from '../test/fixtures';
+import { expectedDisplay, expectedRasterDisplay, rasterEntry, sampleManifest } from '../test/fixtures';
 import {
   MESSAGES,
   ManifestError,
@@ -23,6 +23,7 @@ describe('parseManifest', () => {
     expect(problem).toBeNull();
     expect(layers[0]).toEqual({
       id: 'sample',
+      type: 'vector',
       title: 'Sample polygons',
       file: 'sample.pmtiles',
       sourceLayer: 'sample',
@@ -158,5 +159,68 @@ describe('loadManifest', () => {
       layers: [],
       problem: null,
     });
+  });
+});
+
+describe('raster layers', () => {
+  it('reads a raster entry: type raster, its color-relief layer and no pop-up', () => {
+    const { layers, problem } = parseManifest({ layers: [rasterEntry()] });
+    expect(problem).toBeNull();
+    expect(layers).toEqual([
+      {
+        id: 'cover',
+        type: 'raster',
+        title: 'Test raster',
+        file: 'cover.pmtiles',
+        sourceLayer: 'cover',
+        defaultVisible: true,
+        order: 5,
+        layers: expectedRasterDisplay.layers,
+        legend: expectedRasterDisplay.legend,
+      },
+    ]);
+    expect(layers[0]?.layers.map((l) => l.type)).toEqual(['color-relief']);
+  });
+
+  it('draws a raster and vector layers together in display order', () => {
+    const manifest = sampleManifest() as { layers: unknown[] };
+    manifest.layers.push(rasterEntry());
+    expect(parseManifest(manifest).layers.map((d) => `${d.id}:${d.type}`)).toEqual([
+      'cover:raster',
+      'sample:vector',
+      'sample_points:vector',
+    ]);
+  });
+
+  it('reads an entry without a type as vector, as written before raster layers', () => {
+    const [entry] = sampleManifest().layers;
+    expect('type' in entry!).toBe(false);
+    expect(parseManifest({ layers: [entry] }).layers[0]?.type).toBe('vector');
+  });
+
+  it('leaves out an unknown type, and a display that does not match the type', () => {
+    const vectorDisplayAsRaster = { ...rasterEntry(), display: structuredClone(expectedDisplay.sample) };
+    const rasterDisplayAsVector = { ...rasterEntry(), type: 'vector' };
+    const { layers, problem } = parseManifest({
+      layers: [{ ...rasterEntry(), type: 'grid' }, vectorDisplayAsRaster, rasterDisplayAsVector],
+    });
+    expect(layers).toEqual([]);
+    expect(problem).toBe(MESSAGES.skipped(3));
+  });
+
+  it('names the raster problems', () => {
+    expect(displayProblems(expectedRasterDisplay, 'display', 'raster')).toEqual([]);
+    const display = {
+      ...structuredClone(expectedRasterDisplay),
+      layers: [{ id: 'fill', type: 'fill' }],
+      popup: structuredClone(expectedDisplay.sample.popup),
+    };
+    expect(displayProblems(display, 'display', 'raster')).toEqual([
+      'display.layers[0].type is not a raster layer type',
+      'display.popup is not allowed on a raster layer',
+    ]);
+    expect(displayProblems(expectedRasterDisplay)).toEqual([
+      'display.layers[0].type is not a vector layer type',
+    ]);
   });
 });

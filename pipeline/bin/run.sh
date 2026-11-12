@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # shellcheck source-path=SCRIPTDIR/..
-# Pipeline entry point: build vector tiles for every layer config in
-# pipeline/layers/, or only the layers named on the command line. Each layer
-# is <layer>.env (processing) plus <layer>.style.json (display, ADR 0007).
+# Pipeline entry point: build tiles (vector, or PNG for raster layers) for
+# every layer config in pipeline/layers/, or only the layers named on the
+# command line. Each layer is <layer>.env (processing; LAYER_TYPE picks
+# vector or raster) plus <layer>.style.json (display, ADR 0007; rasters,
+# ADR 0008).
 #
 # Usage: run.sh [-h|--help] [layer ...]
 #
@@ -34,6 +36,8 @@ source "${PIPELINE_ROOT}/lib/guard.sh"
 source "${PIPELINE_ROOT}/lib/manifest.sh"
 # shellcheck source=lib/display.sh
 source "${PIPELINE_ROOT}/lib/display.sh"
+# shellcheck source=lib/raster.sh
+source "${PIPELINE_ROOT}/lib/raster.sh"
 
 PIPELINE_INPUT_DIR=${PIPELINE_INPUT_DIR:-/data/raw}
 PIPELINE_OUTPUT_DIR=${PIPELINE_OUTPUT_DIR:-/data/tiles}
@@ -54,6 +58,22 @@ build_layer() {
 
   local layer_scratch="${scratch}/${name}"
   mkdir -p "$layer_scratch"
+  local started=$SECONDS
+  local display="${layer_scratch}/display.json" report="${layer_scratch}/report.json"
+
+  if [[ $LAYER_TYPE == raster ]]; then
+    build_raster_layer
+  else
+    build_vector_layer
+  fi
+
+  manifest_update "$PIPELINE_OUTPUT_DIR" "$name" "$LAYER_TYPE" "$display" \
+    "$(jq -c '.' "$report")" "$((SECONDS - started))"
+}
+
+# build_vector_layer: the vector steps of build_layer, whose locals (name,
+# layer_scratch, display, report) it reads and writes.
+build_vector_layer() {
   local normalised="${layer_scratch}/${name}.geojsonl"
 
   normalise "$LAYER_INPUT" "$LAYER_SOURCE_LAYER" "$LAYER_SOURCE_SRS" \
@@ -67,7 +87,6 @@ build_layer() {
 
   # The display config is checked before tiling, so a bad one costs nothing
   # and leaves the previous archive and manifest entry in place.
-  local display="${layer_scratch}/display.json"
   resolve_display "$name" "${PIPELINE_LAYERS_DIR}/${name}.style.json" "$normalised" "$display"
 
   local sizes="${layer_scratch}/sizes.tsv" stats="${layer_scratch}/zoom_stats.json"
@@ -77,15 +96,25 @@ build_layer() {
     "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" "$LAYER_FEATURE_ID" "$layer_scratch" \
     check_layer_tiles "${LAYER_TIPPECANOE_FLAGS[@]}"
 
-  manifest_update "$PIPELINE_OUTPUT_DIR" "$name" "$count" "$stats" \
-    "$LAYER_PROFILE" "$LAYER_MIN_VISIBLE_PX" "$display"
+  vector_report "$count" "$stats" "$LAYER_PROFILE" "$LAYER_MIN_VISIBLE_PX" >"$report"
 }
 
 # check_layer_tiles ARCHIVE: the drop guard, run by build_tiles from inside
-# build_layer, whose locals (name, sizes, count, stats) it reads.
+# build_vector_layer, whose locals (name, sizes, count, stats) it reads.
 check_layer_tiles() {
   drop_guard "$1" "$name" "$sizes" "$count" "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" \
     "$LAYER_MIN_VISIBLE_PX" "$stats"
+}
+
+# build_raster_layer: the raster steps of build_layer (lib/raster.sh), whose
+# locals (name, layer_scratch, display, report) it reads and writes.
+build_raster_layer() {
+  # Checked first, as for a vector layer, so a bad config costs nothing. The
+  # colour is not in the tiles (lib/raster.sh), only in the display block.
+  resolve_display "$name" "${PIPELINE_LAYERS_DIR}/${name}.style.json" - "$display" raster
+
+  build_raster_tiles "$name" "$LAYER_INPUT" "$LAYER_SOURCE_SRS" "$LAYER_NODATA" \
+    "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" "$PIPELINE_OUTPUT_DIR" "$layer_scratch" "$report"
 }
 
 main() {
@@ -106,7 +135,8 @@ main() {
   done
 
   local tool
-  for tool in gdal ogr2ogr ogrinfo tippecanoe tippecanoe-decode pmtiles jq node; do
+  for tool in gdal gdalwarp gdaldem gdalinfo ogr2ogr ogrinfo sqlite3 tippecanoe \
+    tippecanoe-decode pmtiles jq node; do
     command -v "$tool" >/dev/null || die "required tool not found: $tool"
   done
 

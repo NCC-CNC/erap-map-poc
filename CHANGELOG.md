@@ -7,6 +7,29 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Binary raster layers, display only (#50, ADR 0008). `LAYER_TYPE=raster`
+  in `<layer>.env` (with `LAYER_MIN_ZOOM`, `LAYER_MAX_ZOOM` up to 14, and
+  optional `LAYER_NODATA`) builds `<layer>.pmtiles` of grey PNG tiles whose
+  level is the share of each pixel covered by 1 cells: gdalwarp to
+  EPSG:3857 at the max zoom, the share averaged per lower zoom, `gdal
+  raster tile` per zoom, packed with `sqlite3` (now in the pipeline image)
+  and `pmtiles convert`. The display config's new raster shorthand
+  (`geometry: "raster"`, `color`, `opacity`, `label`) becomes a MapLibre
+  `color-relief` layer on a `raster-dem` source, so the colour lives in the
+  style, not the tiles, and low zooms show cover density as transparency.
+  Chosen over colour-baked PNG tiles and `gdal_translate -of MBTiles` after
+  a timed trial on a 300 km clip (6.0 s and 23 MB against 7.7 s and 28 MB,
+  and 26.5 s with no density at low zooms); numbers in the ADR. Manifest
+  entries gain `type`, `format`, `build_seconds` and `bytes`, and raster
+  entries a tile report; the web app reads `type` (missing means vector),
+  adds the raster source and layer, a single-swatch legend and the
+  visibility toggle, and never makes rasters clickable. Layer configs
+  `forest` and `agriculture` point at the November 2026 play data through
+  the new `RAW_DIR` setting (compose mounts `${RAW_DIR:-./data/raw}`
+  read-only); `.gitignore` gains `*.tif`, `*.tiff`, `*.vrt`, `*.gdb/` and
+  `data/work/`. Tests: `raster.bats` (13 tests on synthetic rasters made at
+  test time) and web tests for the raster path. The `web-dev` service now
+  mounts `pipeline/` read-only, which the web tests read.
 - Data-driven layer styles (#39, ADR 0007). Each layer gains
   `pipeline/layers/<layer>.style.json`: `title`, `defaultVisible`, `order`
   (draw order, default 0, ties by name), `popup`, and either the `symbology`

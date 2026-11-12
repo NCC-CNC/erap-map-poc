@@ -82,9 +82,10 @@ FROM gdal AS base
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # jq: write and read manifest.json. libsqlite3/zlib: tippecanoe runtime libs.
-# libatomic1: Node runtime lib.
+# libatomic1: Node runtime lib. sqlite3: packs raster tiles into MBTiles
+# for `pmtiles convert` (lib/raster.sh).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends jq libatomic1 libsqlite3-0 zlib1g \
+ && apt-get install -y --no-install-recommends jq libatomic1 libsqlite3-0 sqlite3 zlib1g \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=tippecanoe /opt/tippecanoe/bin/ /usr/local/bin/

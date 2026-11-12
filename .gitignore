@@ -36,3 +36,12 @@ data/tiles/*
 !data/tiles/.gitkeep
 *.pmtiles
 *.mbtiles
+
+# Raster and other source formats, and the pipeline's working directory
+# (prepared rasters, colour VRTs, tile directories). Real data never goes in
+# git; CI makes its synthetic GeoTIFF at test time.
+*.tif
+*.tiff
+*.vrt
+*.gdb/
+data/work/
