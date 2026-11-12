@@ -1,6 +1,6 @@
 ---
 name: layer-status
-description: Report which map layers are configured and which are built, which builds are stale (a config or the source data changed since the build), and each layer's build time, archive size, zooms, feature count and largest tile. Use when asked what layers there are, what is built, what is out of date or needs rebuilding, or for an overview of the tiles.
+description: Report which map layers (vector and raster) are configured and which are built, which builds are stale (a config or the source data changed since the build), and each layer's build time, archive size, zooms, feature or tile count and largest tile. Use when asked what layers there are, what is built, what is out of date or needs rebuilding, or for an overview of the tiles.
 ---
 
 # Layer status
@@ -29,6 +29,11 @@ Staleness goes by file times only: a pipeline code change, or a source
 file replaced by an older copy, does not show. When in doubt, rebuild.
 
 ## Report
+
+Raster layers (`type` raster in the JSON) show their tile count in the
+FEATURES column (`2745 tiles`) and have `tile_count` and `format: png` in
+place of `feature_count`; their source raster counts for staleness like any
+input.
 
 Give a short table (layer, state, built, size, zooms, features, largest
 tile) and then what to do: which layers to rebuild, which configs to fix

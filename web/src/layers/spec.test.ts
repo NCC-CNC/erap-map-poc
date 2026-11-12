@@ -1,8 +1,8 @@
 import { validateStyleMin, type StyleSpecification } from '@maplibre/maplibre-gl-style-spec';
 import { describe, expect, it } from 'vitest';
 import { buildPopupContent } from '../popup/content';
-import { sample, sampleLayers, samplePoints } from '../test/fixtures';
-import { styleLayerIds, toMapLibre } from './spec';
+import { raster, sample, sampleLayers, samplePoints } from '../test/fixtures';
+import { RASTER_SOURCE, styleLayerIds, toMapLibre } from './spec';
 import type { LayerDefinition } from './types';
 
 const TILES = 'https://example.test/tiles/';
@@ -162,6 +162,68 @@ describe('toMapLibre', () => {
       minzoom: 5,
       layout: { 'text-field': ['get', 'name'], 'text-size': 12, visibility: 'none' },
       paint: { 'text-color': '#333333' },
+    });
+  });
+});
+
+describe('toMapLibre for a raster layer', () => {
+  it('reads the archive through a raster-dem source with the share-covered encoding', () => {
+    const built = toMapLibre(raster, TILES);
+    expect(built.source).toEqual({
+      type: 'raster-dem',
+      url: 'pmtiles://https://example.test/tiles/cover.pmtiles',
+      tileSize: 256,
+      encoding: 'custom',
+      redFactor: 1 / 255,
+      greenFactor: 0,
+      blueFactor: 0,
+      baseShift: 0,
+    });
+    expect(built.source).toMatchObject(RASTER_SOURCE);
+  });
+
+  it('draws a color-relief layer with no source layer, coloured by the share covered', () => {
+    const [layer, ...rest] = toMapLibre(raster, TILES, false).layers;
+    expect(rest).toEqual([]);
+    expect(layer).toEqual({
+      id: 'cover-raster',
+      type: 'color-relief',
+      source: 'cover',
+      layout: { visibility: 'none' },
+      paint: {
+        'color-relief-color': [
+          'interpolate',
+          ['linear'],
+          ['elevation'],
+          0,
+          'rgba(27, 120, 55, 0)',
+          1,
+          'rgba(27, 120, 55, 1)',
+        ],
+        'color-relief-opacity': 0.7,
+        resampling: 'nearest',
+      },
+    });
+  });
+
+  it('makes a valid style together with the vector layers', () => {
+    const style = sampleStyle([raster, ...sampleLayers]);
+    expect(validateStyleMin(style)).toEqual([]);
+    expect(style.layers.map((l) => l.id)).toEqual([
+      'cover-raster',
+      'sample-fill',
+      'sample-outline',
+      'sample_points-circle',
+    ]);
+  });
+
+  it('has a single-swatch legend in the layer colour and opacity', () => {
+    expect(raster.legend).toEqual({
+      kind: 'single',
+      shape: 'square',
+      border: 'transparent',
+      opacity: 0.7,
+      items: [{ color: '#1b7837', label: 'Test raster' }],
     });
   });
 });

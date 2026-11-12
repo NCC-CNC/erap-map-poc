@@ -52,6 +52,13 @@ Find each `[ERROR] <name>:` line in the log and match it:
   invisible gaps). Explain the trade-off; let the user choose.
 - `tippecanoe failed`: a bad flag in `LAYER_TIPPECANOE_FLAGS`, or a
   tile too large with no dropping flag; the tippecanoe message says which.
+- Raster layers (`LAYER_TYPE=raster`): `gdalwarp failed` or `input not
+  found` means `LAYER_INPUT` or `RAW_DIR` is wrong (the source is under
+  `RAW_DIR`, mounted at `/data/raw`); `no tiles: no 1 cells` means the
+  raster has no 1 values in the zoom range (check its nodata value,
+  `LAYER_NODATA`); a style error saying a raster layer needs the raster
+  shorthand means `<name>.style.json` is not `"geometry": "raster"`. A
+  Canada-wide raster takes tens of minutes; build it on its own.
 - `LAYER_... is not set` or `must be an integer`: fix the `.env`
   (every setting is described in `pipeline/lib/config.sh`).
 
@@ -64,5 +71,8 @@ docker compose run --rm --build pipeline --status <name> ...
 Then the layer's entry in `data/tiles/manifest.json`: `feature_count`
 against what the source holds, and per zoom in `zooms[]` that
 `required_present` equals `required` and `max_tile_bytes` stays under
-about 500 kB. Summarise per layer: state, features, zooms, largest tile,
+about 500 kB. A raster layer (`type` raster) has no drop guard: its entry
+has `tile_count`, `bytes`, `build_seconds` and per zoom `tiles` and
+`max_tile_bytes`. Summarise per layer: state, features (or tiles), zooms,
+largest tile,
 and anything to act on. To see the result, use the run-map skill.

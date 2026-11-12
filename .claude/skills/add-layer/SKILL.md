@@ -1,6 +1,6 @@
 ---
 name: add-layer
-description: Add a new map layer from a source dataset in data/raw/ (shapefile, zipped shapefile, GeoPackage, GeoJSON, ...). Inspects the data, writes pipeline/layers/<name>.env and <name>.style.json, builds the tiles, checks the build report and screenshots, and opens a draft PR with the configs only. Use when asked to add, load or publish a dataset as a layer.
+description: Add a new map layer from a source dataset in data/raw/ or RAW_DIR (shapefile, zipped shapefile, GeoPackage, GeoJSON, ..., or a binary GeoTIFF as a display-only raster layer). Inspects the data, writes pipeline/layers/<name>.env and <name>.style.json, builds the tiles, checks the build report and screenshots, and opens a draft PR with the configs only. Use when asked to add, load or publish a dataset as a layer.
 ---
 
 # Add a layer
@@ -10,11 +10,48 @@ A layer is `pipeline/layers/<name>.env` (input, fields, zooms, tiling) plus
 Nothing in `web/` changes. Reference: `pipeline/lib/config.sh` (every `.env`
 setting), `docs/design/02_data_layers_and_popups.md` and
 `pipeline/schema/layer-style.schema.json` (display config), and the
-existing `sample*` layers as worked examples.
+existing `sample*` layers as worked examples (`forest` for a raster).
 
 Never commit data: `data/raw/`, `data/tiles/`, `.pmtiles` and screenshots
 stay out of git. Commands below run from the repo root in Git Bash; give
 paths relative to `data/raw/` (no leading `/`).
+
+## Raster sources (GeoTIFF)
+
+A binary raster (cells of 1 on 0 or nodata, for example a forest or
+cropland mask) is a raster layer, display only (ADR 0008,
+`docs/design/02_data_layers_and_popups.md`, Raster layers). Large source
+rasters usually live outside the repo: `RAW_DIR` in `.env` points at their
+folder, mounted read-only at `/data/raw`. Never copy them into the repo.
+For a raster, follow this section in place of steps 1 and 2, then steps 3
+to 5.
+
+1. Inspect with GDAL (`inspect.sh` is for vector data):
+
+   ```sh
+   MSYS_NO_PATHCONV=1 docker compose run --rm --build --entrypoint gdalinfo pipeline \
+     -stats /data/raw/<file.tif>
+   ```
+
+   Note the CRS, size and pixel size, data type, nodata value, block
+   layout and the min and max. Values must be 0, 1 and nodata only; if not,
+   stop and ask (other values are drawn as covered).
+2. `<name>.env`: `LAYER_TYPE=raster`, `LAYER_INPUT=<file.tif>` (relative to
+   `RAW_DIR`), `LAYER_MIN_ZOOM` (2 for Canada-wide, higher for a region),
+   `LAYER_MAX_ZOOM` close to the source resolution (12 for 30 m, at most
+   14). `LAYER_NODATA` only if gdalinfo shows no nodata value (or a wrong
+   one); `LAYER_SOURCE_SRS` only if there is no CRS. No `LAYER_FIELDS`,
+   feature id, profile or tippecanoe flags.
+3. `<name>.style.json`: the raster shorthand only, no `popup`:
+   `"symbology": {"geometry": "raster", "color": "#rrggbb", "opacity": 0.7,
+   "label": "..."}` and an `order` below the vector layers. The colour and
+   opacity are applied by the map, not stored in the tiles.
+4. Build (step 3 below). A Canada-wide 30 m raster takes tens of minutes
+   and a few GB; say so before starting, and try a regional clip first if
+   the user only wants a look. The report is `tile_count`, `bytes`,
+   `build_seconds` and per-zoom `zooms[]` (`tiles`, `max_tile_bytes`);
+   there is no drop guard. Then screenshots as in step 4: check the low
+   zooms read as cover density and cells stay sharp at the max zoom.
 
 ## 1. Inspect
 

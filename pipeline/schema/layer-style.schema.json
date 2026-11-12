@@ -27,10 +27,13 @@
     "popup": { "$ref": "#/$defs/popup" },
     "symbology": { "$ref": "#/$defs/symbology" },
     "layers": {
-      "description": "Raw MapLibre style-spec layers, in draw order (last on top), without `source` or `source-layer`, which the pipeline and the app fill in. Each `id` must be unique within the file; it is prefixed with `<layer>-` on the map.",
+      "description": "Raw MapLibre style-spec layers for a vector layer, in draw order (last on top), without `source` or `source-layer`, which the pipeline and the app fill in. Each `id` must be unique within the file; it is prefixed with `<layer>-` on the map. Not for raster layers, which use the raster `symbology`.",
       "type": "array",
       "minItems": 1,
-      "items": { "$ref": "#/$defs/styleLayer" }
+      "items": {
+        "$ref": "#/$defs/styleLayer",
+        "not": { "type": "object", "required": ["type"], "properties": { "type": { "const": "color-relief" } } }
+      }
     },
     "legend": { "$ref": "#/$defs/legend" }
   },
@@ -196,11 +199,27 @@
         "width": { "type": "number", "minimum": 0 }
       }
     },
+    "rasterSymbology": {
+      "description": "A binary raster layer (LAYER_TYPE=raster, ADR 0008): cells of 1 in `color`, everything else transparent. The tiles hold only the share of each pixel covered by 1 cells; colour and opacity are applied by the map (a MapLibre `color-relief` layer), so changing them needs no re-tiling. At lower zooms, the share covered shows as transparency, from fully transparent (none) to `opacity` (all). The legend label defaults to the layer title. Raster layers have no pop-up.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["geometry", "color", "opacity"],
+      "properties": {
+        "geometry": { "const": "raster" },
+        "color": {
+          "description": "The colour of a 1 cell, as #rrggbb.",
+          "type": "string",
+          "pattern": "^#[0-9A-Fa-f]{6}$"
+        },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "label": { "type": "string", "minLength": 1 }
+      }
+    },
     "symbology": {
-      "description": "Shorthand that the pipeline expands into MapLibre style layers (polygon: `fill` and `outline`; point: `circle`) and a legend.",
+      "description": "Shorthand that the pipeline expands into MapLibre style layers (polygon: `fill` and `outline`; point: `circle`; raster: `raster`, a `color-relief` layer) and a legend. `raster` is for raster layers only, and the only display a raster layer accepts.",
       "type": "object",
       "required": ["geometry"],
-      "properties": { "geometry": { "enum": ["polygon", "point"] } },
+      "properties": { "geometry": { "enum": ["polygon", "point", "raster"] } },
       "allOf": [
         {
           "if": { "properties": { "geometry": { "const": "polygon" } } },
@@ -209,16 +228,20 @@
         {
           "if": { "properties": { "geometry": { "const": "point" } } },
           "then": { "$ref": "#/$defs/pointSymbology" }
+        },
+        {
+          "if": { "properties": { "geometry": { "const": "raster" } } },
+          "then": { "$ref": "#/$defs/rasterSymbology" }
         }
       ]
     },
     "styleLayer": {
-      "description": "A MapLibre style-spec layer for a vector source, without `source` and `source-layer`. Everything but `id`, `type` and the absent source fields is checked by the MapLibre style validator in the pipeline.",
+      "description": "A MapLibre style-spec layer without `source` and `source-layer`. In a config's raw `layers`, a vector layer type; `color-relief` appears only in a resolved display, expanded from the raster shorthand. Everything but `id`, `type` and the absent source fields is checked by the MapLibre style validator in the pipeline.",
       "type": "object",
       "required": ["id", "type"],
       "properties": {
         "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$" },
-        "type": { "enum": ["fill", "line", "symbol", "circle", "heatmap", "fill-extrusion"] },
+        "type": { "enum": ["fill", "line", "symbol", "circle", "heatmap", "fill-extrusion", "color-relief"] },
         "source": false,
         "source-layer": false
       }

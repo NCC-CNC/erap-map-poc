@@ -19,12 +19,18 @@
 # stale. The JSON (layer_status_json) is:
 #
 #   { "layers": [ { "name": "sample", "state": "current", "notes": [],
-#       "configured": true, "built": true, "input": "...",
+#       "configured": true, "built": true, "type": "vector", "format": "mvt",
+#       "input": "...",
 #       "built_at": "2026-01-01T00:00:00Z", "archive_bytes": 12345,
-#       "minzoom": 0, "maxzoom": 8, "feature_count": 15,
+#       "minzoom": 0, "maxzoom": 8, "feature_count": 15, "tile_count": null,
 #       "max_tile_bytes": 1234 }, ... ] }
 #
-# Fields from the manifest are null when the layer is not built.
+# Fields from the manifest are null when the layer is not built. `type` is
+# the manifest's (vector when an older entry has none), or the config's
+# LAYER_TYPE when not built. A raster layer (ADR 0008) has `tile_count` and
+# no `feature_count`; a vector layer the other way round. A raster's
+# LAYER_INPUT is relative to RAW_DIR (/data/raw) like any input, so its
+# source data is checked the same way.
 
 # _newest_mtime FILE...: the newest modification time (epoch seconds) of the
 # FILEs that exist; nothing if none does.
@@ -65,8 +71,9 @@ source_mtime() {
   fi
 }
 
-# _config_input CONFIG: load CONFIG in a subshell and print `ok<TAB>INPUT`
-# (LAYER_INPUT, resolved), or `invalid<TAB>REASON` if it does not load.
+# _config_input CONFIG: load CONFIG in a subshell and print
+# `ok<TAB>TYPE<TAB>INPUT` (LAYER_TYPE and LAYER_INPUT, resolved), or
+# `invalid<TAB>REASON` if it does not load.
 _config_input() {
   local result
   result=$(
@@ -78,7 +85,7 @@ _config_input() {
       exit 0
     }
     load_layer_config "$1" 2>/dev/null
-    printf 'ok\t%s\n' "$LAYER_INPUT"
+    printf 'ok\t%s\t%s\n' "$LAYER_TYPE" "$LAYER_INPUT"
   ) || true
   printf '%s\n' "${result:-$(printf 'invalid\t%s does not load' "${1##*/}")}"
 }
@@ -89,7 +96,7 @@ _layer_status() {
   local name=$1 out_dir=$2 layers_dir=$3 entries=$4
   local env="${layers_dir}/${name}.env" style="${layers_dir}/${name}.style.json"
   local archive="${out_dir}/${name}.pmtiles"
-  local entry built_at=0 configured=false built=false state input="" notes=()
+  local entry built_at=0 configured=false built=false state input="" type="" notes=()
 
   entry=$(jq -c --arg n "$name" 'first(.[] | select(.name == $n)) // null' <<<"$entries")
   if [[ $entry != null ]]; then
@@ -106,6 +113,8 @@ _layer_status() {
     local cfg problems=()
     cfg=$(_config_input "$env")
     if [[ ${cfg%%$'\t'*} == ok ]]; then
+      cfg=${cfg#*$'\t'}
+      type=${cfg%%$'\t'*}
       input=${cfg#*$'\t'}
     else
       problems+=("${cfg#*$'\t'}")
@@ -143,13 +152,18 @@ _layer_status() {
     --arg name "$name" --arg state "$state" \
     --argjson configured "$configured" --argjson built "$built" \
     --arg input "$input" --arg bytes "$bytes" --argjson entry "$entry" \
+    --arg type "$type" \
     '{name: $name, state: $state, notes: $ARGS.positional,
       configured: $configured, built: $built,
+      type: (if $entry != null then ($entry.type // "vector")
+             elif $type != "" then $type else null end),
+      format: $entry.format,
       input: (if $input == "" then null else $input end),
       built_at: $entry.built_at,
       archive_bytes: (if $bytes == "" then null else ($bytes | tonumber) end),
       minzoom: $entry.minzoom, maxzoom: $entry.maxzoom,
       feature_count: $entry.feature_count,
+      tile_count: $entry.tile_count,
       max_tile_bytes: $entry.max_tile_bytes}' \
     --args "${notes[@]}"
 }
@@ -204,7 +218,9 @@ print_layer_status() {
     .layers[]
     | [.name, .state, (.built_at // "-"), (.archive_bytes | size),
        (if .minzoom == null then "-" else "\(.minzoom)-\(.maxzoom)" end),
-       (.feature_count // "-" | tostring), (.max_tile_bytes | size),
+       (if .feature_count != null then (.feature_count | tostring)
+        elif .tile_count != null then "\(.tile_count) tiles" else "-" end),
+       (.max_tile_bytes | size),
        (.notes | join("\u001f"))]
     | @tsv' | awk -F'\t' '
     # cell(i, s): column i padded to its width, or ending the line.

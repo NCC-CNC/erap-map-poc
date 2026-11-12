@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 // Command line for the display config tool, called by bin/run.sh.
 //
-//   cli.mjs resolve LAYER CONFIG DATA OUT
+//   cli.mjs resolve LAYER CONFIG DATA OUT [TYPE]
 //       Resolve LAYER's display config CONFIG (a .style.json) against its
 //       normalised data DATA (GeoJSONSeq, read only for `breaks`) and write
-//       the manifest `display` block to OUT.
+//       the manifest `display` block to OUT. TYPE is the layer's LAYER_TYPE,
+//       `vector` (default) or `raster`; a raster layer has no DATA (pass -).
 //   cli.mjs check CONFIG...
 //       Check configs without data (schema, legend, MapLibre validation);
-//       `breaks` are resolved against placeholder values.
+//       `breaks` are resolved against placeholder values, and the layer
+//       type is the one the config implies.
 //   cli.mjs style MANIFEST OUT
 //       Write the combined MapLibre style of every layer in MANIFEST that
 //       has a `display` block to OUT, drawn in display order.
@@ -47,15 +49,15 @@ function readJson(path, what) {
   }
 }
 
-function resolveCommand([layer, config, data, out]) {
-  if (!out) return usage();
+function resolveCommand([layer, config, data, out, type = 'vector']) {
+  if (!out || !['vector', 'raster'].includes(type)) return usage();
   const parsed = readJson(config, 'display config');
   let text;
   const valuesOf = (attribute) => {
     text ??= readFileSync(data, 'utf8');
     return attributeValues(text, attribute);
   };
-  writeJson(out, resolveDisplay(layer, parsed, valuesOf));
+  writeJson(out, resolveDisplay(layer, parsed, valuesOf, type));
   return 0;
 }
 
@@ -91,7 +93,9 @@ function styleCommand([manifest, out]) {
 }
 
 function usage() {
-  console.error('usage: cli.mjs resolve LAYER CONFIG DATA OUT | check CONFIG... | style MANIFEST OUT');
+  console.error(
+    'usage: cli.mjs resolve LAYER CONFIG DATA OUT [vector|raster] | check CONFIG... | style MANIFEST OUT',
+  );
   return 2;
 }
 

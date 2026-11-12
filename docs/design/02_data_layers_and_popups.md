@@ -11,6 +11,8 @@ changes.
 | --- | --- | --- | --- | --- | --- |
 | `sample` | Synthetic test fixture (`pipeline/tests/fixtures/sample.geojson`) | GeoJSON | Polygon | 15 features, about 5 KB | Built (test layer) |
 | `sample_points` | Synthetic test fixture (`pipeline/tests/fixtures/sample_points.geojson`) | GeoJSON | Point | 30 features, about 5 KB | Built (test layer) |
+| `forest` | Play data, `Forest_AAFC_LUTS_2020_NFIS_2022_30m.tif` (via `RAW_DIR`) | GeoTIFF | Binary raster | 200,792 x 131,690 cells, 620 MB | Config only (full build not run, see ADR 0008) |
+| `agriculture` | Play data, `HM_CA_ag2022_r90_merged_prj_30_binary.tif` (via `RAW_DIR`) | GeoTIFF | Binary raster | 235,461 x 137,833 cells, 1.3 GB | Config only (full build not run, see ADR 0008) |
 | `example` | TBC | TBC | TBC | TBC | Placeholder |
 
 ## Per-layer contract
@@ -72,12 +74,14 @@ in an editor. Fields:
     either explicit `stops` (`from` ascending, the last class up to `max`,
     which is for the legend only) or `breaks` plus `colors` (below). The
     shorthand expands to style layers with ids `fill` and `outline`, or
-    `circle`.
-  - `layers`: raw MapLibre style-spec layers, in draw order, without
-    `source` or `source-layer` (filled in from the layer). Any vector layer
-    type (`fill`, `line`, `symbol`, `circle`, `heatmap`, `fill-extrusion`),
-    with expressions, zoom functions, filters, labels and so on. Ids must be
-    unique within the file.
+    `circle`. A raster layer (`LAYER_TYPE=raster`) takes only the raster
+    shorthand, `geometry: "raster"` with `color` (`#rrggbb`), `opacity` and
+    an optional legend `label` (default the title); see Raster layers.
+  - `layers`: raw MapLibre style-spec layers for a vector layer, in draw
+    order, without `source` or `source-layer` (filled in from the layer).
+    Any vector layer type (`fill`, `line`, `symbol`, `circle`, `heatmap`,
+    `fill-extrusion`), with expressions, zoom functions, filters, labels and
+    so on. Ids must be unique within the file.
 - `legend` (optional): explicit legend `items` (`color`, `label`), with
   optional `kind` (`single`, `categories`, `ramp`), `shape` (`square`,
   `circle`, `line`), `border` and `opacity`. Without it the legend is
@@ -247,6 +251,90 @@ default for now (see #17).
     (label "Count", integer).
   - Plots: none.
 
+### `forest`
+
+- Source: play data (November 2026), `Forest_AAFC_LUTS_2020_NFIS_2022_30m.tif`
+  (forest from AAFC land use 2020 and NFIS 2022). Canada Albers (WGS 84),
+  30 m, Byte, 1 = forest, nodata 255, LZW in strips of one row. Not in the
+  repo or the image: `RAW_DIR` points at its folder. Config:
+  `pipeline/layers/forest.env`.
+- Pipeline steps: the raster branch (Raster layers, below).
+- Tile settings: z2 to z12, grey PNG cover share.
+- Display (`forest.style.json`, `order` 1, under the vector layers): dark
+  green `#1b7837` at 70% opacity, legend "Forest (2020 to 2022)". Shown by
+  default.
+- Pop-up: none (display only).
+
+### `agriculture`
+
+- Source: play data (November 2026),
+  `HM_CA_ag2022_r90_merged_prj_30_binary.tif` (agricultural land 2022).
+  Canada Albers (WGS 84), 30 m, Float32 0/1, nodata NaN, LZW in strips of
+  one row. Via `RAW_DIR`, like `forest`. Config:
+  `pipeline/layers/agriculture.env`.
+- Pipeline steps: the raster branch; 0 and nodata are both transparent.
+- Tile settings: z2 to z12, grey PNG cover share.
+- Display (`agriculture.style.json`, `order` 2): orange `#d95f02` at 70%
+  opacity, legend "Agricultural land (2022)". Off by default.
+- Pop-up: none (display only).
+
+## Raster layers
+
+A binary raster (cells of 1 on a background of 0 or nodata) can be a layer
+too, display only (ADR 0008). In `<layer>.env`:
+
+- `LAYER_TYPE=raster` (the default is `vector`).
+- `LAYER_INPUT`: the raster, relative to `RAW_DIR` (`/data/raw` in the
+  container) like any input.
+- `LAYER_MIN_ZOOM`, `LAYER_MAX_ZOOM`: the zoom range; the max zoom (at most
+  14) is also the resolution the raster is resampled to. z12 is about 38 m
+  at the equator and 19 to 27 m across Canada, close to a 30 m source.
+- `LAYER_NODATA` (optional): the source's nodata value, when the file does
+  not declare it (or declares the wrong one).
+- `LAYER_SOURCE_SRS` (optional): the source CRS, when the file has none.
+
+The source is expected to hold only 0, 1 and nodata; 1 is drawn, 0 and
+nodata are transparent. The pipeline (`lib/raster.sh`) warps it to
+EPSG:3857 at the max zoom's resolution, aligned to the tile grid, then for
+each lower zoom averages the share of each pixel covered by 1 cells, and
+writes every zoom as 256 px grey PNG tiles: the grey level is that share,
+0 (transparent) to 255. Blank tiles are left out. The tiles are packed into
+`<layer>.pmtiles` (tile type `png`) through an MBTiles file and
+`pmtiles convert`.
+
+The colour is not in the tiles. The display config's raster shorthand
+
+```json
+{
+  "$schema": "../schema/layer-style.schema.json",
+  "title": "Forest",
+  "defaultVisible": true,
+  "order": 1,
+  "symbology": { "geometry": "raster", "color": "#1b7837", "opacity": 0.7 }
+}
+```
+
+expands to one style layer, id `raster`, of type `color-relief`, on a
+`raster-dem` source that decodes the grey level as an "elevation" of 0 to 1
+(`encoding: custom`, `redFactor` 1/255, the other factors and `baseShift`
+0). Its `color-relief-color` ramps from the colour fully transparent at no
+cover to the colour at full cover, so at lower zooms the share covered shows
+as transparency; `color-relief-opacity` is `opacity`, and `resampling` is
+`nearest`, so cells stay sharp past the max zoom. The legend is a single
+square swatch in the colour at `opacity`. Changing the colour or opacity
+changes only the manifest entry and `style.json`, not the tiles. Raster
+layers cannot have a `popup` or raw `layers`, and the raster shorthand is
+for raster layers only; the pipeline fails the layer otherwise, before
+tiling.
+
+`pipeline/tests/raster.bats` covers the branch with synthetic rasters made
+at test time by `tests/fixtures/make_raster.sh` (a Byte 1/255 raster and a
+Float32 0/1/NaN one in the strip layout; nothing binary is committed): the
+archive and its zooms, full cover at the max zoom and partial cover below,
+the manifest entry, `LAYER_NODATA`, an empty raster, the colour staying out
+of the tiles, building a raster layer next to a vector one, and the config
+checks.
+
 ## Input options
 
 Set per layer in `pipeline/layers/<layer>.env` (every variable is described
@@ -398,11 +486,12 @@ draw the layers (the `display` block is shortened here; see Display config):
     {
       "name": "sample",
       "file": "sample.pmtiles",
+      "type": "vector",
+      "format": "mvt",
       "minzoom": 0,
       "maxzoom": 8,
       "bounds": [-125, 46, -66, 56],
       "center": [-108.98, 51.18, 8],
-      "feature_count": 15,
       "built_at": "2026-01-01T00:00:00Z",
       "display": {
         "title": "Sample polygons",
@@ -421,6 +510,9 @@ draw the layers (the `display` block is shortened here; see Display config):
           "items": [{ "color": "#a1dab4", "label": "0 to 25" }]
         }
       },
+      "build_seconds": 3,
+      "bytes": 49824,
+      "feature_count": 15,
       "profile": null,
       "min_visible_px": 1,
       "max_tile_bytes": 833,
@@ -446,17 +538,24 @@ others. Both files are written to a temp file and moved into place, so a
 failed run leaves the previous version.
 
 The manifest is the runtime contract with the web app (ADR 0007), which
-reads `name` (also the source layer and style layer id prefix), `file` and
-`display`. `display` is the resolved `<layer>.style.json`, valid against
+reads `name` (also the source layer and style layer id prefix), `file`,
+`type` and `display`. `type` is the layer's `LAYER_TYPE`, `vector` or
+`raster` (ADR 0008); it decides the MapLibre source (`vector`, or the
+`raster-dem` source of Raster layers), and an entry without it, written
+before raster layers, is read as vector. `format` is the archive's tile
+type from its PMTiles header, `mvt` or `png`. `display` is the resolved
+`<layer>.style.json`, valid against
 `$defs/display` in the schema: `title`, `defaultVisible`, `order` (0 when
 not set), `popup` (when set), `layers` (the style layers in draw order,
 with the shorthand expanded and `breaks` resolved, ids as configured) and
 `legend` (every field filled in). The web app checks each entry again and
 leaves out one that does not pass, saying so in the layer panel; an entry
 written before display configs existed has no `display` and is left out
-until the layer is rebuilt. The rest is the build report from the drop
-guard:
+until the layer is rebuilt. The rest is the build report. Every entry has
+`build_seconds` (the layer's build time) and `bytes` (the archive's size).
+A vector layer adds the drop guard's report:
 
+- `feature_count`: features in the normalised input.
 - `profile`: the layer's `LAYER_PROFILE`, or `null` for none.
 - `min_visible_px`: the layer's `LAYER_MIN_VISIBLE_PX`.
 - `max_tile_bytes`: the largest stored (compressed) tile in the archive.
@@ -466,10 +565,18 @@ guard:
   how many of them are present (`required_present`, always equal to
   `required` in a built layer), and that zoom's largest tile in bytes.
 
+A raster layer adds instead:
+
+- `tile_count`: tiles in the archive (blank ones are not written).
+- `max_tile_bytes`: the largest tile in bytes.
+- `zooms`: one entry per zoom with tiles, `{"zoom": 12, "tiles": 2000,
+  "max_tile_bytes": 15000}`.
+
 The pipeline also writes `data/tiles/style.json` after every run: a
 standalone MapLibre style (version 8, no basemap) of every layer in the
-manifest, in draw order, for use in other tools. Each layer is a source
-`{"type": "vector", "url": "pmtiles://<layer>.pmtiles"}`, relative to the
+manifest, in draw order, for use in other tools. Each vector layer is a
+source `{"type": "vector", "url": "pmtiles://<layer>.pmtiles"}` and each
+raster layer the `raster-dem` source of Raster layers, relative to the
 folder holding `style.json` (tools that need absolute URLs, or that resolve
 them against the page rather than the style, need them rewritten, and need
 the `pmtiles://` protocol), with its style layers prefixed with `<layer>-`

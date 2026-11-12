@@ -16,6 +16,9 @@ import {
   styleProblems,
   symbologyLayers,
   symbologyLegend,
+  RASTER_SOURCE,
+  configType,
+  rgba,
 } from '../display.mjs';
 
 const layersDir = new URL('../../layers/', import.meta.url);
@@ -478,5 +481,84 @@ describe('combined style', () => {
     const style = buildStyle([{ name: 'labels', file: 'labels.pmtiles', display }]);
     assert.match(style.glyphs, /^https:\/\//);
     assert.deepEqual(styleProblems(style), []);
+  });
+});
+
+describe('raster layers', () => {
+  const rasterConfig = () => ({
+    title: 'Cover',
+    defaultVisible: true,
+    order: 2,
+    symbology: { geometry: 'raster', color: '#1b7837', opacity: 0.5 },
+  });
+  const expectedRaster = JSON.parse(
+    readFileSync(new URL('../../tests/fixtures/expected_raster_display.json', import.meta.url)),
+  );
+
+  it('resolves the test config to the shared expected display', () => {
+    const config = JSON.parse(
+      readFileSync(new URL('../../tests/fixtures/raster.style.json', import.meta.url)),
+    );
+    assert.deepEqual(resolveDisplay('cover', config, undefined, 'raster'), expectedRaster);
+  });
+
+  it('expands to one color-relief layer and a single swatch, label defaulting to the title', () => {
+    const display = resolveDisplay('cover', rasterConfig(), undefined, 'raster');
+    assert.equal(display.layers.length, 1);
+    assert.equal(display.layers[0].type, 'color-relief');
+    assert.deepEqual(display.layers[0].paint['color-relief-color'].slice(3), [
+      0,
+      'rgba(27, 120, 55, 0)',
+      1,
+      'rgba(27, 120, 55, 1)',
+    ]);
+    assert.equal(display.layers[0].paint['color-relief-opacity'], 0.5);
+    assert.deepEqual(display.legend.items, [{ color: '#1b7837', label: 'Cover' }]);
+    assert.equal(display.legend.opacity, 0.5);
+  });
+
+  it('infers the type from the config, and checks it against the layer type', () => {
+    assert.equal(configType(rasterConfig()), 'raster');
+    assert.equal(configType(readConfig('sample')), 'vector');
+    assert.ok(resolveDisplay('cover', rasterConfig()));
+    assert.match(
+      problemsOf(() => resolveDisplay('cover', rasterConfig(), undefined, 'vector'))[0],
+      /for raster layers only/,
+    );
+    assert.match(
+      problemsOf(() => resolveDisplay('cover', readConfig('sample'), () => [], 'raster'))[0],
+      /needs "symbology" with "geometry": "raster"/,
+    );
+  });
+
+  it('rejects a pop-up, a named colour and raw color-relief layers', () => {
+    const withPopup = { ...rasterConfig(), popup: { title: { attribute: 'x' }, stats: [] } };
+    assert.match(problemsOf(() => resolveDisplay('cover', withPopup))[0], /display only/);
+    const named = rasterConfig();
+    named.symbology.color = 'green';
+    assert.ok(problemsOf(() => resolveDisplay('cover', named)).some((p) => p.includes('pattern')));
+    const raw = {
+      title: 'Raw',
+      defaultVisible: true,
+      layers: [{ id: 'r', type: 'color-relief' }],
+      legend: { items: [{ color: '#000000', label: 'x' }] },
+    };
+    assert.ok(problemsOf(() => resolveDisplay('raw', raw)).length > 0);
+  });
+
+  it('gets a raster-dem source and no source layer in the combined style', () => {
+    const style = buildStyle([
+      { name: 'cover', file: 'cover.pmtiles', type: 'raster', display: expectedRaster },
+      { name: 'polys', file: 'polys.pmtiles', type: 'vector', display: expected.sample },
+    ]);
+    assert.deepEqual(styleProblems(style), []);
+    assert.deepEqual(style.sources.cover, { ...RASTER_SOURCE, url: 'pmtiles://cover.pmtiles' });
+    assert.equal(style.layers[0].id, 'cover-raster');
+    assert.equal('source-layer' in style.layers[0], false);
+    assert.equal(style.layers[1]['source-layer'], 'polys');
+  });
+
+  it('writes colours as rgba()', () => {
+    assert.equal(rgba('#ff8000', 0.25), 'rgba(255, 128, 0, 0.25)');
   });
 });

@@ -169,8 +169,44 @@ export function colorValue(rule) {
   throw new DisplayError([`unknown colour type ${rule.type}`]);
 }
 
+/** `rgba()` of a `#rrggbb` colour at the given alpha. */
+export function rgba(hex, alpha) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/**
+ * The raster shorthand's style layer: a `color-relief` layer on the
+ * layer's `raster-dem` source, whose "elevation" is the share of the pixel
+ * covered by 1 cells (0 to 1, see RASTER_SOURCE). None is transparent, all
+ * is the colour, and part cover (lower zooms) is the colour at that share
+ * of full opacity. `nearest` keeps cell edges sharp past the max zoom.
+ */
+export function rasterLayers(symbology) {
+  return [
+    {
+      id: 'raster',
+      type: 'color-relief',
+      paint: {
+        'color-relief-color': [
+          'interpolate',
+          ['linear'],
+          ['elevation'],
+          0,
+          rgba(symbology.color, 0),
+          1,
+          rgba(symbology.color, 1),
+        ],
+        'color-relief-opacity': symbology.opacity,
+        resampling: 'nearest',
+      },
+    },
+  ];
+}
+
 /** Style layers for the shorthand, in draw order, with un-prefixed ids. */
 export function symbologyLayers(symbology) {
+  if (symbology.geometry === 'raster') return rasterLayers(symbology);
   const color = colorValue(symbology.color);
   if (symbology.geometry === 'polygon') {
     return [
@@ -211,6 +247,15 @@ function fallbackItems(fallback) {
 
 /** The legend for the shorthand, from the same rule as its style layers. */
 export function symbologyLegend(symbology, title) {
+  if (symbology.geometry === 'raster') {
+    return {
+      kind: 'single',
+      shape: 'square',
+      border: 'transparent',
+      opacity: symbology.opacity,
+      items: [{ color: symbology.color, label: symbology.label ?? title }],
+    };
+  }
   const rule = symbology.color;
   const polygon = symbology.geometry === 'polygon';
   let kind;
@@ -361,13 +406,16 @@ export function styleLayerId(layerName, id) {
   return `${layerName}-${id}`;
 }
 
-/** Style layers of one data layer, wired to its source, with prefixed ids. */
-export function sourcedLayers(layerName, layers, visible) {
+/**
+ * Style layers of one data layer, wired to its source (and, for a vector
+ * layer, its source layer), with prefixed ids.
+ */
+export function sourcedLayers(layerName, layers, visible, type = 'vector') {
   return layers.map((layer) => ({
     ...layer,
     id: styleLayerId(layerName, layer.id),
     source: layerName,
-    'source-layer': layerName,
+    ...(type === 'raster' ? {} : { 'source-layer': layerName }),
     layout: { ...layer.layout, visibility: visible ? 'visible' : 'none' },
   }));
 }
@@ -375,20 +423,48 @@ export function sourcedLayers(layerName, layers, visible) {
 const usesText = (layers) => layers.some((l) => l.type === 'symbol' && l.layout?.['text-field']);
 
 /**
+ * How a raster layer's archive is read (ADR 0008): 256 px grey PNG tiles
+ * whose grey level is the share of the pixel covered by 1 cells, 0 to 255,
+ * decoded as an "elevation" of 0 to 1 for the `color-relief` layer. The
+ * web app uses the same source (web/src/layers/spec.ts).
+ */
+export const RASTER_SOURCE = Object.freeze({
+  type: 'raster-dem',
+  tileSize: 256,
+  encoding: 'custom',
+  redFactor: 1 / 255,
+  greenFactor: 0,
+  blueFactor: 0,
+  baseShift: 0,
+});
+
+/** The layer type a config implies: `raster` for the raster shorthand. */
+export function configType(config) {
+  return config?.symbology?.geometry === 'raster' ? 'raster' : 'vector';
+}
+
+/** The MapLibre source of a data layer of the given type. */
+export function layerSource(type, file) {
+  const url = `pmtiles://${file}`;
+  return type === 'raster' ? { ...RASTER_SOURCE, url } : { type: 'vector', url };
+}
+
+/**
  * A standalone MapLibre style of data layers, each entry being
- * `{name, file, display}`, drawn in the order given. Sources are
- * `pmtiles://<file>`, relative to the folder holding the style.
+ * `{name, file, type, display}` (`type` as in the manifest, `vector` when
+ * missing), drawn in the order given. Sources are `pmtiles://<file>`,
+ * relative to the folder holding the style.
  */
 export function buildStyle(entries) {
   const layers = entries.flatMap((e) =>
-    sourcedLayers(e.name, e.display.layers, e.display.defaultVisible),
+    sourcedLayers(e.name, e.display.layers, e.display.defaultVisible, e.type ?? 'vector'),
   );
   return {
     version: 8,
     name: 'ERAP Map data layers',
     ...(usesText(layers) ? { glyphs: GLYPHS_URL } : {}),
     sources: Object.fromEntries(
-      entries.map((e) => [e.name, { type: 'vector', url: `pmtiles://${e.file}` }]),
+      entries.map((e) => [e.name, layerSource(e.type ?? 'vector', e.file)]),
     ),
     layers,
   };
@@ -418,14 +494,32 @@ export function drawOrder(entries) {
  * @param {object} config the parsed .style.json.
  * @param {(attribute: string) => number[]} [valuesOf] numeric values of an
  *   attribute in the layer's data; needed only for `breaks`.
+ * @param {'vector' | 'raster'} [type] the layer's LAYER_TYPE; defaults to
+ *   the type the config implies (see `configType`). A raster layer must use
+ *   the raster shorthand, and only a raster layer may.
  * @throws {DisplayError} listing every problem found.
  */
-export function resolveDisplay(layerName, config, valuesOf) {
+export function resolveDisplay(layerName, config, valuesOf, type = configType(config)) {
   validateConfig(config);
+  const raster = config.symbology?.geometry === 'raster';
+  if (type === 'raster' && !raster) {
+    throw new DisplayError([
+      'a raster layer (LAYER_TYPE=raster) needs "symbology" with "geometry": "raster"',
+    ]);
+  }
+  if (type !== 'raster' && raster) {
+    throw new DisplayError(['"geometry": "raster" is for raster layers only (LAYER_TYPE=raster)']);
+  }
+  if (raster && config.popup) {
+    throw new DisplayError(['popup: raster layers are display only and cannot have a pop-up']);
+  }
 
   let layers;
   let derived;
-  if (config.symbology) {
+  if (raster) {
+    layers = symbologyLayers(config.symbology);
+    derived = symbologyLegend(config.symbology, config.title);
+  } else if (config.symbology) {
     const needsData = config.symbology.color.type === 'stepped' && config.symbology.color.breaks;
     if (needsData && !valuesOf) throw new DisplayError(['breaks need the layer data']);
     const symbology = { ...config.symbology, color: resolveRule(config.symbology.color, valuesOf) };
@@ -459,7 +553,7 @@ export function resolveDisplay(layerName, config, valuesOf) {
     legend,
   };
 
-  const style = buildStyle([{ name: layerName, file: `${layerName}.pmtiles`, display }]);
+  const style = buildStyle([{ name: layerName, file: `${layerName}.pmtiles`, type, display }]);
   // Validate as if glyphs were there: the web map's basemap provides them.
   const problems = styleProblems({ ...style, glyphs: GLYPHS_URL });
   if (problems.length) throw new DisplayError(problems.map((p) => `MapLibre style: ${p}`));

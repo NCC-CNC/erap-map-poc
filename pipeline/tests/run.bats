@@ -24,6 +24,17 @@ make_layers_dir() {
   done
 }
 
+# A layers dir holding the repo's configs of the given layers, as they are.
+copy_layers() {
+  export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
+  mkdir -p "$PIPELINE_LAYERS_DIR"
+  local name
+  for name in "$@"; do
+    cp "${PIPELINE_ROOT}/layers/${name}.env" "${PIPELINE_ROOT}/layers/${name}.style.json" \
+      "$PIPELINE_LAYERS_DIR"
+  done
+}
+
 # No temp files left in the output dir.
 assert_no_temp_files() {
   run find "$PIPELINE_OUTPUT_DIR" -name '*.tmp*'
@@ -172,6 +183,8 @@ assert_no_temp_files() {
 }
 
 @test "no arguments builds sample and sample_points into one manifest" {
+  # The two synthetic layers only: the repo's raster layers need RAW_DIR.
+  copy_layers sample sample_points
   run "$RUN"
   [ "$status" -eq 0 ]
   [ -s "${PIPELINE_OUTPUT_DIR}/sample.pmtiles" ]

@@ -1,0 +1,31 @@
+{
+  "title": "Test raster",
+  "defaultVisible": true,
+  "order": 5,
+  "layers": [
+    {
+      "id": "raster",
+      "type": "color-relief",
+      "paint": {
+        "color-relief-color": [
+          "interpolate",
+          ["linear"],
+          ["elevation"],
+          0,
+          "rgba(27, 120, 55, 0)",
+          1,
+          "rgba(27, 120, 55, 1)"
+        ],
+        "color-relief-opacity": 0.7,
+        "resampling": "nearest"
+      }
+    }
+  ],
+  "legend": {
+    "kind": "single",
+    "shape": "square",
+    "border": "transparent",
+    "opacity": 0.7,
+    "items": [{ "color": "#1b7837", "label": "Test raster" }]
+  }
+}

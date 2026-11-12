@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 # Tests for `run.sh --status` (lib/status.sh) and `run.sh --remove`
-# (manifest_remove in lib/manifest.sh), on copies of the sample layer.
+# (manifest_remove in lib/manifest.sh), on copies of the sample layer and a
+# synthetic raster layer.
 # Run in the test image with the other bats files:
 #   docker build --target test -t erap-pipeline-test pipeline
 #   docker run --rm erap-pipeline-test
@@ -236,4 +237,57 @@ touch_later() {
   [[ $output == *"nothing built for layer 'nope'"* ]]
   [ -s "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles" ]
   [ "$(sha256sum "$MANIFEST")" = "$before" ]
+}
+
+# add_raster NAME: a raster layer on a synthetic binary GeoTIFF made now in
+# the input dir (fixtures/make_raster.sh), z3 to z6.
+add_raster() {
+  "${PIPELINE_ROOT}/tests/fixtures/make_raster.sh" byte "${PIPELINE_INPUT_DIR}/$1.tif" 2>/dev/null
+  printf '%s\n' 'LAYER_TYPE=raster' "LAYER_INPUT=$1.tif" 'LAYER_MIN_ZOOM=3' 'LAYER_MAX_ZOOM=6' \
+    >"${PIPELINE_LAYERS_DIR}/$1.env"
+  cp "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" "${PIPELINE_LAYERS_DIR}/$1.style.json"
+}
+
+@test "--status and --remove handle a raster layer next to a vector one" {
+  add_layer alpha
+  add_raster cover
+  run "$RUN" --status --json
+  [ "$status" -eq 0 ]
+  run jq -e '.layers[] | select(.name == "cover")
+    | .state == "not built" and .type == "raster" and .input == "cover.tif"' <<<"$output"
+  [ "$status" -eq 0 ]
+
+  run "$RUN"
+  [ "$status" -eq 0 ]
+  run "$RUN" --status --json
+  [ "$status" -eq 0 ]
+  run jq -e '
+    (.layers[] | select(.name == "cover")
+      | .state == "current" and .type == "raster" and .format == "png"
+        and .archive_bytes > 0 and .tile_count > 0 and .feature_count == null
+        and .minzoom == 3 and .maxzoom == 6)
+    and (.layers[] | select(.name == "alpha")
+      | .type == "vector" and .format == "mvt" and .feature_count == 15
+        and .tile_count == null)' <<<"$output"
+  [ "$status" -eq 0 ]
+  run "$RUN" --status
+  [ "$status" -eq 0 ]
+  [[ $output == *"cover "*"current"*" tiles"* ]]
+
+  # The source raster (under RAW_DIR) changing makes it stale.
+  touch_later "${PIPELINE_INPUT_DIR}/cover.tif"
+  [ "$(state_of cover)" = stale ]
+  [[ "$(notes_of cover)" == *"source data changed since the build"* ]]
+  rm "${PIPELINE_INPUT_DIR}/cover.tif"
+  [ "$(state_of cover)" = invalid ]
+  [[ "$(notes_of cover)" == *"source data not found: cover.tif"* ]]
+
+  # --remove takes the raster archive, entry and style source; alpha stays.
+  run "$RUN" --remove cover
+  [ "$status" -eq 0 ]
+  [ ! -e "${PIPELINE_OUTPUT_DIR}/cover.pmtiles" ]
+  run jq -r '[.layers[].name] | join(",")' "$MANIFEST"
+  [ "$output" = alpha ]
+  run jq -r '[.sources | keys[]] | join(",")' "${PIPELINE_OUTPUT_DIR}/style.json"
+  [ "$output" = alpha ]
 }

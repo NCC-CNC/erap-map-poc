@@ -26,14 +26,16 @@ _display_tool() {
   return "$status"
 }
 
-# resolve_display LAYER CONFIG DATA OUT: check LAYER's display config CONFIG
-# and write its resolved `display` block to OUT. DATA is the normalised
-# GeoJSONSeq, read for `breaks`. Fails the layer on any problem, before any
-# tiles are built, so the previous archive and manifest entry are kept.
+# resolve_display LAYER CONFIG DATA OUT [TYPE]: check LAYER's display config
+# CONFIG and write its resolved `display` block to OUT. DATA is the
+# normalised GeoJSONSeq, read for `breaks` (`-` for a raster layer). TYPE is
+# the LAYER_TYPE, vector (default) or raster. Fails the layer on any
+# problem, before any tiles are built, so the previous archive and manifest
+# entry are kept.
 resolve_display() {
-  local layer=$1 config=$2 data=$3 out=$4
+  local layer=$1 config=$2 data=$3 out=$4 type=${5:-vector}
   [[ -r $config ]] || die "display config not found: $config"
-  _display_tool resolve "$layer" "$config" "$data" "$out" \
+  _display_tool resolve "$layer" "$config" "$data" "$out" "$type" \
     || die "invalid display config $config; keeping the previous archive and manifest entry"
   log_info "display config ok"
 }

@@ -53,9 +53,12 @@ they are not pushed anywhere.
 ```sh
 # Build tiles into data/tiles/: every layer, or only the ones named.
 # The synthetic `sample` and `sample_points` layers are baked into the
-# image, so this works with an empty data/raw/.
-docker compose run --rm --build pipeline
-docker compose run --rm pipeline sample sample_points
+# image, so these work with an empty data/raw/.
+docker compose run --rm --build pipeline sample sample_points
+# The real layers (`forest`, `agriculture`) read their source from RAW_DIR,
+# here the folder holding the November 2026 play data (see .env.example).
+RAW_DIR=C:/data/ERAP_play_data docker compose run --rm pipeline forest
+docker compose run --rm pipeline   # every layer
 
 # What is configured and built, and which builds are stale (a config or
 # the source data changed since); --json for detail. Read only.
@@ -78,13 +81,25 @@ reload the page.
 
 - `data/raw/`: source data, mounted read-only into the pipeline at
   `/data/raw`. Layer configs in `pipeline/layers/` name their inputs there.
+  Set `RAW_DIR` (in `.env` or the shell) to mount another folder there
+  instead, for example data kept outside the repo; compose mounts
+  `${RAW_DIR:-./data/raw}` read-only, so the pipeline never writes to it.
 - `data/tiles/`: pipeline output, one `.pmtiles` per layer plus
   `manifest.json` (which the map reads its layers from) and `style.json` (a
   standalone MapLibre style of the data layers, for other tools). The `web`
   service serves it read-only at `/tiles/`.
+- `data/work/`: scratch space for manual trials. The pipeline keeps its own
+  intermediates in the container and removes them.
 
-Both folders are git-ignored apart from `.gitkeep`. Real data and
-`.pmtiles` never go in git.
+These folders are git-ignored apart from `.gitkeep`, and so are raster and
+other source formats anywhere in the repo (`*.tif`, `*.tiff`, `*.vrt`,
+`*.gdb/`): real data and `.pmtiles` never go in git.
+
+Layers are vector (polygons, points) or binary rasters (`LAYER_TYPE=raster`,
+display only, ADR 0008). A raster layer's colour and opacity are applied by
+the map, not stored in its tiles. For now a pipeline run of the layer still
+rebuilds the tiles too (they come out the same); a style-only update is
+planned. A full-Canada raster takes tens of minutes and a few GB to build.
 
 ### Basemap and settings
 
@@ -92,7 +107,8 @@ The basemap is OpenFreeMap's keyless Positron (Light, the default) or Dark
 style (ADR 0006). It needs no key or other setup, but the browser must reach
 `tiles.openfreemap.org`.
 
-The optional settings (host ports, Linux UIDs, dev server polling) can go in
+The optional settings (host ports, Linux UIDs, dev server polling, the
+source data folder `RAW_DIR`) can go in
 a git-ignored `.env` in the repo root; copy `.env.example` to start.
 
 ### Linux file ownership

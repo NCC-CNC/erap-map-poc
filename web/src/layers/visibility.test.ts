@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sample, samplePoints } from '../test/fixtures';
+import { raster, sample, samplePoints } from '../test/fixtures';
 import type { LayerDefinition } from './types';
 import {
   initialVisibility,
@@ -46,5 +46,12 @@ describe('listOrder', () => {
     const defs = [sample, samplePoints];
     expect(listOrder(defs).map((d) => d.id)).toEqual(['sample_points', 'sample']);
     expect(defs.map((d) => d.id)).toEqual(['sample', 'sample_points']);
+  });
+});
+
+describe('visibility of a raster layer', () => {
+  it('switches its one color-relief layer', () => {
+    expect(visibilityUpdates(raster, false)).toEqual([['cover-raster', 'none']]);
+    expect(isVisible(withVisibility({}, 'cover', false), raster)).toBe(false);
   });
 });
