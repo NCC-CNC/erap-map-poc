@@ -23,6 +23,10 @@
       "Bash(gh run *)",
       "Bash(gh issue *)",
       "Bash(gh label *)",
+      "Bash(docker compose run --rm --build pipeline)",
+      "Bash(docker compose run --rm --build pipeline *)",
+      "Bash(docker compose run --rm --build --entrypoint inspect.sh pipeline *)",
+      "Bash(scripts/screenshot.sh *)",
       "Bash(gh api *)",
       "Bash(cat MEMORY.md)"
     ],

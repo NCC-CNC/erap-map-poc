@@ -105,6 +105,17 @@ and `web/` are independent components; `data/raw/` and `data/tiles/` are not
 committed; real data and `.pmtiles` never go in git. CI uses a synthetic
 test case in `pipeline/tests/fixtures/`. `web/` never reads `data/raw/`.
 
+## Adding or restyling a layer
+
+Use the project skills: `add-layer` (inspect a dataset in `data/raw/`, write
+`pipeline/layers/<layer>.env` and `<layer>.style.json`, build, check the
+build report and screenshots, draft PR) and `restyle-layer` (edit only
+`<layer>.style.json`, before and after screenshots, draft PR), in
+`.claude/skills/`. Their helpers are `pipeline/bin/inspect.sh` (in the
+pipeline image) and `scripts/screenshot.sh` (writes `tmp/screenshots/`).
+Data is never committed: a layer PR holds the two config files only, never
+anything from `data/`, `.pmtiles` or screenshots.
+
 ## Working rules
 
 - Branch from `main`; one short-lived branch per change. Open a pull request
