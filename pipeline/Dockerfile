@@ -101,6 +101,10 @@ COPY style/ /opt/pipeline/style/
 COPY --from=style /opt/pipeline/style/node_modules/ /opt/pipeline/style/node_modules/
 COPY tests/ /opt/pipeline/tests/
 
+# bin/ on the PATH, so the helpers run by name, for example
+# `docker compose run --rm --entrypoint inspect.sh pipeline <file>`.
+ENV PATH="/opt/pipeline/bin:${PATH}"
+
 # Run as a non-root user. docker-compose can override the uid with `user:`
 # so files written to bind mounts match the host user on Linux.
 RUN useradd --create-home --uid 10001 pipeline

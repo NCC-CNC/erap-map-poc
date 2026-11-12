@@ -45,6 +45,17 @@ docker compose run --rm --entrypoint sh pipeline -c \
   'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.style.json'
 ```
 
+With Claude Code, the `add-layer` and `restyle-layer` skills
+(`.claude/skills/`) walk through this. Their helpers also work by hand:
+
+```sh
+# Summarise a source dataset (path relative to data/raw/; --json for more)
+docker compose run --rm --build --entrypoint inspect.sh pipeline my/data.shp
+# Screenshot the map at zoom/lat/lon views, light and dark basemaps,
+# into tmp/screenshots/ (a private web container on port 8090 or higher)
+scripts/screenshot.sh -n mylayer 4/55/-110 8/53.9/-114.2
+```
+
 ### Checks
 
 Every check below is a CI gate: the `ci.yml` jobs feed the one required
@@ -57,11 +68,11 @@ same tools at the same versions as CI, all in Docker:
 export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
-# pipeline job: shellcheck, hadolint, bats (40 tests, including the display
+# pipeline job: shellcheck, hadolint, bats (48 tests, including the display
 # tool's node:test unit tests), runtime image
 docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
-  pipeline/bin/run.sh pipeline/lib/*.sh pipeline/layers/*.env \
-  pipeline/tests/fixtures/*.sh pipeline/tests/*.bats
+  pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \
+  pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh
 docker run --rm -v "$repo":/mnt -w /mnt hadolint/hadolint:v2.15.1 \
   hadolint --config .hadolint.yaml pipeline/Dockerfile web/Dockerfile
 docker build --target test -t erap-map-pipeline:test pipeline

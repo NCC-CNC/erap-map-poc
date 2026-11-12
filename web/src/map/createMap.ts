@@ -99,6 +99,9 @@ export function createMap(container: HTMLElement, options: CreateMapOptions): Ma
     style,
     center: [-96, 60],
     zoom: 3,
+    // Keep the view in the URL (`#zoom/lat/lon`): a view can be shared or
+    // reloaded, and scripts/screenshot.sh opens the map at a given view.
+    hash: true,
   });
 
   // Checked once; each later style reuses the result.
