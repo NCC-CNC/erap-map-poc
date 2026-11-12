@@ -23,8 +23,8 @@ add_layer() {
   local name
   for name in "$@"; do
     sed 's|^LAYER_INPUT=.*|LAYER_INPUT=sample.geojson|' \
-      "${PIPELINE_ROOT}/layers/sample.env" >"${PIPELINE_LAYERS_DIR}/${name}.env"
-    cp "${PIPELINE_ROOT}/layers/sample.style.json" "${PIPELINE_LAYERS_DIR}/${name}.style.json"
+      "${PIPELINE_ROOT}/tests/layers/sample.env" >"${PIPELINE_LAYERS_DIR}/${name}.env"
+    cp "${PIPELINE_ROOT}/tests/layers/sample.style.json" "${PIPELINE_LAYERS_DIR}/${name}.style.json"
   done
 }
 

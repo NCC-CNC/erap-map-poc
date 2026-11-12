@@ -4,7 +4,7 @@
 #
 # 15 rectangles laid out on a 5 x 3 grid over southern Canada. Attributes:
 #   id          integer, stable feature id (1..15)
-#   NAME_EN     string, renamed to `name` by pipeline/layers/sample.env
+#   NAME_EN     string, renamed to `name` by pipeline/tests/layers/sample.env
 #   area_ha     number, made-up area in hectares
 #   score       number, 0 to 100
 #   v2020..v2024 integers, a short series for a pop-up chart

@@ -165,7 +165,7 @@ assert_no_temp_files() {
 }
 
 @test "building one raster layer keeps the vector layer's entry; style.json has both" {
-  cp "${PIPELINE_ROOT}"/layers/sample.env "${PIPELINE_ROOT}"/layers/sample.style.json "$PIPELINE_LAYERS_DIR"
+  cp "${PIPELINE_ROOT}"/tests/layers/sample.env "${PIPELINE_ROOT}"/tests/layers/sample.style.json "$PIPELINE_LAYERS_DIR"
   run "$RUN" sample
   [ "$status" -eq 0 ]
   local before
@@ -242,7 +242,7 @@ assert_no_temp_files() {
 }
 
 @test "the raster shorthand on a vector layer is rejected" {
-  cp "${PIPELINE_ROOT}/layers/sample.env" "$PIPELINE_LAYERS_DIR"
+  cp "${PIPELINE_ROOT}/tests/layers/sample.env" "$PIPELINE_LAYERS_DIR"
   cp "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" "${PIPELINE_LAYERS_DIR}/sample.style.json"
   run "$RUN" sample
   [ "$status" -eq 1 ]
