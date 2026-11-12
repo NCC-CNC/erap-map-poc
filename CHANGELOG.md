@@ -33,6 +33,8 @@ All notable changes to this project are documented here. The format is based on
   `mapconfig.bats`, `style/test/mapconfig.test.mjs`, web
   `mapconfig.test.ts` and `view.test.ts`. The skills offer "just for me"
   (the map config) next to "for everyone" (the committed files and a PR).
+  `scripts/setup.sh` skips `source missing` layers like `invalid` ones,
+  reports `disabled` ones, and knows `MAP_CONFIG` as a `.env` setting.
 - `pipeline --style-only [layer ...]` (#53): apply `<layer>.style.json`
   changes to built layers, vector or raster, without re-tiling. Each
   config is checked as in a build, the `display` block of the layer's

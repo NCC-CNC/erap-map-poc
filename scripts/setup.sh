@@ -51,7 +51,7 @@ MIN_WSL_VERSION=2.1.5
 DEFAULT_WEB_PORT=8080
 DEFAULT_DEV_PORT=5173
 # Settings in .env.example, plus the compose ones a user may add.
-KNOWN_ENV_KEYS=" WEB_PORT WEB_DEV_PORT PIPELINE_UID PIPELINE_GID VITE_USE_POLLING RAW_DIR COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PROFILES "
+KNOWN_ENV_KEYS=" WEB_PORT WEB_DEV_PORT PIPELINE_UID PIPELINE_GID VITE_USE_POLLING RAW_DIR MAP_CONFIG COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PROFILES "
 
 FAILS=0
 WARNS=0
@@ -717,9 +717,9 @@ join_names() {
 }
 
 # build_layers: build every configured layer that is not built or is stale;
-# skip those that cannot be built (source data not in RAW_DIR). Returns 2
-# when the pipeline image or the layer check fails, 1 when a layer build
-# fails.
+# skip those that cannot be built (source data not in RAW_DIR) and those the
+# map config leaves out. Returns 2 when the pipeline image or the layer
+# check fails, 1 when a layer build fails.
 build_layers() {
   step "Building the pipeline image and checking the layers (the first time takes about 5 minutes)"
   local states
@@ -729,17 +729,18 @@ build_layers() {
     return 2
   fi
   local name state
-  local -a todo=() current=() invalid=()
+  local -a todo=() current=() invalid=() disabled=()
   while IFS=$'\t' read -r name state; do
     [[ -n $name ]] || continue
     case $state in
       current) current+=("$name") ;;
-      invalid) invalid+=("$name") ;;
+      invalid | "source missing") invalid+=("$name") ;;
+      disabled) disabled+=("$name") ;;
       *) todo+=("$name") ;;
     esac
   done <<<"${states//$'\r'/}"
 
-  if ((${#current[@]} + ${#invalid[@]} + ${#todo[@]} == 0)); then
+  if ((${#current[@]} + ${#invalid[@]} + ${#disabled[@]} + ${#todo[@]} == 0)); then
     say "No layers are configured in pipeline/layers/, so there is nothing to build; the map shows the basemap only."
     say "README.md (Adding a layer) explains how to add one."
     return 0
@@ -750,6 +751,9 @@ build_layers() {
   if ((${#invalid[@]} > 0)); then
     say "Skipped, cannot be built yet: $(join_names "${invalid[@]}"). Usually the source data is not in RAW_DIR;"
     say "'docker compose run --rm pipeline --status' says why for each. Fix it, then rerun scripts/setup.sh --init."
+  fi
+  if ((${#disabled[@]} > 0)); then
+    say "Left out by your map config (map.config.json): $(join_names "${disabled[@]}")."
   fi
   if ((${#todo[@]} == 0)); then
     return 0
