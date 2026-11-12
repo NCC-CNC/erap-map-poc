@@ -72,6 +72,8 @@ container paths needs `MSYS_NO_PATHCONV=1` and host paths from `pwd -W` or
 `cygpath -w`. `CONTRIBUTING.md` (Setup, Checks) has the full copy-paste
 block; keep it in step with this section.
 
+- First-time setup on Windows: `scripts/setup.sh --init` (checks, `.env`,
+  images, layers, map); `scripts/setup.sh` alone checks only, read only.
 - Pipeline: `docker compose run --rm pipeline [layer ...]` (no names builds
   every layer into `data/tiles/`, plus `manifest.json` and `style.json`).
   Source data comes from `RAW_DIR` (`.env`; default `./data/raw`), mounted
@@ -121,10 +123,11 @@ test case in `pipeline/tests/fixtures/`. `web/` never reads `data/raw/`.
 
 Use the project skills in `.claude/skills/`: `add-layer`, `restyle-layer`,
 `build-layers`, `layer-status`, `update-layer-data`, `remove-layer`,
-`inspect-data`, `run-map` and `run-checks`. The README table (Using Claude
-Code) maps each to its plain command. Skills hold procedure only: they
-call documented commands (`pipeline/bin/run.sh` with `--status` and
-`--remove`, `pipeline/bin/inspect.sh`, `scripts/screenshot.sh` writing
+`inspect-data`, `run-map`, `run-checks` and `setup`. The README table
+(Using Claude Code) maps each to its plain command. Skills hold procedure
+only: they call documented commands (`pipeline/bin/run.sh` with `--status`
+and `--remove`, `pipeline/bin/inspect.sh`, `scripts/setup.sh` with
+`--check` and `--init`, `scripts/screenshot.sh` writing
 `tmp/screenshots/`, the `CONTRIBUTING.md` checks); new logic goes into the
 pipeline or `scripts/` with tests first. Claude Code stays optional.
 `remove-layer` always confirms with the user. Data is never committed: a

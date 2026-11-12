@@ -106,7 +106,7 @@ jobs:
           shellcheck --version
           shellcheck -x pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \
             pipeline/tests/layers/*.env pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh \
-            scripts/check-tiles-cache.sh
+            scripts/check-tiles-cache.sh scripts/setup.sh scripts/tests/*.bats
 
       - name: hadolint
         run: hadolint --config .hadolint.yaml pipeline/Dockerfile
@@ -125,6 +125,11 @@ jobs:
 
       - name: bats
         run: docker run --rm erap-map-pipeline:test
+
+      # scripts/setup.sh, with stub docker, wsl.exe and friends (no Windows
+      # needed), in the same image for its bats.
+      - name: bats (scripts)
+        run: docker run --rm -v "$PWD":/repo:ro erap-map-pipeline:test /repo/scripts/tests
 
       # Shares every stage with the test image, so this is a cache hit.
       - name: Build runtime image
