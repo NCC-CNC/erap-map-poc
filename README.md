@@ -60,8 +60,14 @@ docker compose run --rm --build pipeline sample sample_points
 RAW_DIR=C:/data/ERAP_play_data docker compose run --rm pipeline forest
 docker compose run --rm pipeline   # every layer
 
-# What is configured and built, and which builds are stale (a config or
-# the source data changed since); --json for detail. Read only.
+# After editing only a layer's .style.json (colours, legend, pop-up, title,
+# order): update its display in seconds, no re-tiling. No names: every
+# built layer.
+docker compose run --rm pipeline --style-only sample
+
+# What is configured and built, which builds are stale (the .env or the
+# source data changed since) and which need only --style-only (`restyle`);
+# --json for detail. Read only.
 docker compose run --rm pipeline --status
 
 # Run the web map at http://localhost:8080 (WEB_PORT changes the port).
@@ -97,9 +103,9 @@ other source formats anywhere in the repo (`*.tif`, `*.tiff`, `*.vrt`,
 
 Layers are vector (polygons, points) or binary rasters (`LAYER_TYPE=raster`,
 display only, ADR 0008). A raster layer's colour and opacity are applied by
-the map, not stored in its tiles. For now a pipeline run of the layer still
-rebuilds the tiles too (they come out the same); a style-only update is
-planned. A full-Canada raster takes tens of minutes and a few GB to build.
+the map, not stored in its tiles, so changing them is a `--style-only`
+update with no re-tiling. A full-Canada raster takes tens of minutes and a
+few GB to build.
 
 ### Basemap and settings
 
@@ -217,8 +223,21 @@ reads every layer from `data/tiles/manifest.json` at startup (ADR 0007).
    `present`, `required` by the drop guard and `required_present`, and the
    largest tile in bytes.
 
-Restyling a layer is the same loop: edit its `.style.json`, rerun the
-pipeline for it, reload.
+Restyling a layer needs no rebuild: edit its `.style.json`, then
+
+```sh
+docker compose run --rm pipeline --style-only <layer>
+```
+
+and reload the map. This checks the config as a build does, replaces the
+`display` block of the layer's `manifest.json` entry (the build report
+stays as it was) and rewrites `style.json`; the tiles are not touched. A
+bad config fails with one line per problem and changes nothing. It works
+for vector and raster layers; a stepped colour with `breaks` computed from
+the data re-reads the source data (not the tiles), and fails if the
+source or `.env` changed since the build. A change that needs a field the
+tiles do not have (`LAYER_FIELDS`) or any `.env` change still needs a
+full build.
 
 To see a dataset without adding a layer, run the inspect helper on it
 (path relative to `data/raw/`; `--json` for every field's stats, `--help`
@@ -264,7 +283,7 @@ prompt; removing a layer always asks first.
 | See what is built or stale | `docker compose run --rm pipeline --status` | "Which layers are out of date?" (`/layer-status`) |
 | Look at a dataset | `docker compose run --rm --entrypoint inspect.sh pipeline <path>` | "What is in data/raw/parcels.gpkg?" (`/inspect-data`) |
 | Add a layer | Adding a layer, above | "Add data/raw/parcels.gpkg as a layer" (`/add-layer`) |
-| Restyle a layer or its pop-up | Edit `<layer>.style.json`, then build it | "Colour parcels by habitat type" (`/restyle-layer`) |
+| Restyle a layer or its pop-up | Edit `<layer>.style.json`, then `docker compose run --rm pipeline --style-only <layer>` | "Colour parcels by habitat type" (`/restyle-layer`) |
 | Build layers, explain failures | `docker compose run --rm pipeline [layer ...]` | "Rebuild the stale layers" (`/build-layers`) |
 | Refresh a layer's source data | Adding a layer, above (inspect, compare, build) | "The parcels data was updated, refresh it" (`/update-layer-data`) |
 | Remove a layer | Removing a layer, above | "Remove the parcels layer" (`/remove-layer`) |

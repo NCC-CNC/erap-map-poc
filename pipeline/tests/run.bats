@@ -95,7 +95,7 @@ assert_no_temp_files() {
     and (.layers | length == 1)
     and (.layers[0] | .name == "sample" and .file == "sample.pmtiles"
          and .minzoom == 0 and .maxzoom == 8 and .feature_count == 15
-         and (.built_at | type == "string")
+         and (.built_at | type == "string") and .display_updated_at == .built_at
          and .bounds == [-125, 46, -66, 56]
          and .profile == null and .min_visible_px == 1
          and ([.zooms[].zoom] == [range(9)])
