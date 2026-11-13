@@ -9,6 +9,8 @@
 //   SHOT_CLICK   1 to click the map centre before the screenshot (optional)
 //   SHOT_COLOUR_BY  space-separated LAYER=THEME colour theme choices
 //                (optional)
+//   SHOT_TABS    |-separated modal tab labels to select after the click,
+//                one more screenshot each (optional)
 // Prints one line per file, and any page errors, to stdout.
 'use strict';
 
@@ -32,6 +34,7 @@ const colourBy = (process.env.SHOT_COLOUR_BY || '')
   .split(' ')
   .filter(Boolean)
   .map((choice) => choice.split('='));
+const tabs = (process.env.SHOT_TABS || '').split('|').filter(Boolean);
 
 // The theme labels in web/src/map/BasemapToggle.tsx.
 const LABELS = { light: 'Light', dark: 'Dark' };
@@ -81,9 +84,22 @@ async function main() {
           if (!opened) console.log(`note: nothing to show at the centre of ${view}`);
           file += '-click';
         }
-        file += '.png';
-        await page.screenshot({ path: `/out/${file}` });
-        console.log(`wrote ${file}`);
+        await page.screenshot({ path: `/out/${file}.png` });
+        console.log(`wrote ${file}.png`);
+        // Modal tabs (web/src/modal/FeatureModal.tsx): role "tab", named by
+        // their label. A feature without the section has no such tab.
+        for (const label of tabs) {
+          const tab = page.getByRole('tab', { name: label, exact: true });
+          if (!(await tab.count())) {
+            console.log(`note: no tab ${label} in the modal at the centre of ${view}`);
+            continue;
+          }
+          await tab.click();
+          await settle(page);
+          const tabFile = `${file}-tab-${label.replace(/ /g, '_')}.png`;
+          await page.screenshot({ path: `/out/${tabFile}` });
+          console.log(`wrote ${tabFile}`);
+        }
         await page.close();
       }
     }

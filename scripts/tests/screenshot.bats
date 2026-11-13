@@ -42,11 +42,12 @@ playwright_run() {
   grep -F 'docker run --rm --init' "$STUB_LOG"
 }
 
-@test "--help documents --click and --colour-by" {
+@test "--help documents --click, --colour-by and --tab" {
   run "$SHOT" --help
   [ "$status" -eq 0 ]
   [[ $output == *"-c, --click"* ]]
   [[ $output == *"--colour-by LAYER=THEME"* ]]
+  [[ $output == *"--tab LABEL"* ]]
 }
 
 @test "without the options, no click and no colour theme reach the browser" {
@@ -56,6 +57,7 @@ playwright_run() {
   [ "$status" -eq 0 ]
   [[ $output == *"-e SHOT_CLICK= "* ]]
   [[ $output == *"-e SHOT_COLOUR_BY= "* ]]
+  [[ $output == *"-e SHOT_TABS= "* ]]
   [[ $output == *"-e SHOT_VIEWS=4/55/-100 "* ]]
 }
 
@@ -93,4 +95,26 @@ playwright_run() {
 @test "screenshot.cjs is valid JavaScript" {
   run node --check "$REPO/scripts/screenshot.cjs"
   [ "$status" -eq 0 ]
+}
+
+@test "repeated --tab is passed to the browser, labels joined by |" {
+  run "$SHOT" --image test:img -b light --click --tab Values --tab "Direct threats" 4/55/-100
+  [ "$status" -eq 0 ]
+  run playwright_run
+  [ "$status" -eq 0 ]
+  [[ $output == *"-e SHOT_TABS=Values|Direct threats "* ]]
+}
+
+@test "--tab needs --click, and a bad label is a usage error, before any docker call" {
+  run "$SHOT" --image test:img --tab Values 4/55/-100
+  [ "$status" -eq 2 ]
+  [[ $output == *"--tab needs --click"* ]]
+  [ ! -s "$STUB_LOG" ]
+  for bad in '' ' Values' 'a|b' 'a;rm' 'a"b' 'a*b' 'a\b'; do
+    : >"$STUB_LOG"
+    run "$SHOT" --image test:img --click --tab "$bad" 4/55/-100
+    [ "$status" -eq 2 ]
+    [[ $output == *"bad --tab"* ]]
+    [ ! -s "$STUB_LOG" ]
+  done
 }

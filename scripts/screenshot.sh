@@ -28,6 +28,10 @@
 #                        pick a colour theme in a layer's "Colour by" list
 #                        before the screenshot (theme ids are in the layer's
 #                        manifest entry, display.themes). Repeatable.
+#   --tab LABEL          with --click, also select the modal tab LABEL (as
+#                        shown in the modal) and take one more screenshot,
+#                        ending in -click-tab-LABEL.png (spaces as _).
+#                        Repeatable, one screenshot per tab.
 #   -h, --help           this help.
 #
 # Needs Docker and network access (the basemap tiles come from OpenFreeMap,
@@ -58,7 +62,7 @@ main() {
   root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
   local basemap=all out="${root}/tmp/screenshots" prefix=map port=8090 image="" size=1280x800 wait=3
-  local views=() click="" colour_by=()
+  local views=() click="" colour_by=() tabs=()
   while (($# > 0)); do
     case $1 in
       -h | --help)
@@ -66,7 +70,7 @@ main() {
         return 0
         ;;
       -c | --click) click=1 ;;
-      -b | --basemap | -o | --out | -n | --name | -p | --port | --image | --size | --wait | --colour-by)
+      -b | --basemap | -o | --out | -n | --name | -p | --port | --image | --size | --wait | --colour-by | --tab)
         if (($# < 2)); then
           log "$1 needs a value"
           return 2
@@ -80,6 +84,7 @@ main() {
           --size) size=$2 ;;
           --wait) wait=$2 ;;
           --colour-by) colour_by+=("$2") ;;
+          --tab) tabs+=("$2") ;;
         esac
         shift
         ;;
@@ -122,6 +127,17 @@ main() {
     [[ $choice =~ ^[a-z0-9][a-z0-9_-]*=[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] \
       || { log "bad --colour-by: $choice (LAYER=THEME, for example ecoregions=wtw)"; return 2; }
   done
+  local label
+  for label in "${tabs[@]}"; do
+    [[ $label =~ ^[A-Za-z0-9][A-Za-z0-9\ _.,()\&-]*$ ]] \
+      || { log "bad --tab: $label (a tab label, for example \"Direct threats\")"; return 2; }
+  done
+  if ((${#tabs[@]} > 0)) && [[ -z $click ]]; then
+    log "--tab needs --click (the tabs are in the modal a click opens)"
+    return 2
+  fi
+  local joined_tabs
+  joined_tabs=$(IFS='|'; printf '%s' "${tabs[*]}")
 
   [[ -s ${root}/data/tiles/manifest.json ]] \
     || { log "no data/tiles/manifest.json: run the pipeline first"; return 1; }
@@ -174,7 +190,7 @@ main() {
     -v "$(host_path "$out"):/out" \
     -e SHOT_BASE=http://web:8080/ -e "SHOT_VIEWS=${views[*]}" -e "SHOT_THEMES=${themes}" \
     -e "SHOT_PREFIX=${prefix}" -e "SHOT_WIDTH=${width}" -e "SHOT_HEIGHT=${height}" \
-    -e "SHOT_CLICK=${click}" -e "SHOT_COLOUR_BY=${colour_by[*]}" \
+    -e "SHOT_CLICK=${click}" -e "SHOT_COLOUR_BY=${colour_by[*]}" -e "SHOT_TABS=${joined_tabs}" \
     -e "SHOT_WAIT_MS=$(awk -v s="$wait" 'BEGIN { printf "%d", s * 1000 }')" \
     "$PLAYWRIGHT_IMAGE" sh -c "mkdir -p /tmp/shot && cd /tmp/shot \
       && npm install --no-save --no-audit --no-fund --loglevel=error playwright-core@${PLAYWRIGHT_VERSION} >/dev/null \
