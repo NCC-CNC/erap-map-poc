@@ -1,6 +1,6 @@
 ---
 name: inspect-data
-description: Summarise a spatial dataset in data/raw/ without adding a layer (shapefile, zipped shapefile, GeoPackage, GeoJSON, FileGDB, ...) - layers, feature count, geometry type, CRS, extent, encoding, fields with value counts, id candidates and polygon validity and coverage checks. Use when asked what is in a dataset, to look at, describe or check source data, or whether a file is usable.
+description: Summarise a spatial dataset in data/raw/ without adding a layer (shapefile, zipped shapefile, GeoPackage, GeoJSON, FileGDB, ..., or a GeoTIFF - bands, data type, values, nodata, and whether it is a binary raster that can be a layer) - layers, feature count, geometry type, CRS, extent, encoding, fields with value counts, id candidates and polygon validity and coverage checks. Use when asked what is in a dataset, to look at, describe or check source data, or whether a file is usable.
 ---
 
 # Inspect a dataset
@@ -15,6 +15,13 @@ to copy it into `data/raw/` (never commit it).
 ls data/raw/                     # what is there
 docker compose run --rm --build --entrypoint inspect.sh pipeline <path>
 ```
+
+`inspect.sh` is for vector data. For a raster (GeoTIFF), run `gdalinfo`
+in the pipeline image instead, as in the add-layer skill (Raster sources,
+steps 1 and 2: band count, data type, nodata, min and max, histogram, CRS,
+block layout), and say whether it can be a raster layer: only single-band
+binary rasters (0, 1 and nodata) are supported; categorical, continuous
+and multiband rasters are not yet.
 
 Options (all in `pipeline/bin/inspect.sh --help`):
 

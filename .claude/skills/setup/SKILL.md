@@ -50,7 +50,8 @@ scripts/setup.sh --init --yes --raw-dir 'C:/path/to/data' [--web-port N] [--skip
 Leave out `--raw-dir` if there is no data folder. An existing `.env` is
 kept unless a flag changes a value (it keeps a `.env.bak.*` copy). Say
 first that the first run takes about 5 minutes plus the layers, and that
-a raster layer takes tens of minutes; offer `--skip-layers` to start the
+a Canada-wide raster layer takes about 10 minutes the first time
+(its source is then cached in `data/work/raster/`); offer `--skip-layers` to start the
 map without building layers. Run it in the background and report as
 steps finish. Layers listed as skipped usually have no source data in
 `RAW_DIR`; `docker compose run --rm pipeline --status` says why.

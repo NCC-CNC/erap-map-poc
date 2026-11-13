@@ -1,6 +1,6 @@
 ---
 name: layer-status
-description: Report which map layers (vector and raster) are configured and which are built, which builds are stale (the .env or the source data changed since the build) or need only a style-only update (the .style.json changed), and each layer's build time, archive size, zooms, feature or tile count and largest tile. Use when asked what layers there are, what is built, what is out of date or needs rebuilding, or for an overview of the tiles.
+description: Report which map layers (vector and raster) are configured and which are built, which builds are stale (the .env or the source data changed since the build) or need only a style-only update (the .style.json changed), and each layer's build time, archive size (.pmtiles or a raster's .cog.tif), zooms, feature count or raster size and largest tile. Use when asked what layers there are, what is built, what is out of date or needs rebuilding, or for an overview of the tiles.
 ---
 
 # Layer status
@@ -42,10 +42,17 @@ replaced by an older copy, does not show. When in doubt, rebuild.
 
 ## Report
 
-Raster layers (`type` raster in the JSON) show their tile count in the
-FEATURES column (`2745 tiles`) and have `tile_count` and `format: png` in
-place of `feature_count`; their source raster counts for staleness like any
-input.
+Raster layers (`type` raster in the JSON) are one COG each,
+`data/tiles/<name>.cog.tif`: they show the COG's size in pixels at the max
+zoom in the FEATURES column (`447240x290531 px`, padded to the tile grid)
+and have `format: cog`, `width` and `height` in place of `feature_count`,
+and no largest tile. Their source raster counts for staleness like any
+input. A raster with `format: png` and a tile count was built as PNG tiles
+before COGs: it is `stale` with a note to rebuild it as a COG (the map
+still shows it until then). Rebuilding a raster whose source has not
+changed reuses its prepared source in `data/work/raster/` (a cache; the
+first build of a Canada-wide 30 m raster takes about 9 to 10 minutes,
+later ones a few minutes less).
 
 Give a short table (layer, state, built, size, zooms, features, largest
 tile) and then what to do: which layers to rebuild, which need only

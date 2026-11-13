@@ -23,7 +23,8 @@ the steps below.
 
 ## 1. Before
 
-Make sure the layer is built (`data/tiles/<name>.pmtiles` and its entry in
+Make sure the layer is built (`data/tiles/<name>.pmtiles`, or
+`<name>.cog.tif` for a raster layer, and its entry in
 `data/tiles/manifest.json`); if not, build it first
 (`docker compose run --rm --build pipeline <name>`). Pick two or three
 views from the entry's `bounds` (`zoom/lat/lon`) and take the before
@@ -40,7 +41,10 @@ names from `LAYER_FIELDS`; for values and ranges, read the layer entry in
 the manifest or run
 `docker compose run --rm --build --entrypoint inspect.sh pipeline <LAYER_INPUT>`.
 A raster layer (`LAYER_TYPE=raster`) keeps the raster shorthand: only
-`color`, `opacity`, `label`, title, order and visibility.
+`color` (`#rrggbb`), `opacity`, `label`, title, order and visibility. Its
+COG holds the share of each pixel covered, not a colour, so any colour or
+opacity change is `--style-only`, never a rebuild. One colour per raster
+layer: a ramp or classes are not supported (binary rasters only).
 
 ## 3. Apply
 
@@ -51,7 +55,7 @@ docker compose run --rm pipeline --style-only <name>
 ```
 
 It checks the config as a build does, updates the layer's manifest entry
-and `style.json`, and leaves the tiles alone (seconds, even for a
+and `style.json`, and leaves the tiles or COG alone (seconds, even for a
 Canada-wide layer). A bad config fails with one line per problem and
 changes nothing: fix and rerun. If it says the pipeline does not know
 `--style-only`, the image is old: add `--build` once.

@@ -11,8 +11,8 @@ changes.
 | --- | --- | --- | --- | --- | --- |
 | `sample` | Synthetic test fixture (`pipeline/tests/fixtures/sample.geojson`) | GeoJSON | Polygon | 15 features, about 5 KB | Test layer (`pipeline/tests/layers/`), not built by default |
 | `sample_points` | Synthetic test fixture (`pipeline/tests/fixtures/sample_points.geojson`) | GeoJSON | Point | 30 features, about 5 KB | Test layer (`pipeline/tests/layers/`), not built by default |
-| `forest` | Play data, `Forest_AAFC_LUTS_2020_NFIS_2022_30m.tif` (via `RAW_DIR`) | GeoTIFF | Binary raster | 200,792 x 131,690 cells, 620 MB | Config only (full build not run, see ADR 0008) |
-| `agriculture` | Play data, `HM_CA_ag2022_r90_merged_prj_30_binary.tif` (via `RAW_DIR`) | GeoTIFF | Binary raster | 235,461 x 137,833 cells, 1.3 GB | Config only (full build not run, see ADR 0008) |
+| `forest` | Play data, `Forest_AAFC_LUTS_2020_NFIS_2022_30m.tif` (via `RAW_DIR`) | GeoTIFF | Binary raster | 200,792 x 131,690 cells, 620 MB | Built locally: `forest.cog.tif`, 2.27 GB, about 10 min (ADR 0010) |
+| `agriculture` | Play data, `HM_CA_ag2022_r90_merged_prj_30_binary.tif` (via `RAW_DIR`) | GeoTIFF | Binary raster | 235,461 x 137,833 cells, 1.3 GB | Built locally: `agriculture.cog.tif`, 0.38 GB, about 9 min (ADR 0010) |
 | `example` | TBC | TBC | TBC | TBC | Placeholder |
 
 ## Per-layer contract
@@ -263,7 +263,7 @@ not built by default (#17).
   repo or the image: `RAW_DIR` points at its folder. Config:
   `pipeline/layers/forest.env`.
 - Pipeline steps: the raster branch (Raster layers, below).
-- Tile settings: z2 to z12, grey PNG cover share.
+- Tile settings: z2 to z12, one COG of the cover share (`forest.cog.tif`).
 - Display (`forest.style.json`, `order` 1, under the vector layers): dark
   green `#1b7837` at 70% opacity, legend "Forest (2020 to 2022)". Shown by
   default.
@@ -277,7 +277,8 @@ not built by default (#17).
   one row. Via `RAW_DIR`, like `forest`. Config:
   `pipeline/layers/agriculture.env`.
 - Pipeline steps: the raster branch; 0 and nodata are both transparent.
-- Tile settings: z2 to z12, grey PNG cover share.
+- Tile settings: z2 to z12, one COG of the cover share
+  (`agriculture.cog.tif`).
 - Display (`agriculture.style.json`, `order` 2): orange `#d95f02` at 70%
   opacity, legend "Agricultural land (2022)". Off by default.
 - Pop-up: none (display only).
@@ -285,7 +286,12 @@ not built by default (#17).
 ## Raster layers
 
 A binary raster (cells of 1 on a background of 0 or nodata) can be a layer
-too, display only (ADR 0008). In `<layer>.env`:
+too, display only (ADR 0008), stored as one Cloud Optimized GeoTIFF (ADR
+0010). Only binary rasters are supported: one band holding 0, 1 and
+nodata, of any data type and CRS. Categorical, continuous and multiband
+rasters are not supported yet: they would need a raster-kind setting (mode
+or nearest resampling for classes, average for continuous values, one
+layer per band for multiband) and are left for later. In `<layer>.env`:
 
 - `LAYER_TYPE=raster` (the default is `vector`).
 - `LAYER_INPUT`: the raster, relative to `RAW_DIR` (`/data/raw` in the
@@ -298,13 +304,21 @@ too, display only (ADR 0008). In `<layer>.env`:
 - `LAYER_SOURCE_SRS` (optional): the source CRS, when the file has none.
 
 The source is expected to hold only 0, 1 and nodata; 1 is drawn, 0 and
-nodata are transparent. The pipeline (`lib/raster.sh`) warps it to
-EPSG:3857 at the max zoom's resolution, aligned to the tile grid, then for
-each lower zoom averages the share of each pixel covered by 1 cells, and
-writes every zoom as 256 px grey PNG tiles: the grey level is that share,
-0 (transparent) to 255. Blank tiles are left out. The tiles are packed into
-`<layer>.pmtiles` (tile type `png`) through an MBTiles file and
-`pmtiles convert`.
+nodata are transparent. The pipeline (`lib/raster.sh`) first prepares the
+source once into a tiled Byte GeoTIFF (255 for 1, 0 for 0 and nodata),
+cached in `data/work/raster/` and reused until the source file,
+`LAYER_SOURCE_SRS` or `LAYER_NODATA` changes. It warps that to EPSG:3857
+at the max zoom's resolution, over an extent snapped to the tile grid,
+adds one overview per lower zoom that averages the share of each pixel
+covered by 1 cells, and copies the result into `<layer>.cog.tif`: a COG
+with 256 px blocks (each one a map tile at the max zoom and the 6 zooms
+below it), ZSTD compression and no empty blocks. A pixel's value is the
+share covered as a grey level, 0 (none) to 255 (all). The COG is checked
+(GDAL's `LAYOUT=COG`, EPSG:3857, one Byte band, one overview per lower
+zoom) before it is moved into place; a raster with no 1 cells fails the
+layer. nginx serves it with range requests, like a `.pmtiles` archive, and
+the map reads only the blocks of the current view, from the overview that
+matches the zoom.
 
 The colour is not in the tiles. The display config's raster shorthand
 
@@ -319,25 +333,33 @@ The colour is not in the tiles. The display config's raster shorthand
 ```
 
 expands to one style layer, id `raster`, of type `color-relief`, on a
-`raster-dem` source that decodes the grey level as an "elevation" of 0 to 1
-(`encoding: custom`, `redFactor` 1/255, the other factors and `baseShift`
-0). Its `color-relief-color` ramps from the colour fully transparent at no
-cover to the colour at full cover, so at lower zooms the share covered shows
-as transparency; `color-relief-opacity` is `opacity`, and `resampling` is
+`raster-dem` source, `{"type": "raster-dem", "tileSize": 256, "url":
+"cog://<url of the COG>#dem"}`. The web app registers the `cog://`
+protocol (`@geomatico/maplibre-cog-protocol`), whose `#dem` mode hands each
+pixel value, the grey level, to MapLibre as an "elevation" of 0 to 255.
+The `color-relief-color` ramps from the colour fully transparent at 0 to
+the colour at 255, so at lower zooms the share covered shows as
+transparency; `color-relief-opacity` is `opacity`, and `resampling` is
 `nearest`, so cells stay sharp past the max zoom. The legend is a single
 square swatch in the colour at `opacity`. Changing the colour or opacity
-changes only the manifest entry and `style.json`, not the tiles. Raster
-layers cannot have a `popup` or raw `layers`, and the raster shorthand is
-for raster layers only; the pipeline fails the layer otherwise, before
-tiling.
+changes only the manifest entry and `style.json`, not the COG
+(`--style-only`). Raster layers cannot have a `popup` or raw `layers`, and
+the raster shorthand is for raster layers only; the pipeline fails the
+layer otherwise, before any raster work.
+
+A raster built before COGs (ADR 0008: PNG tiles in `<layer>.pmtiles`,
+manifest `format` `png`) still shows: the map reads its red channel as the
+same grey level (`encoding: custom`, `redFactor` 1). `--status` lists it
+as `stale`, and rebuilding it writes the COG and deletes the `.pmtiles`.
 
 `pipeline/tests/raster.bats` covers the branch with synthetic rasters made
 at test time by `tests/fixtures/make_raster.sh` (a Byte 1/255 raster and a
 Float32 0/1/NaN one in the strip layout; nothing binary is committed): the
-archive and its zooms, full cover at the max zoom and partial cover below,
-the manifest entry, `LAYER_NODATA`, an empty raster, the colour staying out
-of the tiles, building a raster layer next to a vector one, and the config
-checks.
+COG's layout and its alignment with the tile grid, full cover at the max
+zoom and partial cover below, the manifest entry, `LAYER_NODATA`, an empty
+raster, the colour staying out of the COG, building a raster layer next to
+a vector one, replacing a build from before COGs, `--remove`, the prepare
+cache and the config checks.
 
 ## Input options
 
@@ -577,7 +599,8 @@ in the test by `ogr2ogr` (nothing binary is committed).
 
 ## Pipeline outputs
 
-Besides one `<layer>.pmtiles` per layer, the pipeline writes
+Besides one `<layer>.pmtiles` per vector layer and one `<layer>.cog.tif`
+per raster layer, the pipeline writes
 `data/tiles/manifest.json`, which the web app reads at startup to find and
 draw the layers (the `display` block is shortened here; see Display config):
 
@@ -648,7 +671,8 @@ draw the layers (the `display` block is shortened here; see Display config):
 ```
 
 `bounds` is `[west, south, east, north]` and `center` is `[lon, lat, zoom]`,
-both from the PMTiles header. Layers are sorted by name (draw order is
+both from the PMTiles header for a vector layer; for a raster layer the
+source's extent and its middle at the min zoom. Layers are sorted by name (draw order is
 `display.order`). Rebuilding one layer replaces its entry and keeps the
 others. `pipeline --style-only <layer>` (#53) replaces only the entry's
 `display` and sets `display_updated_at`, with no re-tiling; `built_at` and
@@ -685,8 +709,11 @@ reads `name` (also the source layer and style layer id prefix), `file`,
 layer's `LAYER_TYPE`, `vector` or `raster` (ADR 0008); it decides the
 MapLibre source (`vector`, or the
 `raster-dem` source of Raster layers), and an entry without it, written
-before raster layers, is read as vector. `format` is the archive's tile
-type from its PMTiles header, `mvt` or `png`. `display` is the resolved
+before raster layers, is read as vector. `file` is `<layer>.pmtiles` for a
+vector layer and `<layer>.cog.tif` for a raster layer (ADR 0010; the map
+also reads a raster `.pmtiles` from before COGs). `format` is the tile
+type: `mvt` from the PMTiles header of a vector layer, `cog` for a raster
+layer (`png` for one built before COGs). `display` is the resolved
 `<layer>.style.json`, valid against
 `$defs/display` in the schema: `title`, `defaultVisible`, `order` (0 when
 not set), `popup` (when set), `layers` (the style layers in draw order,
@@ -708,21 +735,27 @@ A vector layer adds the drop guard's report:
   how many of them are present (`required_present`, always equal to
   `required` in a built layer), and that zoom's largest tile in bytes.
 
-A raster layer adds instead:
+A raster layer adds instead the COG's levels:
 
-- `tile_count`: tiles in the archive (blank ones are not written).
-- `max_tile_bytes`: the largest tile in bytes.
-- `zooms`: one entry per zoom with tiles, `{"zoom": 12, "tiles": 2000,
-  "max_tile_bytes": 15000}`.
+- `width`, `height`: the COG's size in pixels at the max zoom (its extent
+  is padded to the tile grid, so it is mostly empty and costs nothing).
+- `block_size`: 256, the COG's block (one map tile).
+- `overview_count`: overviews, one per zoom below the max.
+- `zooms`: one entry per zoom from `maxzoom` down to `minzoom`,
+  `{"zoom": 12, "width": 447240, "height": 290531}`.
+
+A raster built before COGs has `tile_count`, `max_tile_bytes` and per-zoom
+tile counts instead, until it is rebuilt.
 
 The pipeline also writes `data/tiles/style.json` after every run: a
 standalone MapLibre style (version 8, no basemap) of every layer in the
 manifest, in draw order, for use in other tools. Each vector layer is a
 source `{"type": "vector", "url": "pmtiles://<layer>.pmtiles"}` and each
-raster layer the `raster-dem` source of Raster layers, relative to the
-folder holding `style.json` (tools that need absolute URLs, or that resolve
-them against the page rather than the style, need them rewritten, and need
-the `pmtiles://` protocol), with its style layers prefixed with `<layer>-`
+raster layer `{"type": "raster-dem", "tileSize": 256, "url":
+"cog://<layer>.cog.tif#dem"}`, relative to the folder holding `style.json`
+(tools that need absolute URLs, or that resolve them against the page
+rather than the style, need them rewritten, and need the `pmtiles://` and
+`cog://` protocols), with its style layers prefixed with `<layer>-`
 and visible as `defaultVisible` says. `glyphs` (OpenFreeMap's) is set only
 when a layer shows text. It is checked with the MapLibre style validator
 before it is written.

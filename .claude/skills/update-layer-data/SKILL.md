@@ -1,6 +1,6 @@
 ---
 name: update-layer-data
-description: Refresh an existing map layer after its source dataset in data/raw/ was replaced or updated - re-inspect the new data, compare fields, CRS, geometry and feature count with what the layer config expects, flag breaking changes, rebuild, and compare before and after screenshots. Use when asked to update, refresh or reload a layer's data, or when a new version of a dataset arrives.
+description: Refresh an existing map layer (vector, or a binary raster) after its source dataset in data/raw/ or RAW_DIR was replaced or updated - re-inspect the new data, compare fields, CRS, geometry and feature count (a raster - bands, values, nodata, extent) with what the layer config expects, flag breaking changes, rebuild, and compare before and after screenshots. Use when asked to update, refresh or reload a layer's data, or when a new version of a dataset arrives.
 ---
 
 # Update a layer's data
@@ -21,12 +21,21 @@ scripts/screenshot.sh -n <name>-before <z/lat/lon> <z/lat/lon> ...
 ```
 
 Keep `feature_count` and, from `<name>.env`, `LAYER_INPUT`,
-`LAYER_SOURCE_LAYER`, `LAYER_FIELDS` and `LAYER_FEATURE_ID`.
+`LAYER_SOURCE_LAYER`, `LAYER_FIELDS` and `LAYER_FEATURE_ID`. For a raster
+layer (`LAYER_TYPE=raster`), keep `bytes`, `width` and `height` from its
+manifest entry instead.
 
 ## 2. Put the new data in place and inspect it
 
 The new file goes where `LAYER_INPUT` points (or update `LAYER_INPUT` if
-the name changed). Then:
+the name changed). A raster layer: inspect the new GeoTIFF with GDAL as in
+the add-layer skill (Raster sources, steps 1 and 2) and stop if it is no
+longer a single-band binary raster (0, 1 and nodata); compare the CRS,
+pixel size, extent and nodata value with the old one (a new nodata value
+may need `LAYER_NODATA`). A replaced file (a new size or modification
+time) makes the next build prepare it again, replacing its cached copy in
+`data/work/raster/`, so the rebuild takes the full first-build time
+(about 9 to 10 minutes for a Canada-wide 30 m raster). A vector layer:
 
 ```sh
 docker compose run --rm --build --entrypoint inspect.sh pipeline <LAYER_INPUT> --json
@@ -53,9 +62,10 @@ docker compose run --rm --build pipeline --status <name>
 scripts/screenshot.sh -n <name>-after <same views>
 ```
 
-A failed build keeps the old tiles; see the build-layers skill for the
-messages. Compare before and after shots on both basemaps and the new
-`feature_count`, and tell the user what changed.
+A failed build keeps the old tiles (or COG); see the build-layers skill
+for the messages. Compare before and after shots on both basemaps and the
+new `feature_count` (a raster: `bytes`, `width` and `height`), and tell
+the user what changed.
 
 ## 4. PR, only if configs changed
 

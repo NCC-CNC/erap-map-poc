@@ -18,7 +18,7 @@
 #   2. builds the pipeline image (the first time takes about 5 minutes) and
 #      every configured layer (pipeline/layers/) that is not built yet or is
 #      stale. Layers whose source data is not in RAW_DIR are skipped, with a
-#      note. A raster layer takes tens of minutes; Ctrl+C is safe, and a
+#      note. A Canada-wide raster layer takes about 10 minutes; Ctrl+C is safe, and a
 #      rerun carries on with the layers still to build;
 #   3. builds and starts the map, waits until it responds and prints its URL.
 # It is safe to rerun and never deletes anything.
@@ -38,9 +38,10 @@
 # through to docker compose. Exit status: 0 when nothing failed, 1 when a
 # check or step failed, 2 for a usage error.
 
-# Thresholds. A full-Canada raster build (ADR 0008) runs gdalwarp with a 2 GB
-# block cache and a 1 GB warp buffer, writes a few GB of scratch inside the
-# container and a 2 to 4 GB archive to data/tiles/.
+# Thresholds. A full-Canada raster build (ADR 0010) peaks at about 5 GB of
+# memory, writes a few GB of scratch inside the container, caches its
+# prepared source (up to about 0.7 GB) in data/work/ and writes a COG of up
+# to a few GB to data/tiles/.
 MIN_DOCKER_MEM_GB=8
 MIN_DOCKER_CPUS=4
 MIN_REPO_DISK_GB=10
@@ -763,7 +764,7 @@ build_layers() {
     return 0
   fi
   step "Building $(join_names "${todo[@]}")"
-  say "A raster layer takes tens of minutes. Ctrl+C stops safely; rerun scripts/setup.sh --init to carry on."
+  say "A Canada-wide raster layer takes about 10 minutes. Ctrl+C stops safely; rerun scripts/setup.sh --init to carry on."
   if ! docker compose run --rm pipeline "${todo[@]}"; then
     say ""
     say "A layer build failed; the messages above say why ('docker compose run --rm pipeline --status' lists what is built)."

@@ -49,7 +49,7 @@ for the data folder and ports (Enter keeps the default) and writes
 `.env`, builds the images and every layer whose source data it finds,
 starts the map and prints its address, <http://localhost:8080> by
 default. Each problem it finds comes with a one-line fix. The first run
-takes about 5 minutes plus the layers (a raster layer takes tens of
+takes about 5 minutes plus the layers (a raster layer takes about 10
 minutes); it is safe to stop and rerun. `scripts/setup.sh` on its own
 only checks, changing nothing, and `--help` lists the options, such as
 `--raw-dir`, `--yes` and `--skip-layers`.
@@ -134,10 +134,11 @@ reload the page.
   Set `RAW_DIR` (in `.env` or the shell) to mount another folder there
   instead, for example data kept outside the repo; compose mounts
   `${RAW_DIR:-./data/raw}` read-only, so the pipeline never writes to it.
-- `data/tiles/`: pipeline output, one `.pmtiles` per layer plus
-  `manifest.json` (which the map reads its layers from) and `style.json` (a
-  standalone MapLibre style of the data layers, for other tools). The `web`
-  service serves it read-only at `/tiles/`.
+- `data/tiles/`: pipeline output, one file per layer (`<layer>.pmtiles`
+  for a vector layer, `<layer>.cog.tif` for a raster layer, see Tile
+  formats) plus `manifest.json` (which the map reads its layers from) and
+  `style.json` (a standalone MapLibre style of the data layers, for other
+  tools). The `web` service serves it read-only at `/tiles/`.
 - `data/work/`: the pipeline's cache, mounted at `/data/work`. A raster
   layer's source is prepared once (a tiled 0/255 GeoTIFF: 0.14 GB for
   agriculture, 0.69 GB for forest) into `data/work/raster/`, reused by later
@@ -149,15 +150,31 @@ These folders are git-ignored apart from `.gitkeep`, and so are raster and
 other source formats anywhere in the repo (`*.tif`, `*.tiff`, `*.vrt`,
 `*.gdb/`): real data and `.pmtiles` never go in git.
 
-Layers are vector (polygons, points) or binary rasters (`LAYER_TYPE=raster`,
-display only, ADR 0008). A raster layer's colour and opacity are applied by
-the map, not stored in its tiles, so changing them is a `--style-only`
-update with no re-tiling. A full-Canada 30 m raster at z2 to z12 takes
-about 13 minutes on a 16-CPU laptop (ADR 0010), 2 to 3 minutes less
-once its source is prepared and cached in `data/work/`. Give Docker Desktop
-all the CPUs you can (the steps are multithreaded and the time scales with
-them), at least 8 GB of memory (a build peaks at about 4.5 GB) and
-about 10 GB of free disk for the container's scratch files.
+### Tile formats
+
+Each layer is one static file in `data/tiles/`, which nginx serves with
+range requests, so the browser fetches only the parts it needs for the
+view. There is no tile server.
+
+| Layer type | File | Built with | In the map |
+| --- | --- | --- | --- |
+| Vector (polygons, points), `LAYER_TYPE=vector` (the default) | `<layer>.pmtiles`: vector tiles in a PMTiles archive | tippecanoe (ADR 0002) | drawn from the tiles; click a feature for its pop-up |
+| Raster, `LAYER_TYPE=raster` | `<layer>.cog.tif`: one Cloud Optimized GeoTIFF in Web Mercator, with an overview per zoom | GDAL: prepare, warp, overviews, COG (ADR 0008, 0010) | coloured in the browser; display only, no pop-up |
+
+Raster layers support **binary rasters only**: one band holding 0, 1 and
+nodata (any data type, any CRS). The COG holds the share of each pixel
+covered by 1 cells (0 to 255), not a colour. Categorical, continuous and
+multiband rasters are not supported yet: they would need a raster-kind
+setting (mode or nearest resampling for classes, average for continuous
+values, one layer per band for multiband) and are left for later.
+
+A full-Canada 30 m raster at z2 to z12 takes about 9 to 10 minutes on a
+16-CPU laptop the first time (ADR 0010), and 5 to 8 minutes once its
+source is prepared and cached in `data/work/raster/`; the COGs are 0.4 GB
+(agriculture) and 2.3 GB (forest). Give Docker Desktop all the CPUs you
+can (the steps are multithreaded and the time scales with them), at least
+8 GB of memory (a build peaks at about 5 GB) and about 10 GB of free disk
+for the container's scratch files.
 
 ### Basemap and settings
 
@@ -229,9 +246,10 @@ reads every layer from `data/tiles/manifest.json` at startup (ADR 0007).
 worked examples, and
 `docs/design/02_data_layers_and_popups.md` is the full data contract.
 
-1. Put the source data in `data/raw/`: a shapefile (with its sidecar
-   files), a zipped shapefile, a GeoPackage, GeoJSON, or anything else
-   GDAL reads.
+1. Put the source data in `data/raw/` (or `RAW_DIR`): a shapefile (with
+   its sidecar files), a zipped shapefile, a GeoPackage, GeoJSON, or
+   anything else GDAL reads; or, for a raster layer, a single-band binary
+   GeoTIFF (0, 1 and nodata; see Tile formats).
 2. Write `pipeline/layers/<layer>.env`, a bash file (every variable is
    described at the top of `pipeline/lib/config.sh`). The layer name
    (lower case letters, digits, `_` and `-`) names the output files and
@@ -260,6 +278,10 @@ worked examples, and
      feature keeps its largest) and borders are simplified as a coverage
      by `LAYER_GENERALISE_SIMPLIFY_PX` (default 1) pixels; higher zooms
      keep full detail. See design note 02, Low-zoom generalisation.
+
+   A raster layer needs only `LAYER_TYPE=raster`, `LAYER_INPUT`, the zooms
+   (up to z14; z12 is about 30 m) and, if the GeoTIFF does not declare
+   them, `LAYER_SOURCE_SRS` and `LAYER_NODATA`. `forest.env` is an example.
 3. Write `pipeline/layers/<layer>.style.json`, starting with
    `"$schema": "../schema/layer-style.schema.json"` for completion and
    checking in an editor: `title`, `defaultVisible`, `order` (draw order),
@@ -267,7 +289,9 @@ worked examples, and
    with stepped breaks fixed or computed from the data) or raw MapLibre
    style-spec `layers`, an optional `legend` (derived when left out), and
    an optional `popup` (title, stats, bar or line charts; without one the
-   layer is not clickable). Check display configs without building:
+   layer is not clickable). A raster layer uses `"symbology": {"geometry":
+   "raster", "color", "opacity", "label"}` (see `forest.style.json`) and
+   has no pop-up. Check display configs without building:
 
    ```sh
    docker compose run --rm --entrypoint sh pipeline -c \
@@ -277,27 +301,19 @@ worked examples, and
 4. Build it with `docker compose run --rm pipeline <layer>` and reload the
    map. Compose mounts `pipeline/layers/`, so neither image needs a
    rebuild. A layer that fails (bad config, missing input, the drop guard)
-   keeps its previous archive and manifest entry, and the run exits 1.
-5. Check the build report in the layer's `data/tiles/manifest.json` entry:
-   `feature_count`, and per zoom in `zooms` the features `input`,
-   `present`, `required` by the drop guard and `required_present`, and the
-   largest tile in bytes.
+   keeps its previous archive and manifest entry, and the run exits 1. A
+   raster layer's first build prepares its source once (a Canada-wide
+   30 m raster takes about 9 to 10 minutes in all) and caches it in
+   `data/work/raster/`; later builds of it skip that step.
+5. Check the build report in the layer's `data/tiles/manifest.json` entry.
+   A vector layer: `feature_count`, and per zoom in `zooms` the features
+   `input`, `present`, `required` by the drop guard and
+   `required_present`, and the largest tile in bytes. A raster layer:
+   `format` `cog`, the COG's `width` and `height` in pixels at the max
+   zoom, `block_size` (256), `overview_count` (one per lower zoom), and
+   `zooms`, each zoom's `width` and `height`; `bytes` is the file size.
 
-Restyling a layer needs no rebuild: edit its `.style.json`, then
-
-```sh
-docker compose run --rm pipeline --style-only <layer>
-```
-
-and reload the map. This checks the config as a build does, replaces the
-`display` block of the layer's `manifest.json` entry (the build report
-stays as it was) and rewrites `style.json`; the tiles are not touched. A
-bad config fails with one line per problem and changes nothing. It works
-for vector and raster layers; a stepped colour with `breaks` computed from
-the data re-reads the source data (not the tiles), and fails if the
-source or `.env` changed since the build. A change that needs a field the
-tiles do not have (`LAYER_FIELDS`) or any `.env` change still needs a
-full build.
+To change how a layer looks, see Styling a layer below: no rebuild.
 
 To see a dataset without adding a layer, run the inspect helper on it
 (path relative to `data/raw/`; `--json` for every field's stats, `--help`
@@ -315,9 +331,10 @@ tiles. `--status` shows the new feature count, and lists the layer as
 
 ### Removing a layer
 
-Delete its two configs, then its build (archive and `manifest.json`
-entry; `style.json` is rewritten). The source data in `data/raw/` is left
-alone.
+Delete its two configs, then its build (its `.pmtiles` or `.cog.tif` and
+its `manifest.json` entry; `style.json` is rewritten). The source data in
+`data/raw/` is left alone, and so is a raster's cached prepared source in
+`data/work/raster/` (delete that folder to reclaim the space).
 
 ```sh
 git rm pipeline/layers/<layer>.env pipeline/layers/<layer>.style.json
@@ -326,6 +343,41 @@ docker compose run --rm pipeline --remove <layer>
 
 After pulling a change that removed a layer, `--status` lists your local
 build of it as `orphan`; the same `--remove` command clears it.
+
+## Styling a layer
+
+> **Styling never needs a rebuild.** How a layer looks lives in its
+> `pipeline/layers/<layer>.style.json`, not in its tiles. Edit the file,
+> run `docker compose run --rm pipeline --style-only <layer>`, and reload
+> the map: it takes seconds.
+
+What the `.style.json` sets:
+
+- `title` (the layer list and legend), `order` (draw order: higher on
+  top) and `defaultVisible` (on or off when the map opens), for every
+  layer.
+- A vector layer's colours (single, by category, or stepped by a number,
+  with breaks fixed or computed from the data), outline, opacity, legend
+  and pop-up (title, stats and charts). See Adding a layer, step 3.
+- A raster layer's `color`, `opacity` and legend `label`. The COG holds
+  only the share of each pixel covered (0 to 255), and the browser turns
+  that into the colour as it draws: none is transparent, full cover is the
+  colour at the layer's opacity, and part cover in between at lower zooms.
+
+`--style-only` checks the config as a build does, replaces the `display`
+block of the layer's `manifest.json` entry (the build report stays) and
+rewrites `style.json`; the tiles or COG are not touched. With no layer
+names it updates every built layer. A bad config fails with one line per
+problem and changes nothing. `--status` lists a layer whose `.style.json`
+changed since as `restyle`. A stepped colour with `breaks` computed from
+the data re-reads the source data (not the tiles), and fails if the source
+or `.env` changed since the build. A change that needs a field the tiles
+do not have (`LAYER_FIELDS`) or any `.env` change still needs a full
+build.
+
+To change the look on your own map only, without touching the committed
+file, put a `style` patch for the layer in your `map.config.json` (Your
+map config, below) and run the same `--style-only` command.
 
 ## Your map config
 
@@ -412,8 +464,8 @@ prompt; removing a layer always asks first.
 | Set up or check this machine | `scripts/setup.sh --init` (or `--check`) | "Set up the map on this machine" (`/setup`) |
 | See what is built or stale | `docker compose run --rm pipeline --status` | "Which layers are out of date?" (`/layer-status`) |
 | Look at a dataset | `docker compose run --rm --entrypoint inspect.sh pipeline <path>` | "What is in data/raw/parcels.gpkg?" (`/inspect-data`) |
-| Add a layer | Adding a layer, above | "Add data/raw/parcels.gpkg as a layer" (`/add-layer`) |
-| Restyle a layer or its pop-up | Edit `<layer>.style.json`, then `docker compose run --rm pipeline --style-only <layer>` | "Colour parcels by habitat type" (`/restyle-layer`) |
+| Add a layer | Adding a layer, above | "Add data/raw/parcels.gpkg as a layer", "Add wetlands.tif as a raster layer" (`/add-layer`) |
+| Restyle a layer or its pop-up | Styling a layer, above | "Colour parcels by habitat type", "Make forest dark green" (`/restyle-layer`) |
 | Build layers, explain failures | `docker compose run --rm pipeline [layer ...]` | "Rebuild the stale layers" (`/build-layers`) |
 | Refresh a layer's source data | Adding a layer, above (inspect, compare, build) | "The parcels data was updated, refresh it" (`/update-layer-data`) |
 | Remove a layer | Removing a layer, above | "Remove the parcels layer" (`/remove-layer`) |

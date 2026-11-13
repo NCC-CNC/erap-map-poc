@@ -1,6 +1,6 @@
 ---
 name: remove-layer
-description: Remove a map layer - delete its configs in pipeline/layers/, its .pmtiles archive and its manifest.json entry, regenerate style.json, and open a draft PR. Always confirms with the user first. Use when asked to remove, delete, drop or retire a layer, or to clean up an orphaned build.
+description: Remove a map layer - delete its configs in pipeline/layers/, its built archive (.pmtiles for a vector layer, .cog.tif for a raster layer) and its manifest.json entry, regenerate style.json, and open a draft PR. Always confirms with the user first. Use when asked to remove, delete, drop or retire a layer, or to clean up an orphaned build.
 ---
 
 # Remove a layer
@@ -8,9 +8,14 @@ description: Remove a map layer - delete its configs in pipeline/layers/, its .p
 Destructive: always confirm before deleting anything. Commands run from
 the repo root in Git Bash. A layer is two configs in git
 (`pipeline/layers/<name>.env` and `<name>.style.json`) plus its build in
-`data/tiles/` (`<name>.pmtiles` and an entry in `manifest.json`, from
-which `style.json` is made). The source data in `data/raw/` is left
-alone; say so, and that the user can delete it by hand.
+`data/tiles/` (`<name>.pmtiles` for a vector layer, `<name>.cog.tif` for
+a raster layer, and an entry in `manifest.json`, from which `style.json`
+is made). The source data in `data/raw/` (or `RAW_DIR`) is left alone;
+say so, and that the user can delete it by hand. So is a raster's
+prepared source in `data/work/raster/` (a cache, up to about 0.7 GB per
+source): `--remove` does not touch it, and the user can delete that
+folder to reclaim the space (other raster layers then prepare theirs
+again on their next build).
 
 ## 1. Check and confirm
 
@@ -42,8 +47,9 @@ in docs) and update them.
 docker compose run --rm --build pipeline --remove <name>
 ```
 
-It drops the manifest entry (atomically), deletes the archive and
-rewrites `style.json`; the other layers are untouched. Exit 2 means
+It drops the manifest entry (atomically), deletes the archive (the
+`.cog.tif` of a raster layer, and any `.pmtiles` left from a raster built
+before COGs) and rewrites `style.json`; the other layers are untouched. Exit 2 means
 nothing was built for that name. Then check:
 
 ```sh
