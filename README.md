@@ -63,14 +63,25 @@ language, helps write `.env` and opens the map.
 
 ## Project map
 
-- `pipeline/`: the tile builder image. `bin/run.sh` is the entry point,
-  `lib/` the build steps (normalise, display config, tiles, drop guard,
-  manifest), `layers/` one `<layer>.env` and `<layer>.style.json` per layer,
-  `schema/` the JSON Schema for display configs, `style/` the Node tool that
-  checks them, and `tests/` the bats tests and synthetic fixtures.
-- `web/`: the map app (`src/map/` the map, layer panel and pop-up wiring,
-  `src/layers/` the manifest reader, `src/popup/` pop-up content and charts)
-  and the nginx image that serves it along with `data/tiles/`.
+- `pipeline/`: the tile builder image. `bin/run.sh` is the entry point
+  (builds, `--status`, `--style-only`, `--remove`) and `bin/inspect.sh`
+  summarises source data. `lib/` holds the build steps (layer and map
+  config, normalise, calculated fields and action rules, low-zoom
+  generalisation, vector tiles, raster COGs, drop guard, display config,
+  manifest, status). `layers/` has one `<layer>.env` and
+  `<layer>.style.json` per layer, plus any `<table>.rules.json` action
+  rules table. `schema/` has the JSON Schemas for display configs, the
+  map config and rules tables. `style/` is the Node tool that checks
+  them, resolves display configs and parses calculated field
+  expressions. `tests/` has the bats tests, the `sample` test layers
+  and synthetic fixtures, including the ecoregion example template.
+- `web/`: the map app (`src/map/` the map, layer panel, "Colour by" and
+  click wiring, `src/layers/` the manifest reader and colour themes,
+  `src/popup/` pop-up content and number formats, `src/modal/` the click
+  modal template and dialog, `src/chart/` the Chart.js charts) and the
+  nginx image that serves it along with `data/tiles/`.
+- `map.config.example.json`: a starting point for your own git-ignored
+  `map.config.json` (Your map config, below).
 - `data/`: `raw/` for source data, `tiles/` for pipeline output. Neither is
   committed.
 - `docs/`: design notes (`design/`), ADRs (`decisions/`), session handoffs
@@ -78,9 +89,13 @@ language, helps write `.env` and opens the map.
 - `.github/`: CI (`ci.yml`), auto-merge, branch update and cache warming
   workflows, Dependabot config, issue forms and the PR template.
 - `scripts/`: `setup.sh` (first-time setup and machine check, Getting
-  started), `screenshot.sh` (map screenshots) and
+  started), `screenshot.sh` (map screenshots, optionally with a feature
+  clicked or a colour theme chosen), `check-tiles-cache.sh` (the web
+  smoke test's check that a rebuild reaches the browser on reload) and
   `bootstrap-repo-settings.sh` (one-time repo settings: branch
-  protection, auto-merge, labels).
+  protection, auto-merge, labels); `tests/` holds their bats tests.
+- `.claude/skills/`: optional Claude Code skills for common tasks (Using
+  Claude Code, below); each calls the plain commands documented here.
 
 ## Usage
 
