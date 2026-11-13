@@ -1,5 +1,7 @@
 import {
   styleLayerIds,
+  type Format,
+  type FormatPreset,
   type LayerDefinition,
   type NumberFormat,
   type PopupChart,
@@ -63,15 +65,38 @@ export function toNumber(raw: unknown): number | null {
   return null;
 }
 
-/** Formats a number with fixed decimals, optional grouping and a unit. */
-export function formatNumber(value: number, format: NumberFormat = {}): string {
-  const { decimals = 0, grouping = true, suffix } = format;
+/**
+ * The number format presets (schema `$defs/formatPreset`). Percentages are
+ * values already 0 to 100, shown as they are with `%`.
+ */
+export const FORMAT_PRESET_DEFAULTS: Readonly<Record<FormatPreset, Readonly<NumberFormat>>> = {
+  number: { decimals: 0, grouping: true },
+  count: { decimals: 0, grouping: true },
+  percent: { decimals: 1, grouping: true, suffix: '%' },
+  hectares: { decimals: 0, grouping: true, suffix: 'ha' },
+  km: { decimals: 1, grouping: true, suffix: 'km' },
+};
+
+/** A format as a plain `NumberFormat`: the preset's settings, then its own. */
+export function resolveFormat(format: Format = {}): NumberFormat {
+  if (typeof format === 'string') return { ...FORMAT_PRESET_DEFAULTS[format] };
+  const { preset, ...own } = format;
+  return { ...(preset ? FORMAT_PRESET_DEFAULTS[preset] : {}), ...own };
+}
+
+/**
+ * Formats a number with fixed decimals, optional grouping and a unit: a
+ * unit follows after a space, except `%`, which follows directly.
+ */
+export function formatNumber(value: number, format: Format = {}): string {
+  const { decimals = 0, grouping = true, suffix } = resolveFormat(format);
   const text = new Intl.NumberFormat(LOCALE, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
     useGrouping: grouping,
   }).format(value);
-  return suffix ? `${text} ${suffix}` : text;
+  if (!suffix) return text;
+  return suffix === '%' ? `${text}%` : `${text} ${suffix}`;
 }
 
 /**
@@ -79,7 +104,7 @@ export function formatNumber(value: number, format: NumberFormat = {}): string {
  * number (or numeric string); without one, numbers and text are shown as
  * they are. Anything else, including empty text, shows as `MISSING`.
  */
-export function formatValue(raw: unknown, format?: NumberFormat): string {
+export function formatValue(raw: unknown, format?: Format): string {
   if (format) {
     const value = toNumber(raw);
     return value === null ? MISSING : formatNumber(value, format);
@@ -135,16 +160,14 @@ export function buildPopupContent(
 
 /**
  * Maps each style layer id to its layer definition, for the layers that
- * have a pop-up. These are the layers that respond to clicks.
+ * have a pop-up or a modal (ADR 0011). These are the layers that respond to
+ * clicks.
  */
-export function clickableLayers(
-  defs: readonly LayerDefinition[],
-): Map<string, LayerDefinition & { popup: PopupDefinition }> {
-  const result = new Map<string, LayerDefinition & { popup: PopupDefinition }>();
+export function clickableLayers(defs: readonly LayerDefinition[]): Map<string, LayerDefinition> {
+  const result = new Map<string, LayerDefinition>();
   for (const def of defs) {
-    const { popup } = def;
-    if (!popup) continue;
-    for (const id of styleLayerIds(def)) result.set(id, { ...def, popup });
+    if (!def.popup && !def.modal) continue;
+    for (const id of styleLayerIds(def)) result.set(id, def);
   }
   return result;
 }

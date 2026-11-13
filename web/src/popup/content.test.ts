@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LayerDefinition, PopupChart } from '../layers';
-import { raster, sample, samplePoints } from '../test/fixtures';
+import { raster, sample, sampleModal, samplePoints } from '../test/fixtures';
 import {
   MISSING,
   buildChart,
@@ -9,6 +9,7 @@ import {
   formatNumber,
   formatValue,
   readValue,
+  resolveFormat,
   toNumber,
 } from './content';
 
@@ -157,5 +158,40 @@ describe('clickableLayers', () => {
 
   it('never makes a raster layer clickable (display only)', () => {
     expect([...clickableLayers([raster, sample]).keys()]).toEqual(['sample-fill', 'sample-outline']);
+  });
+});
+
+describe('number format presets', () => {
+  it('formats percent, hectares, km and counts', () => {
+    expect(formatNumber(12.345, 'percent')).toBe('12.3%');
+    expect(formatNumber(1234567.8, 'hectares')).toBe('1,234,568 ha');
+    expect(formatNumber(1234.56, 'km')).toBe('1,234.6 km');
+    expect(formatNumber(12345, 'count')).toBe('12,345');
+    expect(formatNumber(12345.6, 'number')).toBe('12,346');
+  });
+
+  it('lets an object change a preset', () => {
+    expect(formatNumber(12.345, { preset: 'percent', decimals: 2 })).toBe('12.35%');
+    expect(formatNumber(1234, { preset: 'hectares', grouping: false })).toBe('1234 ha');
+    expect(resolveFormat({ preset: 'km', suffix: 'kilometres' })).toEqual({
+      decimals: 1,
+      grouping: true,
+      suffix: 'kilometres',
+    });
+    expect(resolveFormat()).toEqual({});
+  });
+
+  it('puts % straight after the number, other units after a space', () => {
+    expect(formatNumber(5, { suffix: '%' })).toBe('5%');
+    expect(formatValue('7.25', 'percent')).toBe('7.3%');
+    expect(formatValue(undefined, 'percent')).toBe(MISSING);
+  });
+});
+
+describe('clickableLayers with a modal', () => {
+  it('makes a layer with a modal clickable too', () => {
+    const targets = clickableLayers([sampleModal]);
+    expect([...targets.keys()]).toEqual(['sample-fill', 'sample-outline']);
+    expect(targets.get('sample-fill')?.modal).toBe(sampleModal.modal);
   });
 });
