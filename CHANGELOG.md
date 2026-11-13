@@ -461,6 +461,12 @@ All notable changes to this project are documented here. The format is based on
 
 ### Fixed
 
+- `inspect.sh` on a file geodatabase or GeoPackage: the WGS84 extent and
+  the polygon checks queried a column named `geometry`, which only a
+  shapefile has in SQL (FileGDB calls it `SHAPE`, GeoPackage `geom`). The
+  checks failed on a `.gdb` (only `--no-checks` worked) and the extent
+  came back empty without an error. The column name now comes from
+  `ogrinfo`. Tested in `inspect.bats` with both formats.
 - The local web check (`docker compose --profile dev run --rm --no-deps
   web-dev ...`) failed 5 test files because `web-dev` mounted only `web/`
   and the tests read the display schema and expected display fixture from
