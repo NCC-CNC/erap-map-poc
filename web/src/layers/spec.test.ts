@@ -2,7 +2,7 @@ import { validateStyleMin, type StyleSpecification } from '@maplibre/maplibre-gl
 import { describe, expect, it } from 'vitest';
 import { buildPopupContent } from '../popup/content';
 import { raster, sample, sampleLayers, samplePoints } from '../test/fixtures';
-import { RASTER_SOURCE, styleLayerIds, toMapLibre } from './spec';
+import { RASTER_PNG_SOURCE, RASTER_SOURCE, isCog, styleLayerIds, toMapLibre } from './spec';
 import type { LayerDefinition } from './types';
 
 const TILES = 'https://example.test/tiles/';
@@ -112,6 +112,7 @@ describe('toMapLibre', () => {
     const built = toMapLibre(sample, TILES);
     expect(built.sourceId).toBe('sample');
     expect(built.archiveUrl).toBe('https://example.test/tiles/sample.pmtiles');
+    expect(built.archiveKind).toBe('pmtiles');
     expect(built.source).toEqual({
       type: 'vector',
       url: 'pmtiles://https://example.test/tiles/sample.pmtiles',
@@ -167,19 +168,32 @@ describe('toMapLibre', () => {
 });
 
 describe('toMapLibre for a raster layer', () => {
-  it('reads the archive through a raster-dem source with the share-covered encoding', () => {
+  it('reads the COG through the cog protocol as a raster-dem source', () => {
     const built = toMapLibre(raster, TILES);
+    expect(built.archiveUrl).toBe('https://example.test/tiles/cover.cog.tif');
+    expect(built.archiveKind).toBe('cog');
     expect(built.source).toEqual({
       type: 'raster-dem',
-      url: 'pmtiles://https://example.test/tiles/cover.pmtiles',
       tileSize: 256,
-      encoding: 'custom',
-      redFactor: 1 / 255,
-      greenFactor: 0,
-      blueFactor: 0,
-      baseShift: 0,
+      url: 'cog://https://example.test/tiles/cover.cog.tif#dem',
     });
     expect(built.source).toMatchObject(RASTER_SOURCE);
+  });
+
+  it('reads a raster built as PNG tiles before COGs as grey levels 0 to 255', () => {
+    const built = toMapLibre({ ...raster, file: 'cover.pmtiles' }, TILES);
+    expect(built.archiveKind).toBe('pmtiles');
+    expect(built.source).toEqual({
+      ...RASTER_PNG_SOURCE,
+      url: 'pmtiles://https://example.test/tiles/cover.pmtiles',
+    });
+    expect(built.source).toMatchObject({ encoding: 'custom', redFactor: 1 });
+  });
+
+  it('knows a COG by its file name', () => {
+    expect(isCog('forest.cog.tif')).toBe(true);
+    expect(isCog('forest.pmtiles')).toBe(false);
+    expect(isCog('forest.tif')).toBe(false);
   });
 
   it('draws a color-relief layer with no source layer, coloured by the share covered', () => {
@@ -197,7 +211,7 @@ describe('toMapLibre for a raster layer', () => {
           ['elevation'],
           0,
           'rgba(27, 120, 55, 0)',
-          1,
+          255,
           'rgba(27, 120, 55, 1)',
         ],
         'color-relief-opacity': 0.7,

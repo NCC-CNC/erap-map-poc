@@ -39,10 +39,12 @@ export function tilesBaseUrl(): string {
 }
 
 /**
- * Checks which archives can be read, registering each with the `pmtiles`
- * protocol. An archive that cannot be read (missing, not yet built) is
- * skipped with a console warning, so the basemap and the other layers still
- * show.
+ * Checks which archives can be read: a .pmtiles archive is registered with
+ * the `pmtiles` protocol and its header read; a raster layer's COG has its
+ * header read through the `cog` protocol (ADR 0010), whose code (with its
+ * GeoTIFF decoders) is loaded only when there is a COG. An archive that
+ * cannot be read (missing, not yet built) is skipped with a console
+ * warning, so the basemap and the other layers still show.
  */
 async function availableLayers(
   layers: CreateMapOptions['layers'],
@@ -50,12 +52,20 @@ async function availableLayers(
 ): Promise<LayerDefinition[]> {
   const defs = await layers;
   const protocol = pmtilesProtocol();
+  const built = defs.map((def) => toMapLibre(def, baseUrl));
+  const cog = built.some((b) => b.archiveKind === 'cog') ? await import('./cog') : undefined;
+  cog?.registerCogProtocol();
   const available = await Promise.all(
-    defs.map(async (def) => {
-      const { archiveUrl } = toMapLibre(def, baseUrl);
-      const archive = protocol.get(archiveUrl) ?? new PMTiles(archiveUrl);
-      protocol.add(archive);
+    defs.map(async (def, i) => {
+      const { archiveUrl, archiveKind } = built[i]!;
       try {
+        if (archiveKind === 'cog') {
+          if (!cog) return false;
+          await cog.checkCog(archiveUrl);
+          return true;
+        }
+        const archive = protocol.get(archiveUrl) ?? new PMTiles(archiveUrl);
+        protocol.add(archive);
         await archive.getHeader();
         return true;
       } catch (error) {

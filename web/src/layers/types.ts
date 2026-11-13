@@ -104,9 +104,10 @@ export interface Display {
 }
 
 /**
- * The kind of data layer, the manifest entry's `type`: `vector` tiles, or a
- * `raster` layer whose archive holds the cover fraction as grey PNG tiles,
- * drawn through a `raster-dem` source (ADR 0008).
+ * The kind of data layer, the manifest entry's `type`: `vector` tiles in a
+ * .pmtiles archive, or a `raster` layer whose COG (.cog.tif) holds the
+ * share covered as grey levels, drawn through a `raster-dem` source (ADR
+ * 0008 and 0010).
  */
 export type LayerType = 'vector' | 'raster';
 

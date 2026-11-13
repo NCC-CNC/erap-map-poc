@@ -40,6 +40,7 @@ describe('tilesMiddleware', () => {
     dir = path.join(root, 'tiles');
     mkdirSync(dir);
     writeFileSync(path.join(dir, 'sample.pmtiles'), '0123456789');
+    writeFileSync(path.join(dir, 'cover.cog.tif'), 'abcdefghij');
     writeFileSync(path.join(root, 'outside.txt'), 'secret');
     const middleware = tilesMiddleware(dir);
     server = createServer((req, res) =>
@@ -63,6 +64,14 @@ describe('tilesMiddleware', () => {
     expect(res.headers.get('content-type')).toBe('application/vnd.pmtiles');
     expect(res.headers.get('content-range')).toBe('bytes 2-5/10');
     expect(await res.text()).toBe('2345');
+  });
+
+  it('serves a COG byte range with 206 and the TIFF content type', async () => {
+    const res = await fetch(`${base}/tiles/cover.cog.tif`, { headers: { Range: 'bytes=0-3' } });
+    expect(res.status).toBe(206);
+    expect(res.headers.get('content-type')).toBe('image/tiff');
+    expect(res.headers.get('content-range')).toBe('bytes 0-3/10');
+    expect(await res.text()).toBe('abcd');
   });
 
   it('serves the whole file without a range', async () => {

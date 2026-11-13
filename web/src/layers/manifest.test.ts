@@ -176,7 +176,7 @@ describe('raster layers', () => {
         id: 'cover',
         type: 'raster',
         title: 'Test raster',
-        file: 'cover.pmtiles',
+        file: 'cover.cog.tif',
         sourceLayer: 'cover',
         defaultVisible: true,
         order: 5,
@@ -195,6 +195,18 @@ describe('raster layers', () => {
       'sample:vector',
       'sample_points:vector',
     ]);
+  });
+
+  it('takes a COG for a raster layer, or a .pmtiles built before COGs, but never a COG for a vector layer', () => {
+    const olderRaster = { ...rasterEntry(), file: 'cover.pmtiles', format: 'png' };
+    expect(parseManifest({ layers: [olderRaster] }).layers[0]?.file).toBe('cover.pmtiles');
+
+    const [vector] = sampleManifest().layers;
+    const { layers, problem } = parseManifest({
+      layers: [{ ...vector, file: 'sample.cog.tif' }, { ...rasterEntry(), file: 'cover.tif' }],
+    });
+    expect(layers).toEqual([]);
+    expect(problem).toBe(MESSAGES.skipped(2));
   });
 
   it('reads an entry without a type as vector, as written before raster layers', () => {

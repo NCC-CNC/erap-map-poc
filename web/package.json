@@ -15,6 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@geomatico/maplibre-cog-protocol": "0.10.0",
     "chart.js": "4.6.1",
     "maplibre-gl": "6.17.0",
     "pmtiles": "4.5.0",

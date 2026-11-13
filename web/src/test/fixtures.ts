@@ -62,9 +62,9 @@ export function sampleManifest() {
 export function rasterEntry() {
   return {
     name: 'cover',
-    file: 'cover.pmtiles',
+    file: 'cover.cog.tif',
     type: 'raster',
-    format: 'png',
+    format: 'cog',
     display: structuredClone(expectedRasterDisplay),
   };
 }
