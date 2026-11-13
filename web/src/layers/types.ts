@@ -191,9 +191,14 @@ export type ModalBlock = AttributesBlock | TableBlock | ChartBlock | TextBlock |
 /** A section of the modal: a heading, optional text and blocks. */
 export interface ModalSection {
   heading: string;
+  /** A shorter label for the section's tab (default: the heading). */
+  tab?: string;
   description?: Template;
   blocks?: ModalBlock[];
 }
+
+/** How the modal shows its sections: a tab each (the default), or all in one scroll. */
+export type ModalLayout = 'tabs' | 'scroll';
 
 /**
  * Click details in a modal dialog (ADR 0012): one template per layer,
@@ -202,6 +207,7 @@ export interface ModalSection {
 export interface ModalDefinition {
   title: Template;
   subtitle?: Template;
+  layout?: ModalLayout;
   sections: ModalSection[];
 }
 

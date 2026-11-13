@@ -6,7 +6,7 @@
 import Ajv2020 from 'ajv/dist/2020';
 import { describe, expect, it } from 'vitest';
 import { expectedDisplay, expectedModalDisplay, expectedRasterDisplay, layerStyleSchema } from '../test/fixtures';
-import { displayProblems } from './manifest';
+import { MODAL_LAYOUTS, displayProblems } from './manifest';
 import type {
   AttributesBlock,
   ChartBlock,
@@ -16,6 +16,7 @@ import type {
   LegendItem,
   ListBlock,
   ModalDefinition,
+  ModalLayout,
   ModalSection,
   NumberFormat,
   TableBlock,
@@ -59,8 +60,8 @@ describe('the TypeScript types have the schema properties', () => {
     ['resolvedLegend', keysOf<Legend>({ kind: true, shape: true, border: true, opacity: true, items: true })],
     ['legendItem', keysOf<LegendItem>({ color: true, label: true, position: true })],
     ['resolvedTheme', keysOf<Theme>({ id: true, label: true, paint: true, legend: true })],
-    ['modal', keysOf<ModalDefinition>({ title: true, subtitle: true, sections: true })],
-    ['modalSection', keysOf<ModalSection>({ heading: true, description: true, blocks: true })],
+    ['modal', keysOf<ModalDefinition>({ title: true, subtitle: true, layout: true, sections: true })],
+    ['modalSection', keysOf<ModalSection>({ heading: true, tab: true, description: true, blocks: true })],
     ['attributesBlock', keysOf<AttributesBlock>({ type: true, items: true })],
     ['tableBlock', keysOf<TableBlock>({ type: true, caption: true, rowHeader: true, columns: true, rows: true })],
     [
@@ -87,7 +88,7 @@ describe('the TypeScript types have the schema properties', () => {
     expect(keys).toEqual(schemaKeys(def));
   });
 
-  it('legend kinds and shapes', () => {
+  it('legend kinds and shapes, format presets and modal layouts', () => {
     const kinds: Record<Legend['kind'], true> = { single: true, categories: true, ramp: true, gradient: true };
     const shapes: Record<Legend['shape'], true> = { square: true, circle: true, line: true };
     const enumOf = (def: string) => (layerStyleSchema.$defs[def] as { enum: string[] }).enum.sort();
@@ -95,6 +96,10 @@ describe('the TypeScript types have the schema properties', () => {
     expect(Object.keys(shapes).sort()).toEqual(enumOf('legendShape'));
     const presets: Record<FormatPreset, true> = { number: true, count: true, percent: true, hectares: true, km: true };
     expect(Object.keys(presets).sort()).toEqual(enumOf('formatPreset'));
+    const layouts: Record<ModalLayout, true> = { tabs: true, scroll: true };
+    const modalProperties = layerStyleSchema.$defs.modal?.properties as Record<string, { enum: string[] }>;
+    expect(Object.keys(layouts).sort()).toEqual([...modalProperties.layout!.enum].sort());
+    expect([...MODAL_LAYOUTS].sort()).toEqual(Object.keys(layouts).sort());
   });
 });
 
@@ -139,6 +144,9 @@ const block = (d: Record<string, unknown>, section: number, index: number) =>
 const validModal: Case[] = [
   ['the sample with themes and a modal as built', () => {}],
   ['no subtitle', (d) => delete at(d, 'modal').subtitle],
+  ['the tabs layout', (d) => (at(d, 'modal').layout = 'tabs')],
+  ['the scroll layout', (d) => (at(d, 'modal').layout = 'scroll')],
+  ['no tab label', (d) => delete at(d, 'modal', 'sections', 0).tab],
   ['a section with only a description', (d) => delete at(d, 'modal', 'sections', 0).blocks],
   ['a section with only blocks', (d) => delete at(d, 'modal', 'sections', 0).description],
   [
@@ -163,6 +171,9 @@ const invalidModal: Case[] = [
   ['both a pop-up and a modal', (d) => (d.popup = structuredClone(expectedDisplay.sample.popup))],
   ['a modal without sections', (d) => (at(d, 'modal').sections = [])],
   ['a modal without a title', (d) => delete at(d, 'modal').title],
+  ['a layout not known', (d) => (at(d, 'modal').layout = 'accordion')],
+  ['an empty tab label', (d) => (at(d, 'modal', 'sections', 0).tab = '')],
+  ['a tab label that is a number', (d) => (at(d, 'modal', 'sections', 0).tab = 1)],
   ['a section without a heading', (d) => delete at(d, 'modal', 'sections', 0).heading],
   ['a section with neither description nor blocks', (d) => delete at(d, 'modal', 'sections', 1).blocks],
   ['a block of an unknown type', (d) => (block(d, 0, 0).type = 'map')],

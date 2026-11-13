@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { sample, sampleModal, samplePoints } from '../test/fixtures';
-import { keepModal, openModal } from './state';
+import { keepModal, openModal, withTab } from './state';
 
 const feature = { id: 2, properties: { name: 'Birch', score: 74 } };
 
@@ -23,5 +23,15 @@ describe('the open modal', () => {
     expect(keepModal(open, [sampleModal], { sample: false })).toBeNull();
     expect(keepModal(open, [samplePoints], {})).toBeNull();
     expect(keepModal(null, [sampleModal], {})).toBeNull();
+  });
+});
+
+describe('the selected modal tab', () => {
+  it('is kept per layer, and the state only changes when the tab does', () => {
+    const one = withTab({}, 'sample', 2);
+    expect(one).toEqual({ sample: 2 });
+    expect(withTab(one, 'sample', 2)).toBe(one);
+    expect(withTab(one, 'other', 0)).toEqual({ sample: 2, other: 0 });
+    expect(withTab(one, 'sample', 1)).toEqual({ sample: 1 });
   });
 });

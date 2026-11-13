@@ -262,8 +262,15 @@ The app only shows attributes; derived values come from the pipeline
 - `title` and optional `subtitle`: text with placeholders. `{name}` is the
   attribute `name` as it is, `{area_ha:hectares}` the attribute in a
   format preset, `{$id}` the feature id.
-- `sections`: in order, each a `heading`, an optional `description`
-  (text with placeholders) and `blocks`:
+- `layout` (optional): `tabs` (the default) or `scroll`. In `tabs`, each
+  section the feature has values for is a tab, one shown at a time (a
+  section hidden for missing attributes gets no tab, and with only one
+  such section there is no tab list). In `scroll`, every section follows
+  the last in one scrolling body, as before #75.
+- `sections`: in order, each a `heading`, an optional `tab` (a shorter
+  label for its tab, for example `Threats` for `Direct threats`; the
+  heading is then shown above the section's content too), an optional
+  `description` (text with placeholders) and `blocks`:
   - `{"type": "attributes", "items": [...]}`: labelled values, each item
     a pop-up stat (`label`, `value`, `format`).
   - `{"type": "table", "caption", "rowHeader", "columns": [{label,
@@ -294,16 +301,33 @@ in the tiles at all is left out (with them but none true, it shows
 whose description is) is left out. The pipeline checks the template
 beyond the schema: each table row has one value per column, each chart
 series one attribute per category, a pie or doughnut one series, slice
-colours one per category, and placeholders are well formed with known
-presets.
+colours one per category, placeholders are well formed with known
+presets, and in the `tabs` layout no two sections have the same tab label
+(`tab`, else `heading`).
 
 The dialog is accessible: `role="dialog"` with `aria-modal`, labelled by
 the title and described by the subtitle; focus moves to the close button
 and stays in the dialog (Tab and Shift+Tab cycle) until it closes, then
-returns; Escape, the close button or a click outside closes it; the body
-scrolls, and on a narrow screen (600 px or less) the dialog fills it.
-Hiding the layer closes it. Tables have a caption and row and column
-headers; each chart has a text summary for screen readers.
+returns; Escape, the close button or a click outside closes it. Hiding
+the layer closes it. Tables have a caption and row and column headers;
+each chart has a text summary for screen readers.
+
+In the `tabs` layout the dialog is 34 rem wide and 36 rem high (less on a
+smaller window), the same size for every tab, so switching does not
+resize it; the title and the tab list stay put and the selected tab's
+panel scrolls, with charts a little shorter than in `scroll`. The tabs
+follow the WAI-ARIA tabs pattern: a `tablist` of `tab` buttons with
+`aria-selected`, the selected tab's `aria-controls` naming the one
+`tabpanel` (labelled by its tab; only the selected section is rendered,
+so charts are drawn at their real size), and a roving tabindex: Tab
+reaches the selected tab only, then the panel; Left and Right arrows move
+to and select the previous or next tab (wrapping), Home and End the first
+and last. The map keeps each layer's selected tab while the page is open:
+the next feature of the layer, or the dialog opened again, shows the same
+tab when that feature has the section, else the first. In `scroll` the
+dialog is 40 rem wide, as tall as its content up to the window, and its
+body scrolls. On a narrow screen (600 px or less) the dialog fills it in
+either layout.
 
 The ecoregion example, `pipeline/tests/fixtures/ecoregions.example.env`
 and `.style.json`, uses the attributes the play data has now: a Summary

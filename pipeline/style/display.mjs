@@ -785,8 +785,9 @@ export function templateProblems(text, where) {
 
 /**
  * Problems in a modal template the schema cannot express: table rows and
- * chart series of the wrong length, a pie with more than one series, and
- * placeholders that are not valid.
+ * chart series of the wrong length, a pie with more than one series,
+ * placeholders that are not valid, and in the `tabs` layout (the default)
+ * two sections with the same tab label.
  */
 export function modalProblems(modal) {
   const problems = [];
@@ -795,8 +796,19 @@ export function modalProblems(modal) {
   };
   text(modal.title, 'modal.title');
   text(modal.subtitle, 'modal.subtitle');
+  const tabs = new Map();
   modal.sections.forEach((section, s) => {
     const at = `modal.sections[${s}]`;
+    if ((modal.layout ?? 'tabs') === 'tabs') {
+      const label = section.tab ?? section.heading;
+      if (tabs.has(label)) {
+        problems.push(
+          `${at}: tab label "${label}" is also used by modal.sections[${tabs.get(label)}] (give one a different "tab")`,
+        );
+      } else {
+        tabs.set(label, s);
+      }
+    }
     text(section.description, `${at}.description`);
     (section.blocks ?? []).forEach((block, b) => {
       const where = `${at}.blocks[${b}]`;

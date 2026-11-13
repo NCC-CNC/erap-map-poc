@@ -343,6 +343,7 @@
       },
       {
         "heading": "Direct threats",
+        "tab": "Threats",
         "description": "Share of the ecoregion under the footprint of each direct threat.",
         "blocks": [
           {
@@ -426,6 +427,7 @@
       },
       {
         "heading": "Action recommendations",
+        "tab": "Actions",
         "description": "Actions recommended for this ecoregion by the ERAP rules, with the reason for each.",
         "blocks": [
           {
