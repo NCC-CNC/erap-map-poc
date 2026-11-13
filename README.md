@@ -4,9 +4,9 @@ A proof of concept for processing spatial data into vector tiles and viewing
 them in an interactive web map.
 
 ![The web map on the Light basemap with the ERAP ecoregions coloured by
-percent protected over the forest and protected area layers, the layer
-panel with its "Colour by" choice and legends on the left, and the click
-modal of the Mid-Boreal Lowland ecoregion showing its summary, a habitat
+percent protected and the protected areas in green, the layer panel with
+its "Colour by" choice and legends on the left, and the click modal of
+the Mid-Boreal Lowland ecoregion open on its Habitat tab, with a habitat
 table and a grouped bar chart](docs/images/map-modal.png)
 
 - **Pipeline** (`pipeline/`): bash scripts using GDAL, tippecanoe, and the
