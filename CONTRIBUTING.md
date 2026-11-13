@@ -66,7 +66,7 @@ instead, with no pull request: see `README.md` (Your map config) and ADR
 
 ```sh
 docker compose run --rm --entrypoint sh pipeline -c \
-  'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.style.json'
+  'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.json'
 ```
 
 Helpers for checking a layer by hand (Claude Code's skills use the same
