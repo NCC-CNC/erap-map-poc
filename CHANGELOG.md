@@ -7,6 +7,35 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Click modal, colour themes, gradients and number formats (#57, ADR
+  0011). A layer's `.style.json` may have a `modal` instead of a `popup`:
+  one template (title and subtitle with `{attribute}`,
+  `{attribute:preset}` and `{$id}` placeholders, then sections of
+  attribute lists, tables, bar, grouped bar, pie and doughnut charts, text
+  and lists with a message for none), filled from the clicked feature's
+  tile attributes; whatever a feature lacks is hidden. The app shows it
+  in an accessible dialog (focus trap, Escape and close button, focus
+  returned, scrolls, full screen on narrow screens, closes when the layer
+  is hidden). The polygon and point shorthand may give colour `themes`
+  (with a `defaultTheme`) instead of one `color`: the layer panel offers
+  "Colour by", which switches the paint and legend in the browser with no
+  rebuild. New `interpolated` colour rule (a gradient from `stops`, or
+  `colors` over `min` to `max`, from the data when left out) with a
+  `gradient` legend. Formats may be a preset (`number`, `count`,
+  `percent`, `hectares`, `km`) or an object with a `preset`; `%` now
+  follows a number with no space. The display config tool checks table
+  and chart lengths and placeholders; `--style-only` re-reads the data for
+  a gradient range from the data, in any theme. Chart.js now loads on
+  first use. `scripts/screenshot.sh` gains `--click` (click the view's
+  centre, to capture a pop-up or modal) and `--colour-by LAYER=THEME`,
+  tested in `scripts/tests/screenshot.bats`. New `edit-popup` skill for
+  pop-up and modal content; `restyle-layer` keeps colours, themes and
+  legends. The ecoregion template, from the play data's attributes, is an
+  example in `pipeline/tests/fixtures/ecoregions.example.*` until #58.
+  Tests: `style/test/themes_modal.test.mjs`, `display.bats`,
+  `style_only.bats`, and web tests for the template, themes, chart
+  configs, the schema agreement and the dialog and layer panel in jsdom
+  (a new pinned dev dependency).
 - Local map config (#59, ADR 0009): a git-ignored `map.config.json` at
   the repo root (`MAP_CONFIG` in `.env` picks another file;
   `map.config.example.json` is committed), with a JSON Schema

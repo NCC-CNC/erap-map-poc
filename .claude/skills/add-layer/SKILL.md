@@ -161,7 +161,12 @@ style: `symbology` with `categorical` for a text attribute with few values
 (one colour per inspect value), `stepped` with `breaks` (quantile or equal)
 for a numeric one, `single` otherwise; a `popup` with a title attribute,
 the `featureId` and the chosen stats; an `order` relative to the other
-layers (higher draws on top). Use colour-blind-safe palettes.
+layers (higher draws on top). Use colour-blind-safe palettes. If the user
+wants several attributes to colour by, use colour `themes`; for click
+details with sections, tables or several charts, a `modal` instead of the
+`popup` (design note 02, Click modal; the edit-popup skill fills it in).
+Values a modal or pop-up shows must be in `LAYER_FIELDS` (or calculated
+fields, once #60 lands).
 
 ## 3. Build and read the report
 

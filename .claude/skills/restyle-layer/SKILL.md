@@ -1,6 +1,6 @@
 ---
 name: restyle-layer
-description: Change how an existing map layer looks or what its pop-up shows (colours, classes, attribute to colour by, legend, title, order, visibility, pop-up stats and charts; for raster layers colour and opacity) by editing only pipeline/layers/<name>.style.json and applying it with `pipeline --style-only` (no re-tiling), with before and after screenshots and a draft PR. Use when asked to restyle, recolour or change the legend or pop-up of a layer.
+description: Change how an existing map layer looks (colours, classes, gradients, attribute to colour by, switchable colour themes for "Colour by", legend, title, order, visibility; for raster layers colour and opacity) by editing only pipeline/layers/<name>.style.json and applying it with `pipeline --style-only` (no re-tiling), with before and after screenshots and a draft PR. Use when asked to restyle or recolour a layer, add or change its colour themes, or change its legend. What a pop-up or modal shows is the edit-popup skill.
 ---
 
 # Restyle a layer
@@ -9,8 +9,18 @@ Edit only `pipeline/layers/<name>.style.json`. If the change needs a field
 that is not in the tiles, it is not a restyle: add the field to
 `LAYER_FIELDS` in `<name>.env`, do a full build in step 3, and say so in
 the PR. Reference: `docs/design/02_data_layers_and_popups.md` (Display
-config) and `pipeline/schema/layer-style.schema.json`. Never commit data
-or screenshots.
+config; Colour themes and gradients) and
+`pipeline/schema/layer-style.schema.json`. Never commit data or
+screenshots. To change what a pop-up or modal shows (stats, sections,
+tables, charts, formats), use the edit-popup skill instead.
+
+Several colours to switch between (for example protected, Where To Work
+and intact for one layer) are colour `themes` in the shorthand, each with
+an `id`, `label` and colour rule, plus a `defaultTheme`; the map shows a
+"Colour by" list for them. A continuous ramp is an `interpolated` rule
+(`stops`, or `colors` with `min` and `max`, each from the data when left
+out) with a gradient legend. To screenshot another theme:
+`scripts/screenshot.sh --colour-by <name>=<theme id> ...`.
 
 First ask, unless the user already said: is this change just for them,
 or for everyone? Just for them: put it in their git-ignored
