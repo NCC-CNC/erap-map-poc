@@ -83,7 +83,7 @@ export function styleLayerIds(def: LayerDefinition): string[] {
  *   ending in a slash, for example `http://localhost:5173/tiles/`.
  * @param visible whether the layers start shown; defaults to the
  *   definition's `defaultVisible`.
- * @param themeId the colour theme to draw (ADR 0011), for a layer with
+ * @param themeId the colour theme to draw (ADR 0012), for a layer with
  *   themes: its paint is laid over the style layers'. Defaults to the
  *   layers as given, which are the default theme's.
  */

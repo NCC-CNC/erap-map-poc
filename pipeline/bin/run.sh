@@ -87,6 +87,8 @@ source "${PIPELINE_ROOT}/lib/raster.sh"
 source "${PIPELINE_ROOT}/lib/status.sh"
 # shellcheck source=lib/mapconfig.sh
 source "${PIPELINE_ROOT}/lib/mapconfig.sh"
+# shellcheck source=lib/derive.sh
+source "${PIPELINE_ROOT}/lib/derive.sh"
 
 PIPELINE_INPUT_DIR=${PIPELINE_INPUT_DIR:-/data/raw}
 PIPELINE_OUTPUT_DIR=${PIPELINE_OUTPUT_DIR:-/data/tiles}
@@ -117,6 +119,8 @@ build_layer() {
   local started=$SECONDS
   local display="${layer_scratch}/display.json" report="${layer_scratch}/report.json"
   local header="${layer_scratch}/header.json" header_json=""
+  # Set by build_vector_layer for a layer with a rules table (lib/derive.sh).
+  local rules_sha=""
 
   if [[ $LAYER_TYPE == raster ]]; then
     build_raster_layer
@@ -125,9 +129,12 @@ build_layer() {
     build_vector_layer
   fi
 
+  # The rules table's hash joins the provenance, so --status sees a change.
+  local provenance
+  provenance=$(layer_provenance "$name" "$LAYER_INPUT" \
+    | jq -c --arg r "$rules_sha" '.rules_sha256 = (if $r == "" then null else $r end)')
   manifest_update "$PIPELINE_OUTPUT_DIR" "$name" "$LAYER_TYPE" "$display" \
-    "$(jq -c '.' "$report")" "$((SECONDS - started))" \
-    "$(layer_provenance "$name" "$LAYER_INPUT")" "$header_json"
+    "$(jq -c '.' "$report")" "$((SECONDS - started))" "$provenance" "$header_json"
   remove_other_archives "$name" "$(layer_archive_file "$name" "$LAYER_TYPE")"
 }
 
@@ -148,8 +155,19 @@ remove_other_archives() {
 build_vector_layer() {
   local normalised="${layer_scratch}/${name}.geojsonl"
 
+  # Calculated fields and rules (lib/derive.sh): checked before the source
+  # data is read, added to the normalised data, then tiled like the rest.
+  local plan="" derived=()
+  if layer_derives; then
+    plan="${layer_scratch}/derive.json"
+    derive_plan "$name" "$name" "$plan"
+    mapfile -t derived < <(jq -r '.attributes[]' "$plan")
+    rules_sha=$(jq -r '.rules.sha256 // empty' "$plan")
+  fi
+
   normalise "$LAYER_INPUT" "$LAYER_SOURCE_LAYER" "$LAYER_SOURCE_SRS" \
     "$LAYER_ENCODING" "$normalised" "${LAYER_FIELDS[@]}"
+  if [[ -n $plan ]]; then derive_apply "$normalised" "$plan"; fi
 
   local count
   count=$(wc -l <"$normalised")
@@ -172,7 +190,7 @@ build_vector_layer() {
     tile_input="${layer_scratch}/${name}.generalised.geojsonl"
     generalised_input "$normalised" "$tile_input" "$LAYER_MIN_ZOOM" \
       "$LAYER_GENERALISE_MAX_ZOOM" "$LAYER_FEATURE_ID" "$LAYER_GENERALISE_MIN_PART_PX" \
-      "$LAYER_GENERALISE_SIMPLIFY_PX" "$layer_scratch" "${LAYER_FIELDS[@]}"
+      "$LAYER_GENERALISE_SIMPLIFY_PX" "$layer_scratch" "${LAYER_FIELDS[@]}" "${derived[@]}"
   fi
 
   build_tiles "$name" "$tile_input" "$PIPELINE_OUTPUT_DIR" \
@@ -180,6 +198,13 @@ build_vector_layer() {
     check_layer_tiles "${LAYER_TIPPECANOE_FLAGS[@]}"
 
   vector_report "$count" "$stats" "$LAYER_PROFILE" "$LAYER_MIN_VISIBLE_PX" >"$report"
+  if [[ -n $plan ]]; then
+    local derive_json
+    derive_json=$(derive_report "$normalised" "$plan")
+    log_info "$(derive_summary "$derive_json")"
+    jq -c --argjson d "$derive_json" '. + $d' "$report" >"${report}.tmp"
+    mv -- "${report}.tmp" "$report"
+  fi
 }
 
 # check_layer_tiles ARCHIVE: the drop guard, run by build_tiles from inside
@@ -261,9 +286,22 @@ restyle_data() {
   ((${changed:-0} <= built_at)) && [[ -z $recorded || $recorded == "$current" ]] \
     || die "the display config has breaks, computed from the data, and ${name}.env, the map config's input or env, or the source data changed since the build: rebuild the layer"
 
+  # Breaks may be on a calculated field (lib/derive.sh), so they are added
+  # as the build added them, from the same rules table.
+  local plan=""
+  if layer_derives; then
+    plan="${out%/*}/derive.json"
+    derive_plan "$name" "$(basename "$out" .geojsonl)" "$plan"
+    recorded=$(jq -r --arg n "$name" \
+      'first(.layers[] | select(.name == $n)) | .provenance.rules_sha256 // ""' "$manifest")
+    [[ $(jq -r '.rules.sha256 // ""' "$plan") == "$recorded" ]] \
+      || die "the display config has breaks, computed from the data, and the rules table changed since the build: rebuild the layer"
+  fi
+
   log_info "reading the source data for breaks (no tiling)"
   normalise "$LAYER_INPUT" "$LAYER_SOURCE_LAYER" "$LAYER_SOURCE_SRS" \
     "$LAYER_ENCODING" "$out" "${LAYER_FIELDS[@]}"
+  if [[ -n $plan ]]; then derive_apply "$out" "$plan"; fi
 }
 
 # finish_manifest: apply the map config's layer selection and map view to

@@ -16,7 +16,7 @@ to colour the ecoregions by one of a few attributes (protected, Where To
 Work, intact) and switch between them in the map, on a blue sequential
 gradient. More layers may follow, so none of this may be ecoregion
 specific, and adding a section or a theme must be a config change, not
-code. Calculations stay in the pipeline (#60): the app only shows what the
+code. Calculations stay in the pipeline (#60, ADR 0011): the app only shows what the
 tiles hold.
 
 ## Decision

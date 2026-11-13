@@ -160,7 +160,7 @@ export function buildPopupContent(
 
 /**
  * Maps each style layer id to its layer definition, for the layers that
- * have a pop-up or a modal (ADR 0011). These are the layers that respond to
+ * have a pop-up or a modal (ADR 0012). These are the layers that respond to
  * clicks.
  */
 export function clickableLayers(defs: readonly LayerDefinition[]): Map<string, LayerDefinition> {

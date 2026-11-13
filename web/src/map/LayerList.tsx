@@ -18,7 +18,7 @@ interface LayerListProps {
   /** Ids of the layers whose archive could be read; `null` while checking. */
   available: ReadonlySet<string> | null;
   onChange: (layerId: string, visible: boolean) => void;
-  /** The colour theme chosen per layer (ADR 0011). */
+  /** The colour theme chosen per layer (ADR 0012). */
   themes?: ThemeState;
   onThemeChange?: (layerId: string, themeId: string) => void;
 }

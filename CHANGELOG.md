@@ -7,8 +7,29 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Calculated fields and action recommendation rules (#60, ADR 0011): all
+  calculations happen in the pipeline, the app only displays tile
+  attributes. `LAYER_CALCULATED` in a layer's `.env` adds attributes from
+  `name=expression` entries, and `LAYER_RULES` names a committed rules
+  table, `pipeline/layers/<table>.rules.json` (schema
+  `pipeline/schema/action-rules.schema.json`), whose actions become
+  `action_<id>`, `action_<id>_reason` and `actions_<type>_count`
+  attributes. Expressions are a small SQL-like language parsed by the
+  display config tool (`style/derive.mjs`) and evaluated with GDAL's
+  SQLite dialect (`lib/derive.sh`): no statements, subqueries, comments or
+  functions outside an allow-list, every name quoted, problems reported
+  per field or rule before the source data is read. The first table,
+  `ecoregions.rules.json`, holds the one known rule (30x30, when
+  `protected_pcnt < 30`). The build report gains `calculated_fields` and
+  `rules` (counts per action and type) and the provenance
+  `rules_sha256`; `--status` lists them and calls a build stale when the
+  rules table changes; `inspect.sh --config <layer>` shows a layer's data
+  as built, calculated fields and rule counts included; `cli.mjs check`
+  checks `.rules.json` files; the map config's overrides gain
+  `calculated` and `rules`. Low-zoom generalisation and `--style-only`
+  breaks keep the derived attributes.
 - Click modal, colour themes, gradients and number formats (#57, ADR
-  0011). A layer's `.style.json` may have a `modal` instead of a `popup`:
+  0012). A layer's `.style.json` may have a `modal` instead of a `popup`:
   one template (title and subtitle with `{attribute}`,
   `{attribute:preset}` and `{$id}` placeholders, then sections of
   attribute lists, tables, bar, grouped bar, pie and doughnut charts, text

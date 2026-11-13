@@ -13,13 +13,28 @@
           "type": "stepped",
           "attribute": "protected_pcnt",
           "stops": [
-            { "from": 0, "color": "#deebf7" },
-            { "from": 10, "color": "#9ecae1" },
-            { "from": 17, "color": "#4292c6" },
-            { "from": 30, "color": "#08519c" }
+            {
+              "from": 0,
+              "color": "#deebf7"
+            },
+            {
+              "from": 10,
+              "color": "#9ecae1"
+            },
+            {
+              "from": 17,
+              "color": "#4292c6"
+            },
+            {
+              "from": 30,
+              "color": "#08519c"
+            }
           ],
           "max": 100,
-          "fallback": { "color": "#bdbdbd", "label": "No data" }
+          "fallback": {
+            "color": "#bdbdbd",
+            "label": "No data"
+          }
         }
       },
       {
@@ -28,9 +43,16 @@
         "color": {
           "type": "interpolated",
           "attribute": "wtw_percent",
-          "colors": ["#f7fbff", "#6baed6", "#08306b"],
+          "colors": [
+            "#f7fbff",
+            "#6baed6",
+            "#08306b"
+          ],
           "min": 0,
-          "fallback": { "color": "#bdbdbd", "label": "No data" }
+          "fallback": {
+            "color": "#bdbdbd",
+            "label": "No data"
+          }
         }
       },
       {
@@ -40,17 +62,79 @@
           "type": "interpolated",
           "attribute": "intact_pcnt",
           "stops": [
-            { "value": 0, "color": "#f7fbff" },
-            { "value": 50, "color": "#6baed6" },
-            { "value": 100, "color": "#08306b" }
+            {
+              "value": 0,
+              "color": "#f7fbff"
+            },
+            {
+              "value": 50,
+              "color": "#6baed6"
+            },
+            {
+              "value": 100,
+              "color": "#08306b"
+            }
           ],
-          "fallback": { "color": "#bdbdbd", "label": "No data" }
+          "fallback": {
+            "color": "#bdbdbd",
+            "label": "No data"
+          }
+        }
+      },
+      {
+        "id": "area_based_actions",
+        "label": "Area-based conservation actions",
+        "color": {
+          "type": "stepped",
+          "attribute": "actions_area_based_conservation_count",
+          "stops": [
+            {
+              "from": 0,
+              "color": "#deebf7"
+            },
+            {
+              "from": 1,
+              "color": "#6baed6"
+            },
+            {
+              "from": 2,
+              "color": "#08519c"
+            }
+          ],
+          "max": 2,
+          "fallback": {
+            "color": "#bdbdbd",
+            "label": "No data"
+          }
+        },
+        "legend": {
+          "items": [
+            {
+              "color": "#deebf7",
+              "label": "None recommended"
+            },
+            {
+              "color": "#6baed6",
+              "label": "1 recommended"
+            },
+            {
+              "color": "#08519c",
+              "label": "2 or more recommended"
+            },
+            {
+              "color": "#bdbdbd",
+              "label": "No data"
+            }
+          ]
         }
       }
     ],
     "defaultTheme": "protected",
     "fillOpacity": 0.45,
-    "outline": { "color": "#08306b", "width": 1 }
+    "outline": {
+      "color": "#08306b",
+      "width": 1
+    }
   },
   "modal": {
     "title": "{name}",
@@ -62,14 +146,59 @@
           {
             "type": "attributes",
             "items": [
-              { "label": "Ecoregion ID", "value": { "attribute": "ecoregion_id" } },
-              { "label": "Ecozone", "value": { "attribute": "ecozone" } },
-              { "label": "Ecozone ID", "value": { "attribute": "ecozone_id" } },
-              { "label": "Area", "value": { "attribute": "landscape_ha" }, "format": "hectares" },
-              { "label": "Protected", "value": { "attribute": "protected_pcnt" }, "format": "percent" },
-              { "label": "Where To Work", "value": { "attribute": "wtw_percent" }, "format": "percent" },
-              { "label": "Intact", "value": { "attribute": "intact_pcnt" }, "format": "percent" },
-              { "label": "Modified", "value": { "attribute": "modified_pcnt" }, "format": "percent" }
+              {
+                "label": "Ecoregion ID",
+                "value": {
+                  "attribute": "ecoregion_id"
+                }
+              },
+              {
+                "label": "Ecozone",
+                "value": {
+                  "attribute": "ecozone"
+                }
+              },
+              {
+                "label": "Ecozone ID",
+                "value": {
+                  "attribute": "ecozone_id"
+                }
+              },
+              {
+                "label": "Area",
+                "value": {
+                  "attribute": "landscape_ha"
+                },
+                "format": "hectares"
+              },
+              {
+                "label": "Protected",
+                "value": {
+                  "attribute": "protected_pcnt"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Where To Work",
+                "value": {
+                  "attribute": "wtw_percent"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Intact",
+                "value": {
+                  "attribute": "intact_pcnt"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Modified",
+                "value": {
+                  "attribute": "modified_pcnt"
+                },
+                "format": "percent"
+              }
             ]
           }
         ]
@@ -83,15 +212,52 @@
             "caption": "Habitats",
             "rowHeader": "Habitat",
             "columns": [
-              { "label": "Cover in ecoregion", "format": "percent" },
-              { "label": "Protected", "format": "percent" },
-              { "label": "In Where To Work", "format": "percent" }
+              {
+                "label": "Cover in ecoregion",
+                "format": "percent"
+              },
+              {
+                "label": "Protected",
+                "format": "percent"
+              },
+              {
+                "label": "In Where To Work",
+                "format": "percent"
+              }
             ],
             "rows": [
-              { "label": "Forest", "values": ["pcnt_landscape_forest_cover", "pcnt_forest_protected", "pcnt_forest_wtw"] },
-              { "label": "Grassland", "values": ["pcnt_landscape_grassland_cover", "pcnt_grassland_protected", "pcnt_grassland_wtw"] },
-              { "label": "Wetland", "values": ["pcnt_landscape_wetland_cover", "pcnt_wetland_protected", "pcnt_wetland_wtw"] },
-              { "label": "Lakes", "values": ["pcnt_landscape_lakes_cover", "pcnt_lakes_protected", "pcnt_lakes_wtw"] }
+              {
+                "label": "Forest",
+                "values": [
+                  "pcnt_landscape_forest_cover",
+                  "pcnt_forest_protected",
+                  "pcnt_forest_wtw"
+                ]
+              },
+              {
+                "label": "Grassland",
+                "values": [
+                  "pcnt_landscape_grassland_cover",
+                  "pcnt_grassland_protected",
+                  "pcnt_grassland_wtw"
+                ]
+              },
+              {
+                "label": "Wetland",
+                "values": [
+                  "pcnt_landscape_wetland_cover",
+                  "pcnt_wetland_protected",
+                  "pcnt_wetland_wtw"
+                ]
+              },
+              {
+                "label": "Lakes",
+                "values": [
+                  "pcnt_landscape_lakes_cover",
+                  "pcnt_lakes_protected",
+                  "pcnt_lakes_wtw"
+                ]
+              }
             ]
           },
           {
@@ -100,19 +266,39 @@
             "title": "Habitat cover, protection and Where To Work (%)",
             "valueLabel": "Percent",
             "format": "percent",
-            "categories": ["Forest", "Grassland", "Wetland", "Lakes"],
+            "categories": [
+              "Forest",
+              "Grassland",
+              "Wetland",
+              "Lakes"
+            ],
             "series": [
               {
                 "label": "Cover in ecoregion",
-                "attributes": ["pcnt_landscape_forest_cover", "pcnt_landscape_grassland_cover", "pcnt_landscape_wetland_cover", "pcnt_landscape_lakes_cover"]
+                "attributes": [
+                  "pcnt_landscape_forest_cover",
+                  "pcnt_landscape_grassland_cover",
+                  "pcnt_landscape_wetland_cover",
+                  "pcnt_landscape_lakes_cover"
+                ]
               },
               {
                 "label": "Protected",
-                "attributes": ["pcnt_forest_protected", "pcnt_grassland_protected", "pcnt_wetland_protected", "pcnt_lakes_protected"]
+                "attributes": [
+                  "pcnt_forest_protected",
+                  "pcnt_grassland_protected",
+                  "pcnt_wetland_protected",
+                  "pcnt_lakes_protected"
+                ]
               },
               {
                 "label": "In Where To Work",
-                "attributes": ["pcnt_forest_wtw", "pcnt_grassland_wtw", "pcnt_wetland_wtw", "pcnt_lakes_wtw"]
+                "attributes": [
+                  "pcnt_forest_wtw",
+                  "pcnt_grassland_wtw",
+                  "pcnt_wetland_wtw",
+                  "pcnt_lakes_wtw"
+                ]
               }
             ]
           },
@@ -121,13 +307,36 @@
             "caption": "Rivers and shoreline",
             "rowHeader": "Feature",
             "columns": [
-              { "label": "Total length", "format": "km" },
-              { "label": "Protected", "format": "percent" },
-              { "label": "In Where To Work", "format": "percent" }
+              {
+                "label": "Total length",
+                "format": "km"
+              },
+              {
+                "label": "Protected",
+                "format": "percent"
+              },
+              {
+                "label": "In Where To Work",
+                "format": "percent"
+              }
             ],
             "rows": [
-              { "label": "Rivers", "values": ["rivers_km", "pcnt_rivers_protected", "pcnt_rivers_wtw"] },
-              { "label": "Shoreline", "values": ["coastline_km", "pcnt_coastline_protected", "pcnt_coastline_wtw"] }
+              {
+                "label": "Rivers",
+                "values": [
+                  "rivers_km",
+                  "pcnt_rivers_protected",
+                  "pcnt_rivers_wtw"
+                ]
+              },
+              {
+                "label": "Shoreline",
+                "values": [
+                  "coastline_km",
+                  "pcnt_coastline_protected",
+                  "pcnt_coastline_wtw"
+                ]
+              }
             ]
           }
         ]
@@ -139,13 +348,95 @@
           {
             "type": "attributes",
             "items": [
-              { "label": "Forestry", "value": { "attribute": "forestry_pcnt" }, "format": "percent" },
-              { "label": "Agriculture", "value": { "attribute": "agriculture_pcnt" }, "format": "percent" },
-              { "label": "Transport (high)", "value": { "attribute": "transport_high_pcnt" }, "format": "percent" },
-              { "label": "Transport (low)", "value": { "attribute": "transport_low_pcnt" }, "format": "percent" },
-              { "label": "Energy and mining", "value": { "attribute": "energy_pcnt" }, "format": "percent" },
-              { "label": "Urban and built-up", "value": { "attribute": "builtup_pcnt" }, "format": "percent" }
+              {
+                "label": "Forestry",
+                "value": {
+                  "attribute": "forestry_pcnt"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Agriculture",
+                "value": {
+                  "attribute": "agriculture_pcnt"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Transport (high)",
+                "value": {
+                  "attribute": "transport_high_pcnt"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Transport (low)",
+                "value": {
+                  "attribute": "transport_low_pcnt"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Energy and mining",
+                "value": {
+                  "attribute": "energy_pcnt"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Urban and built-up",
+                "value": {
+                  "attribute": "builtup_pcnt"
+                },
+                "format": "percent"
+              }
             ]
+          }
+        ]
+      },
+      {
+        "heading": "Opportunities",
+        "description": "Land outside protected areas, intact and modified, as a share of the ecoregion.",
+        "blocks": [
+          {
+            "type": "chart",
+            "chart": "pie",
+            "title": "Unprotected land",
+            "valueLabel": "Percent of the ecoregion",
+            "format": "percent",
+            "categories": [
+              "Intact",
+              "Modified"
+            ],
+            "series": [
+              {
+                "label": "Unprotected land",
+                "attributes": [
+                  "unprotected_intact_pcnt",
+                  "unprotected_modified_pcnt"
+                ]
+              }
+            ],
+            "colors": [
+              "#08519c",
+              "#fdae6b"
+            ]
+          }
+        ]
+      },
+      {
+        "heading": "Action recommendations",
+        "description": "Actions recommended for this ecoregion by the ERAP rules, with the reason for each.",
+        "blocks": [
+          {
+            "type": "list",
+            "items": [
+              {
+                "text": "{action_area_based_30x30_reason}",
+                "when": "action_area_based_30x30"
+              }
+            ],
+            "empty": "No actions recommended by the rules so far."
           }
         ]
       }

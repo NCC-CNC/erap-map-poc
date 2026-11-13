@@ -31,7 +31,7 @@ const NO_LAYERS: readonly LayerDefinition[] = [];
  * manifest's `map` (the local map config's view and basemap, ADR 0009) is
  * applied once it has loaded, unless the URL already holds a view.
  * Clicking a feature of a visible layer with a pop-up definition opens its
- * pop-up, and one with a modal template opens the modal dialog (ADR 0011),
+ * pop-up, and one with a modal template opens the modal dialog (ADR 0012),
  * which closes when its layer is hidden. A layer with colour themes is
  * drawn in the theme chosen in the layer panel. MapLibre lives outside
  * React's render tree: the map is created once and removed on unmount.

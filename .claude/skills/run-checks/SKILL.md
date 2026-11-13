@@ -20,7 +20,7 @@ From `git status` and `git diff --name-only main...`:
 - `web/`, or `pipeline/schema/` or `pipeline/tests/fixtures/` (the web
   tests read them): the web job.
 - `docker-compose.yml` or `.env.example`: the compose job.
-- `pipeline/layers/*.style.json`: also the display config check from
+- `pipeline/layers/*.style.json` or `*.rules.json`: also the display config check from
   `CONTRIBUTING.md` (Adding or changing a layer).
 
 When unsure, or before marking a PR ready, run all four jobs.

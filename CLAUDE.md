@@ -73,7 +73,9 @@ design note in `docs/design/` or an ADR in `docs/decisions/`.
   own changes (layer selection, overrides, local-only layers, map view) go
   in the git-ignored `map.config.json` (schema
   `pipeline/schema/map-config.schema.json`, ADR 0009), never into the
-  committed layer files.
+  committed layer files. Derived values and action recommendations are
+  calculated by the pipeline (`LAYER_CALCULATED`, `LAYER_RULES` and a
+  `pipeline/layers/<table>.rules.json`, ADR 0011), never in the app.
 
 ## Commands
 
@@ -97,7 +99,7 @@ block; keep it in step with this section.
   (vector or raster) without re-tiling; `--remove <layer>` deletes a
   layer's build. Check display configs only: `docker compose run --rm
   --entrypoint sh pipeline -c 'node /opt/pipeline/style/cli.mjs check
-  /opt/pipeline/layers/*.style.json'`.
+  /opt/pipeline/layers/*.json'` (`.style.json` and `.rules.json`).
 - Web map: `docker compose up -d --build web` (<http://localhost:8080>,
   `WEB_PORT`). Dev server: `docker compose --profile dev up web-dev` (Vite
   on :5173, `VITE_USE_POLLING`). Optional ports and UIDs come from `.env`.

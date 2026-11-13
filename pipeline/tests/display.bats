@@ -65,11 +65,12 @@ EOF
   [[ $output == *"# fail 0"* || $output == *"fail 0"* ]]
 }
 
-@test "the repo's layer configs and the test layers pass the pre-check" {
-  run node "$TOOL" check "${PIPELINE_ROOT}"/layers/*.style.json \
+@test "the repo's layer configs, rules tables and the test layers pass the pre-check" {
+  run node "$TOOL" check "${PIPELINE_ROOT}"/layers/*.json \
     "${PIPELINE_ROOT}"/tests/layers/*.style.json
   [ "$status" -eq 0 ]
   [[ $output == *"forest.style.json: ok"* ]]
+  [[ $output == *"ecoregions.rules.json: ok"* ]]
   [[ $output == *"sample.style.json: ok"* ]]
   [[ $output == *"sample_points.style.json: ok"* ]]
 }
@@ -247,7 +248,7 @@ EOF
   [[ $output == *"breaks: no numeric values in the data"* ]]
 }
 
-@test "colour themes and a click modal are resolved into the display block (ADR 0011)" {
+@test "colour themes and a click modal are resolved into the display block (ADR 0012)" {
   use_layer sample
   cp "${PIPELINE_ROOT}/tests/fixtures/sample_modal.style.json" "${PIPELINE_LAYERS_DIR}/sample.style.json"
   run "$RUN" sample

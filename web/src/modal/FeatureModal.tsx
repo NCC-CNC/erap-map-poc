@@ -4,7 +4,7 @@ import { focusableIn, trapTarget } from './focus';
 import type { BlockContent, ModalContent } from './template';
 
 /**
- * Click details in an accessible modal dialog (ADR 0011): `role="dialog"`
+ * Click details in an accessible modal dialog (ADR 0012): `role="dialog"`
  * with `aria-modal`, labelled by its title. Focus moves to the close
  * button on open, stays inside while open (Tab and Shift+Tab cycle) and
  * returns to where it was on close. Escape, the close button and a click

@@ -171,12 +171,12 @@ building:
 
 ```sh
 docker compose run --rm --entrypoint sh pipeline -c \
-  'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.style.json'
+  'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.json'
 ```
 
 ### Colour themes and gradients
 
-ADR 0011. The polygon or point shorthand can give `themes` in place of
+ADR 0012. The polygon or point shorthand can give `themes` in place of
 `color`: a list of `{id, label, color, legend}` (the `legend` optional,
 as the top-level one is for a single `color`, which themes do not use)
 and an optional `defaultTheme` (default: the first). The map opens on the
@@ -254,7 +254,7 @@ locale.
 
 ### Click modal
 
-ADR 0011. A layer's `modal` opens a dialog on click instead of the small
+ADR 0012. A layer's `modal` opens a dialog on click instead of the small
 pop-up: one template, filled from the clicked feature's tile attributes.
 The app only shows attributes; derived values come from the pipeline
 (calculated fields, #60). Fields:
@@ -533,6 +533,84 @@ similar, so:
 - Shapefile cuts field names to 10 characters. `LAYER_FIELDS` renames with
   `src:dest`, so `descriptio:description` restores the full name in the
   tiles.
+
+## Calculated fields and action rules
+
+All calculations happen in the pipeline (issue #14, ADR 0011): the app
+only displays tile attributes. A vector layer can add attributes derived
+from its own, evaluated per feature at build time and tiled like the rest.
+
+- `LAYER_CALCULATED` in the `.env`: `name=expression` entries. An
+  expression uses the layer's attributes (the `LAYER_FIELDS` output names,
+  so keep any input it needs) and other calculated fields, in any order. A
+  later entry for a name replaces an earlier one; an empty one removes it.
+- `LAYER_RULES` in the `.env`: an action rules table,
+  `pipeline/layers/<table>.rules.json` (a name, for that file next to the
+  `.env`, or a path to a `.rules.json`). Schema:
+  `pipeline/schema/action-rules.schema.json`. It lists the action `types`
+  (`id`, `label`) and the `actions` (`id`, `type`, `title`, `condition`,
+  `reason`, optional `source`). New rules are a change to this file only.
+
+Example, the ecoregion layer (its `.env` arrives with #58):
+
+```sh
+LAYER_FIELDS+=(protected_intact_pcnt protected_modified_pcnt)
+# Opportunities pie: intact and modified land outside protected areas, as
+# % of the ecoregion (the pie shows them as shares of unprotected land).
+LAYER_CALCULATED=(
+  'unprotected_intact_pcnt=round(intact_pcnt - protected_intact_pcnt, 2)'
+  'unprotected_modified_pcnt=round(modified_pcnt - protected_modified_pcnt, 2)'
+)
+LAYER_RULES=ecoregions   # pipeline/layers/ecoregions.rules.json
+```
+
+`ecoregions.rules.json` holds the one rule known so far, area-based
+conservation for 30x30 when `protected_pcnt < 30`, and the two action types
+(area-based and landscape conservation). The rest come from the ERAP app's
+action recommendation reference table.
+
+Attributes written per feature:
+
+| Attribute | Value |
+| --- | --- |
+| `<name>` | each calculated field |
+| `action_<id>` | 1 when the action's condition is true, else 0 (a condition on a missing value is not true) |
+| `action_<id>_reason` | `"<title>: <reason>"` when recommended, for example "Area-based conservation - 30x30 goals: recommended because current protection is less than 30%"; no attribute otherwise |
+| `actions_<type>_count` | how many of the type's actions are recommended (0 for a type with no actions yet), for colour themes |
+
+The expression language is a small, SQL-like one, evaluated by GDAL's
+SQLite dialect: numbers, `'text'` (`''` for a quote), attribute names
+(`"quoted"` if a name is also a keyword below or has other characters),
+`+ - * / %` (division is always decimal), `||` (join text),
+`= == != <> < <= > >=`, `AND OR NOT`, `IS [NOT] NULL`, `[NOT] IN (...)`,
+`[NOT] LIKE`, `[NOT] BETWEEN ... AND ...`, `CASE [x] WHEN ... THEN ...
+[ELSE ...] END`, `CAST(x AS integer|real|text|numeric)`, `TRUE`, `FALSE`,
+`NULL` and the functions `abs`, `round`, `min` and `max` (two or more
+arguments: per feature, not aggregates), `coalesce`, `ifnull`, `nullif`,
+`iif`, `length`, `lower`, `upper`, `substr`, `trim`, `replace` and `instr`.
+Nothing else is accepted (no `;`, comments, subqueries or other functions),
+and each expression is rewritten with every name quoted, so a config cannot
+run anything but the expression. Problems (syntax, unknown attributes,
+cycles, name clashes, a bad rules table) fail the layer before its source
+data is read, naming the field or rule, and keep the previous build.
+
+The build report (`manifest.json`, Pipeline outputs) gains
+`calculated_fields` (each with its expression, non-null count, min and
+max) and `rules` (the table, each action with the features it is
+recommended for, each type with the features with at least one of its
+actions); the provenance gains `rules_sha256`. `--status` lists both under
+each layer and calls a build `stale` when the `.env`, the map config's
+overrides or the rules table's content changed since. `inspect.sh --config
+<layer>` shows a layer's data as its build would (calculated fields with
+their expressions and value ranges, and rule counts) without building it.
+`cli.mjs check` also checks `.rules.json` files.
+
+A local map config (ADR 0009) can change both for one user's map, with
+no pull request: an override's `calculated` adds or changes fields by
+name (`null` removes one) on top of the layer's, and `rules` points the
+layer at another table (relative to the map config file, for example
+`pipeline/layers.local/my-actions.rules.json`) or, as `null`, at none.
+Both need a rebuild of the layer.
 
 ## Polygon coverages: tile profile and drop guard
 

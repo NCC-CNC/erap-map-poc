@@ -5,7 +5,7 @@ import { activeLegend, activeTheme, themePaintUpdates, withTheme } from './theme
 
 const BASE = 'http://localhost/tiles/';
 
-describe('colour themes as the app reads them (ADR 0011)', () => {
+describe('colour themes as the app reads them (ADR 0012)', () => {
   it('the manifest gives the themes and the default', () => {
     expect(sampleModal.themes?.map((t) => t.id)).toEqual(['score', 'score_gradient', 'area']);
     expect(sampleModal.defaultTheme).toBe('score');

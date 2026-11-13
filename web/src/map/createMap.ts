@@ -32,7 +32,7 @@ export interface CreateMapOptions {
    */
   isVisible?: (def: LayerDefinition) => boolean;
   /**
-   * The colour theme to draw a layer with (ADR 0011), read like
+   * The colour theme to draw a layer with (ADR 0012), read like
    * `isVisible`, so a basemap switch keeps the user's choice. Defaults to
    * the layer's default theme.
    */
@@ -164,7 +164,7 @@ export function setLayerVisibility(
 }
 
 /**
- * Draws a layer in a colour theme (ADR 0011) by setting the paint
+ * Draws a layer in a colour theme (ADR 0012) by setting the paint
  * properties the theme gives on its style layers. Style layers not in the
  * map yet are skipped; they are added in the theme from `themeOf`.
  */

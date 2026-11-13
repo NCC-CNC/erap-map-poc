@@ -42,7 +42,8 @@
 #     "source": { "path": "sample.geojson", "bytes": 12345,
 #                 "modified_at": "2026-01-01T00:00:00Z" },
 #     "overrides": { "input": ..., "title": ... } or null,
-#     "env_sha256": "...", "style_sha256": "..." }
+#     "env_sha256": "...", "style_sha256": "...",
+#     "rules_sha256": "..." or null }   (the rules table, ADR 0011)
 #
 # The rest is the build report:
 #
@@ -51,7 +52,18 @@
 #           "zooms": [ { "zoom": 0, "input": 15, "present": 15,
 #                        "required": 15, "required_present": 15,
 #                        "max_tile_bytes": 1234 }, ... ]
-#           (from the drop guard, lib/guard.sh)
+#           (from the drop guard, lib/guard.sh), and for a layer with
+#           calculated fields or a rules table (ADR 0011, lib/derive.sh):
+#           "calculated_fields": [ { "name": "x", "expression": "a - b",
+#                                    "non_null": 15, "min": 0, "max": 9 } ],
+#           "rules": { "file": ".../ecoregions.rules.json", "sha256": "...",
+#             "types": [ { "id": "t", "label": "...",
+#                          "attribute": "actions_t_count", "features": 4 } ],
+#             "actions": [ { "id": "a", "type": "t", "title": "...",
+#                            "condition": "...", "attribute": "action_a",
+#                            "reason_attribute": "action_a_reason",
+#                            "recommended": 4 } ] }
+#           (null or absent when the layer has none)
 #   raster: "width": 447240, "height": 290531, "block_size": 256,
 #           "overview_count": 10,
 #           "zooms": [ { "zoom": 12, "width": 447240, "height": 290531 }, ... ]
@@ -204,7 +216,8 @@ vector_report() {
 # `run.sh --style-only`. DISPLAY_PROVENANCE, `{overrides, style_sha256}`
 # (layer_display_provenance), updates the display part of the provenance:
 # the display config's hash and the display overrides (the build ones,
-# input and env, stay as built). built_at and the build report are kept.
+# input, env, calculated and rules, stay as built). built_at and the build
+# report are kept.
 # Atomic, like manifest_update.
 manifest_set_display() {
   local out_dir=$1 layer=$2 display_file=$3 prov=${4:-null}
@@ -216,7 +229,7 @@ manifest_set_display() {
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   display=$(jq -c '.' "$display_file") || die "cannot read $display_file"
   jq --arg name "$layer" --arg now "$now" --argjson display "$display" --argjson prov "$prov" \
-    'def build_key: .key == "input" or .key == "env";
+    'def build_key: .key == "input" or .key == "env" or .key == "calculated" or .key == "rules";
      .updated_at = $now
      | .layers |= map(if .name == $name
          then .display = $display | .display_updated_at = $now

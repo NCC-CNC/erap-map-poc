@@ -1,5 +1,5 @@
 // Unit tests for colour themes, the interpolated colour rule, number format
-// presets and the click modal template (ADR 0011). Run with `node --test`
+// presets and the click modal template (ADR 0012). Run with `node --test`
 // in pipeline/style (the pipeline test image runs them from
 // tests/display.bats).
 

@@ -18,7 +18,7 @@ import {
 } from '../popup/content';
 
 /**
- * Fills a layer's modal template (ADR 0011) from a clicked feature's tile
+ * Fills a layer's modal template (ADR 0012) from a clicked feature's tile
  * attributes. Display only: values are shown as the tiles hold them, in
  * the configured formats; nothing is calculated here (calculated fields
  * come from the pipeline). Anything the feature lacks is hidden rather

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ModalDefinition } from '../layers';
-import { sampleModal } from '../test/fixtures';
+import { ecoregionsExample, sampleModal } from '../test/fixtures';
 import { MISSING_CELL, buildModalContent, fillTemplate, isTrue, placeholders } from './template';
 
 const modal = sampleModal.modal as ModalDefinition;
@@ -168,5 +168,38 @@ describe('buildModalContent for the sample modal', () => {
     // A flag set but its text missing: the item is left out.
     expect(notes({ flag: 1 })?.blocks).toEqual([{ type: 'list', items: [], empty: 'Nothing to list.' }]);
     expect(notes({})).toBeUndefined();
+  });
+});
+
+describe('the ecoregion example modal with calculated fields and rule attributes', () => {
+  const example = ecoregionsExample.modal;
+  const section = (properties: Record<string, unknown>, heading: string) =>
+    buildModalContent(example, { properties }, 'Ecoregions').sections.find((s) => s.heading === heading);
+  const reason = 'Area-based conservation - 30x30 goals: recommended because current protection is less than 30%';
+
+  it('lists a recommended action with its reason', () => {
+    expect(
+      section({ action_area_based_30x30: 1, action_area_based_30x30_reason: reason }, 'Action recommendations')
+        ?.blocks,
+    ).toEqual([{ type: 'list', items: [reason], empty: 'No actions recommended by the rules so far.' }]);
+  });
+
+  it('says none is recommended when the rule is false, and hides the section without rule attributes', () => {
+    expect(section({ action_area_based_30x30: 0 }, 'Action recommendations')?.blocks).toEqual([
+      { type: 'list', items: [], empty: 'No actions recommended by the rules so far.' },
+    ]);
+    expect(section({ name: 'x' }, 'Action recommendations')).toBeUndefined();
+  });
+
+  it('draws the unprotected land pie from the calculated fields', () => {
+    const pie = section({ unprotected_intact_pcnt: 70.5, unprotected_modified_pcnt: 14.2 }, 'Opportunities')?.blocks[0];
+    expect(pie?.type === 'chart' && pie.chart.datasets[0]?.values).toEqual([70.5, 14.2]);
+    expect(section({ intact_pcnt: 80 }, 'Opportunities')).toBeUndefined();
+  });
+
+  it('has a colour theme on the action count', () => {
+    expect(ecoregionsExample.symbology.themes.map((t) => t.color.attribute)).toContain(
+      'actions_area_based_conservation_count',
+    );
   });
 });

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * The layer panel's "Colour by" choice and gradient legends (ADR 0011), in
+ * The layer panel's "Colour by" choice and gradient legends (ADR 0012), in
  * a DOM (jsdom).
  */
 import { act } from 'react';

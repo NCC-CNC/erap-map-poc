@@ -11,7 +11,7 @@
  *   pipeline's raster tests (`pipeline/tests/raster.bats`).
  * - `expectedModalDisplay`: the `sample` layer with colour themes and a
  *   click modal (`pipeline/tests/fixtures/sample_modal.style.json`, ADR
- *   0011), as the pipeline resolves it.
+ *   0012), as the pipeline resolves it.
  * - `layerStyleSchema`: the shared JSON Schema.
  * - `mapConfigSchema` and `mapConfigExample`: the local map config's schema
  *   and the committed example (ADR 0009).
@@ -20,7 +20,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseManifest } from '../layers/manifest';
-import type { Display, LayerDefinition } from '../layers/types';
+import type { Display, LayerDefinition, ModalDefinition } from '../layers/types';
 
 // A path, not `new URL(..., import.meta.url)`: in a jsdom test Vite would
 // turn that into asset imports of the whole repo.
@@ -95,3 +95,14 @@ export const raster = parseManifest({ layers: [rasterEntry()] }).layers[0] as La
 export const sampleModal = parseManifest({
   layers: [{ name: 'sample', file: 'sample.pmtiles', display: structuredClone(expectedModalDisplay) }],
 }).layers[0] as LayerDefinition;
+
+/**
+ * The ecoregion example display config
+ * (`pipeline/tests/fixtures/ecoregions.example.style.json`): its modal and
+ * themes read calculated fields and rule attributes (ADR 0011, ADR 0012).
+ * The pipeline copies a modal into the manifest as it is.
+ */
+export const ecoregionsExample = readJson('pipeline/tests/fixtures/ecoregions.example.style.json') as {
+  modal: ModalDefinition;
+  symbology: { themes: { id: string; color: { attribute: string } }[] };
+};

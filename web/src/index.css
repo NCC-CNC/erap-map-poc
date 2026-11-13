@@ -197,7 +197,7 @@ body,
   white-space: nowrap;
 }
 
-/* "Colour by" for a layer with colour themes (ADR 0011). */
+/* "Colour by" for a layer with colour themes (ADR 0012). */
 .layer-theme {
   display: flex;
   flex-wrap: wrap;
@@ -251,7 +251,7 @@ body,
   transform: translateX(-100%);
 }
 
-/* The click modal (ADR 0011). */
+/* The click modal (ADR 0012). */
 .feature-modal-backdrop {
   position: fixed;
   inset: 0;

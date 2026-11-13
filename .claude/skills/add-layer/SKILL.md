@@ -154,6 +154,16 @@ Pick a layer name (`^[a-z0-9][a-z0-9_-]*$`). Infer, do not ask:
   as coastal islands): `LAYER_GENERALISE_MAX_ZOOM` about 3 below
   `LAYER_MAX_ZOOM` (7 for a max of 10), so low zooms drop small parts and
   simplify borders; check the low-zoom screenshots.
+- Derived values (a difference, a share, a class) and action
+  recommendations are calculated in the pipeline, never in the app
+  (ADR 0011; design note 02, Calculated fields and action rules):
+  `LAYER_CALCULATED=('name=expression' ...)` on the kept attributes (keep
+  any input field they need in `LAYER_FIELDS`), and `LAYER_RULES=<table>`
+  for a rules table `pipeline/layers/<table>.rules.json` (schema
+  `pipeline/schema/action-rules.schema.json`). Only add rules the user
+  gives you; never invent conditions or reasons. Check them before a
+  build with `inspect.sh --config <name>` (expressions, value ranges and
+  how many features each action is recommended for).
 
 Ask the user only what the data cannot answer: usually the attribute to
 colour by, the title, and which fields go in the pop-up. Then write the
@@ -179,7 +189,9 @@ rerun. Then read the layer's entry in `data/tiles/manifest.json`:
 `zooms[]` (per zoom: `present` of `input`, `required` equal to
 `required_present`, `max_tile_bytes`), `bounds` and `display.legend`.
 Flag tiles over about 500 kB, and features missing at zooms where users
-will look; the log lists smaller features left out (allowed).
+will look; the log lists smaller features left out (allowed). With
+calculated fields or rules, check `calculated_fields` (min and max
+plausible, `non_null` as expected) and `rules` (features per action).
 
 ## 4. Screenshot and iterate
 
@@ -201,7 +213,8 @@ screenshots.
 ## 5. Draft PR
 
 Branch from `main` (`feat/layer-<name>`), commit only the two files in
-`pipeline/layers/` (Conventional Commit, for example
+`pipeline/layers/`, plus its `.rules.json` if it has a new one
+(Conventional Commit, for example
 `feat(layers): add <name>`), push, and open a DRAFT PR saying where the
 source data comes from, what inspect reported, the build report summary
 and that screenshots were checked. Never mark it ready: ready PRs merge

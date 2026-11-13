@@ -34,6 +34,20 @@
 #   LAYER_FEATURE_ID        required, vector only. Output attribute holding a
 #                           stable integer id; written as the vector tile
 #                           feature id.
+#   LAYER_CALCULATED        optional array, vector only. Calculated fields,
+#                           as `name=expression`: an expression on the
+#                           attributes above (LAYER_FIELDS output names) and
+#                           other calculated fields, evaluated per feature at
+#                           build time and tiled like any attribute. A later
+#                           entry for a name replaces an earlier one; an
+#                           empty expression removes it. See lib/derive.sh
+#                           and ADR 0011 for the expression language.
+#   LAYER_RULES             optional, vector only. Action recommendation
+#                           rules table (ADR 0011): a name, for
+#                           <name>.rules.json next to the layer's .env, or a
+#                           path to a .rules.json file (relative to that
+#                           folder). Each action's condition is evaluated per
+#                           feature and written as attributes (lib/derive.sh).
 #   LAYER_MIN_ZOOM          required. Minimum tile zoom.
 #   LAYER_MAX_ZOOM          required. Maximum tile zoom. For a raster, also
 #                           the resolution it is resampled to (z12 is about
@@ -132,6 +146,9 @@ load_layer_config() {
   LAYER_ENCODING=""
   LAYER_FIELDS=()
   LAYER_FEATURE_ID=""
+  LAYER_CALCULATED=()
+  # shellcheck disable=SC2034
+  LAYER_RULES=""
   LAYER_MIN_ZOOM=""
   LAYER_MAX_ZOOM=""
   LAYER_NODATA=""
@@ -203,4 +220,12 @@ _check_vector_config() {
     [[ $dest == "$LAYER_FEATURE_ID" ]] && found=1
   done
   ((found)) || die "LAYER_FEATURE_ID '$LAYER_FEATURE_ID' is not in LAYER_FIELDS in $file"
+
+  # The expressions are checked against the attributes at build time
+  # (lib/derive.sh); here only the shape of each entry.
+  local entry
+  for entry in "${LAYER_CALCULATED[@]}"; do
+    [[ $entry =~ ^[a-z][a-z0-9_]*= ]] \
+      || die "LAYER_CALCULATED entry '$entry' must be name=expression (name in lower case letters, digits and _) in $file"
+  done
 }

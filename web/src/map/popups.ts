@@ -16,7 +16,7 @@ export interface PopupHandlers {
 /**
  * Opens a pop-up when a feature of a visible layer with a `popup`
  * definition is clicked, or hands a feature of a layer with a `modal`
- * (ADR 0011) to `onModal`, and shows a pointer cursor over such features.
+ * (ADR 0012) to `onModal`, and shows a pointer cursor over such features.
  * Clicking anywhere else closes the pop-up; only one is open at a time.
  * Where features overlap, the topmost layer wins.
  *

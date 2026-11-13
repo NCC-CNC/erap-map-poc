@@ -4,7 +4,7 @@
 
 Accepted. Amends 0003-react-vite-maplibre-chartjs-web-app.md on where
 layers are defined: no longer in the web app's code. Extended by
-0011-click-modal-template-and-colour-themes.md (click modal, colour themes,
+0012-click-modal-template-and-colour-themes.md (click modal, colour themes,
 gradients, number format presets).
 
 ## Context

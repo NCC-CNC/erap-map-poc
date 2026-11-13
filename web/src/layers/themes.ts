@@ -2,7 +2,7 @@ import { styleLayerId } from './spec';
 import type { LayerDefinition, Legend, Theme } from './types';
 
 /**
- * The colour theme chosen for each layer that has themes (ADR 0011), by
+ * The colour theme chosen for each layer that has themes (ADR 0012), by
  * layer id. Kept apart from the map, like visibility, so it survives a
  * basemap switch, which rebuilds every style layer.
  */

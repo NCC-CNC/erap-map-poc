@@ -115,7 +115,7 @@ type WithoutSource<T> = T extends unknown ? Omit<T, 'source' | 'source-layer'> :
 export type StyleLayer = WithoutSource<Exclude<LayerSpecification, { type: 'background' }>>;
 
 /**
- * One colour theme of a layer (ADR 0011), as the pipeline resolved it: the
+ * One colour theme of a layer (ADR 0012), as the pipeline resolved it: the
  * paint properties to set on its style layers (by configured id) and its
  * legend. The "Colour by" choice in the layer panel switches between them.
  */
@@ -196,7 +196,7 @@ export interface ModalSection {
 }
 
 /**
- * Click details in a modal dialog (ADR 0011): one template per layer,
+ * Click details in a modal dialog (ADR 0012): one template per layer,
  * filled from the clicked feature's tile attributes.
  */
 export interface ModalDefinition {

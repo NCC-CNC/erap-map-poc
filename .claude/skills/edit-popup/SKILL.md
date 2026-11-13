@@ -10,14 +10,26 @@ a `popup` (small map pop-up) or a `modal` (a dialog of sections), never
 both. Colours, colour themes and legends are the restyle-layer skill.
 Reference: `docs/design/02_data_layers_and_popups.md` (Display config,
 Number formats, Click modal), `pipeline/schema/layer-style.schema.json`
-and ADR 0011; `pipeline/tests/fixtures/ecoregions.example.style.json` is
+and ADR 0012; `pipeline/tests/fixtures/ecoregions.example.style.json` is
 a worked modal. Never commit data or screenshots.
 
 The map only shows tile attributes: no sums, shares or rules in the app.
-A derived value (for example unprotected intact land, or an action
-recommendation) has to be an attribute in the tiles, from the source or
-from the pipeline's calculated fields (#60, if the layer's `.env` has
-them); say so if asked for one that is neither.
+A derived value has to be an attribute in the tiles, from the source or
+from the pipeline (ADR 0011; design note 02, Calculated fields and action
+rules):
+
+- a calculated field, `LAYER_CALCULATED=('name=expression' ...)` in
+  `<name>.env` (for example unprotected intact land);
+- a rule attribute from the layer's rules table (`LAYER_RULES`,
+  `pipeline/layers/<table>.rules.json`): `action_<id>` (1 or 0),
+  `action_<id>_reason` (only when recommended) and `actions_<type>_count`.
+  A modal `list` block shows the reasons (an item
+  `{"text": "{action_<id>_reason}", "when": "action_<id>"}` per action);
+  a colour theme can use the counts.
+
+Both are computed at build time: adding or changing one needs a rebuild,
+and new rules are a change to the rules table only. Say so if asked for a
+value that is none of these; do not invent rules.
 
 First ask, unless the user already said: is this change just for them,
 or for everyone? Just for them: put it in their git-ignored
@@ -36,9 +48,17 @@ docker compose run --rm --entrypoint sh pipeline -c \
 ```
 
 plus the feature id (`LAYER_FEATURE_ID`, shown with `{"featureId": true}`
-or `{$id}`). `LAYER_FIELDS` in `<name>.env` lists them as `src:dest`; any
-calculated fields are listed there too once #60 lands. In the source
-(names before the renames, with value ranges):
+or `{$id}`). `LAYER_FIELDS` in `<name>.env` lists the source ones as
+`src:dest`, `LAYER_CALCULATED` the calculated fields and `LAYER_RULES`
+the rules table. The layer's data as its build would make it, with the
+calculated fields, their value ranges and the rule counts, without
+building:
+
+```sh
+docker compose run --rm --build --entrypoint inspect.sh pipeline --config <name>
+```
+
+and the source alone (names before the renames, with value ranges):
 
 ```sh
 docker compose run --rm --build --entrypoint inspect.sh pipeline <LAYER_INPUT>
@@ -97,8 +117,10 @@ docker compose run --rm pipeline --style-only <name>
 ```
 
 A value not in the tiles: add it to `LAYER_FIELDS` in `<name>.env` (as
-`src` or `src:dest`), then rebuild the layer, and tell the user it is a
-rebuild (minutes for a large layer):
+`src` or `src:dest`), or as a calculated field (`LAYER_CALCULATED`; the
+fields it reads must be in `LAYER_FIELDS`), or point `LAYER_RULES` at a
+rules table for rule attributes; then rebuild the layer, and tell the user
+it is a rebuild (minutes for a large layer):
 
 ```sh
 docker compose run --rm --build pipeline <name>
