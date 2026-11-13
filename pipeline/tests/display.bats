@@ -70,7 +70,9 @@ EOF
     "${PIPELINE_ROOT}"/tests/layers/*.style.json
   [ "$status" -eq 0 ]
   [[ $output == *"forest.style.json: ok"* ]]
+  [[ $output == *"ecoregions.style.json: ok"* ]]
   [[ $output == *"ecoregions.rules.json: ok"* ]]
+  [[ $output == *"protected_areas.style.json: ok"* ]]
   [[ $output == *"sample.style.json: ok"* ]]
   [[ $output == *"sample_points.style.json: ok"* ]]
 }
@@ -269,11 +271,6 @@ EOF
   [[ $output == *"a layer has a \"popup\" or a \"modal\" for click details, not both"* ]]
 }
 
-@test "the ecoregions example config passes the pre-check" {
-  run node "$TOOL" check "${PIPELINE_ROOT}/tests/fixtures/ecoregions.example.style.json"
-  [ "$status" -eq 0 ]
-  [[ $output == *"ecoregions.example.style.json: ok"* ]]
-}
 
 @test "the pre-check reports a bad config without building" {
   write_style bad '{"title": "Bad", "defaultVisible": true}'

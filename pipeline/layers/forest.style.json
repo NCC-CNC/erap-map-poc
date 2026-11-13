@@ -1,7 +1,7 @@
 {
   "$schema": "../schema/layer-style.schema.json",
   "title": "Forest",
-  "defaultVisible": true,
+  "defaultVisible": false,
   "order": 1,
   "symbology": {
     "geometry": "raster",

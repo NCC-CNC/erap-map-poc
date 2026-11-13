@@ -97,12 +97,12 @@ export const sampleModal = parseManifest({
 }).layers[0] as LayerDefinition;
 
 /**
- * The ecoregion example display config
- * (`pipeline/tests/fixtures/ecoregions.example.style.json`): its modal and
- * themes read calculated fields and rule attributes (ADR 0011, ADR 0012).
- * The pipeline copies a modal into the manifest as it is.
+ * The committed ecoregion display config
+ * (`pipeline/layers/ecoregions.style.json`): its modal and themes read
+ * calculated fields and rule attributes (ADR 0011, ADR 0012). The pipeline
+ * copies a modal into the manifest as it is.
  */
-export const ecoregionsExample = readJson('pipeline/tests/fixtures/ecoregions.example.style.json') as {
+export const ecoregionsExample = readJson('pipeline/layers/ecoregions.style.json') as {
   modal: ModalDefinition;
   symbology: { themes: { id: string; color: { attribute: string } }[] };
 };

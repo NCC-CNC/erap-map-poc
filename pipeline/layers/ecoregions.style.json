@@ -1,5 +1,5 @@
 {
-  "$schema": "../../schema/layer-style.schema.json",
+  "$schema": "../schema/layer-style.schema.json",
   "title": "ERAP ecoregions",
   "defaultVisible": true,
   "order": 40,
@@ -56,22 +56,22 @@
         }
       },
       {
-        "id": "intact",
-        "label": "Intact (%)",
+        "id": "wtw_area",
+        "label": "Where To Work (total area, ha)",
         "color": {
           "type": "interpolated",
-          "attribute": "intact_pcnt",
+          "attribute": "wtw_area_ha",
           "stops": [
             {
               "value": 0,
               "color": "#f7fbff"
             },
             {
-              "value": 50,
+              "value": 1000000,
               "color": "#6baed6"
             },
             {
-              "value": 100,
+              "value": 2500000,
               "color": "#08306b"
             }
           ],
@@ -83,7 +83,7 @@
       },
       {
         "id": "area_based_actions",
-        "label": "Area-based conservation actions",
+        "label": "Action recommendations: area-based conservation",
         "color": {
           "type": "stepped",
           "attribute": "actions_area_based_conservation_count",
@@ -130,7 +130,7 @@
       }
     ],
     "defaultTheme": "protected",
-    "fillOpacity": 0.45,
+    "fillOpacity": 0.35,
     "outline": {
       "color": "#08306b",
       "width": 1
@@ -184,6 +184,13 @@
                   "attribute": "wtw_percent"
                 },
                 "format": "percent"
+              },
+              {
+                "label": "Where To Work area",
+                "value": {
+                  "attribute": "wtw_area_ha"
+                },
+                "format": "hectares"
               },
               {
                 "label": "Intact",

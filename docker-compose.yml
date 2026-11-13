@@ -93,11 +93,12 @@ services:
       - web-dev-node-modules:/repo/web/node_modules
       # Same layout as the repo, so vite.config.ts finds ../data/tiles.
       - ./data/tiles:/repo/data/tiles:ro
-      # The web tests read the display config schema and the expected
-      # display fixtures (vector and raster) from ../pipeline
-      # (web/src/test/fixtures.ts).
+      # The web tests read the display config schema, the expected
+      # display fixtures (vector and raster) and the committed ecoregion
+      # display config from ../pipeline (web/src/test/fixtures.ts).
       - ./pipeline/schema:/repo/pipeline/schema:ro
       - ./pipeline/tests/fixtures:/repo/pipeline/tests/fixtures:ro
+      - ./pipeline/layers:/repo/pipeline/layers:ro
       # ...and check the example map config against its schema.
       - ./map.config.example.json:/repo/map.config.example.json:ro
 
