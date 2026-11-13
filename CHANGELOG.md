@@ -305,6 +305,23 @@ All notable changes to this project are documented here. The format is based on
   without any data, run the pipeline with
   `-e PIPELINE_LAYERS_DIR=/opt/pipeline/tests/layers`. A test checks that
   no config in `pipeline/layers/` reads the synthetic fixtures.
+- Full-Canada raster builds are practical (#62, ADR 0010): agriculture in
+  13 min 19 s and forest in 13 min 6 s from the raw files on a 16-CPU
+  laptop (about 10 and 11 min once the source is cached), where ADR 0008
+  estimated 40 minutes to over an hour. Each raster source is prepared
+  once into a tiled 0/255 Byte GeoTIFF (nodata as 0) cached in
+  `data/work/raster/` (the new `PIPELINE_WORK_DIR`, mounted by compose),
+  keyed by the source's path, size and modification time and the layer's
+  `LAYER_SOURCE_SRS` and `LAYER_NODATA`, so later builds skip it; writes
+  are atomic and an older file for the same source is removed. The warp
+  to Web Mercator writes ZSTD level 1 (GDAL's default level 9 took four
+  times as long), and the lower zooms are `gdaladdo -r average` overviews
+  of one z-max raster snapped to the min zoom's grid, in place of a
+  Float32 `gdalwarp` per zoom. Each step's time is logged. ADR 0010 also
+  records a prototype of the alternative, one Web Mercator COG per layer
+  rendered in the browser. Tests: seven new in `raster.bats` (prepare
+  output, cache reuse and invalidation, no cache, unwritable work dir,
+  cover share at a low zoom).
 - README pass (#37): a screenshot of the map (synthetic layers, a pop-up
   open), a project map in place of the template's "What's included", and
   new "Using the map" and "Adding a layer" sections for per-layer `.env`

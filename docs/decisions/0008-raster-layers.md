@@ -4,6 +4,8 @@
 
 Accepted. Adds raster layers alongside the vector ones of
 0002-bash-gdal-tippecanoe-pipeline.md and 0007-data-driven-layer-styles.md.
+The build steps and full-Canada timings are revised by
+0010-raster-build-speed-and-cog-option.md.
 
 ## Context
 

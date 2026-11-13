@@ -138,8 +138,12 @@ reload the page.
   `manifest.json` (which the map reads its layers from) and `style.json` (a
   standalone MapLibre style of the data layers, for other tools). The `web`
   service serves it read-only at `/tiles/`.
-- `data/work/`: scratch space for manual trials. The pipeline keeps its own
-  intermediates in the container and removes them.
+- `data/work/`: the pipeline's cache, mounted at `/data/work`. A raster
+  layer's source is prepared once (a tiled 0/255 GeoTIFF: 0.14 GB for
+  agriculture, 0.69 GB for forest) into `data/work/raster/`, reused by later
+  builds until the source file changes; delete the folder to reclaim the
+  space. Other intermediates stay in the container and are removed. Also
+  fine for manual trials.
 
 These folders are git-ignored apart from `.gitkeep`, and so are raster and
 other source formats anywhere in the repo (`*.tif`, `*.tiff`, `*.vrt`,
@@ -148,8 +152,12 @@ other source formats anywhere in the repo (`*.tif`, `*.tiff`, `*.vrt`,
 Layers are vector (polygons, points) or binary rasters (`LAYER_TYPE=raster`,
 display only, ADR 0008). A raster layer's colour and opacity are applied by
 the map, not stored in its tiles, so changing them is a `--style-only`
-update with no re-tiling. A full-Canada raster takes tens of minutes and a
-few GB to build.
+update with no re-tiling. A full-Canada 30 m raster at z2 to z12 takes
+about 13 minutes on a 16-CPU laptop (ADR 0010), 2 to 3 minutes less
+once its source is prepared and cached in `data/work/`. Give Docker Desktop
+all the CPUs you can (the steps are multithreaded and the time scales with
+them), at least 8 GB of memory (a build peaks at about 4.5 GB) and
+about 10 GB of free disk for the container's scratch files.
 
 ### Basemap and settings
 
@@ -164,8 +172,8 @@ a git-ignored `.env` in the repo root; copy `.env.example` to start.
 ### Linux file ownership
 
 The pipeline runs as uid 10001 by default. On Linux that means the files it
-writes to `data/tiles/` belong to uid 10001, and the container needs write
-access to the folder. Run it as yourself instead by setting, in `.env` or the
+writes to `data/tiles/` and `data/work/` belong to uid 10001, and the
+container needs write access to both folders. Run it as yourself instead by setting, in `.env` or the
 shell:
 
 ```sh

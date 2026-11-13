@@ -40,7 +40,7 @@
 # off the exact share, which does not show.
 #
 # The intermediates are ZSTD level 1: the default (9) made the warp four
-# times slower. Full-Canada timings are in ADR 0009.
+# times slower. Full-Canada timings are in ADR 0010.
 #
 # Intermediates of steps 2 to 5 live in the per-run scratch dir (under
 # TMPDIR) and go as soon as they are packed. The archive is written to a
