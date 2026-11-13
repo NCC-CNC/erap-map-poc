@@ -48,6 +48,7 @@ export const MESSAGES = {
 // ids and types (the schema's styleLayer).
 const LAYER_NAME = /^[a-z0-9][a-z0-9_-]*$/;
 const ARCHIVE_FILE = /^[A-Za-z0-9_.-]+\.pmtiles$/;
+const COG_FILE = /^[A-Za-z0-9_.-]+\.cog\.tif$/;
 const STYLE_LAYER_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]*$/;
 // Style layer types per layer type: a raster layer is drawn with the one
 // `color-relief` layer the pipeline expands from its raster shorthand.
@@ -243,11 +244,22 @@ function toDefinition(entry: unknown, index: number): LayerDefinition | string[]
   // Entries written before raster layers have no type: they are vector.
   const type = entry.type ?? 'vector';
   check(typeof name === 'string' && LAYER_NAME.test(name), `${where}.name is not a valid layer name`, problems);
-  check(typeof file === 'string' && ARCHIVE_FILE.test(file), `${where}.file is not a .pmtiles file name`, problems);
   if (type !== 'vector' && type !== 'raster') {
     problems.push(`${where}.type must be vector or raster`);
     return problems;
   }
+  // A vector layer is a .pmtiles archive; a raster one a COG (.cog.tif,
+  // ADR 0010), or a .pmtiles of PNG tiles if built before COGs.
+  const fileOk =
+    typeof file === 'string' &&
+    (ARCHIVE_FILE.test(file) || (type === 'raster' && COG_FILE.test(file)));
+  check(
+    fileOk,
+    type === 'raster'
+      ? `${where}.file is not a .cog.tif or .pmtiles file name`
+      : `${where}.file is not a .pmtiles file name`,
+    problems,
+  );
   if (entry.display === undefined || entry.display === null) {
     problems.push(`${where}.display is missing (built before display configs; rebuild the layer)`);
   } else {

@@ -17,6 +17,8 @@ import {
   symbologyLayers,
   symbologyLegend,
   RASTER_SOURCE,
+  RASTER_PNG_SOURCE,
+  layerSource,
   configType,
   rgba,
 } from '../display.mjs';
@@ -509,7 +511,7 @@ describe('raster layers', () => {
     assert.deepEqual(display.layers[0].paint['color-relief-color'].slice(3), [
       0,
       'rgba(27, 120, 55, 0)',
-      1,
+      255,
       'rgba(27, 120, 55, 1)',
     ]);
     assert.equal(display.layers[0].paint['color-relief-opacity'], 0.5);
@@ -546,16 +548,33 @@ describe('raster layers', () => {
     assert.ok(problemsOf(() => resolveDisplay('raw', raw)).length > 0);
   });
 
-  it('gets a raster-dem source and no source layer in the combined style', () => {
+  it('gets a cog:// raster-dem source and no source layer in the combined style', () => {
     const style = buildStyle([
-      { name: 'cover', file: 'cover.pmtiles', type: 'raster', display: expectedRaster },
+      { name: 'cover', file: 'cover.cog.tif', type: 'raster', display: expectedRaster },
       { name: 'polys', file: 'polys.pmtiles', type: 'vector', display: expected.sample },
     ]);
     assert.deepEqual(styleProblems(style), []);
-    assert.deepEqual(style.sources.cover, { ...RASTER_SOURCE, url: 'pmtiles://cover.pmtiles' });
+    assert.deepEqual(style.sources.cover, {
+      type: 'raster-dem',
+      tileSize: 256,
+      url: 'cog://cover.cog.tif#dem',
+    });
+    assert.deepEqual(style.sources.cover, { ...RASTER_SOURCE, url: 'cog://cover.cog.tif#dem' });
     assert.equal(style.layers[0].id, 'cover-raster');
     assert.equal('source-layer' in style.layers[0], false);
     assert.equal(style.layers[1]['source-layer'], 'polys');
+  });
+
+  it('reads a raster built as PNG tiles before COGs as grey levels 0 to 255', () => {
+    assert.deepEqual(layerSource('raster', 'old.pmtiles'), {
+      ...RASTER_PNG_SOURCE,
+      url: 'pmtiles://old.pmtiles',
+    });
+    assert.equal(RASTER_PNG_SOURCE.redFactor, 1);
+    assert.deepEqual(layerSource('vector', 'v.pmtiles'), {
+      type: 'vector',
+      url: 'pmtiles://v.pmtiles',
+    });
   });
 
   it('writes colours as rgba()', () => {

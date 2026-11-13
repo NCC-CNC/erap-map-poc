@@ -46,6 +46,8 @@ function contentType(file: string): string {
   switch (path.extname(file).toLowerCase()) {
     case '.pmtiles':
       return 'application/vnd.pmtiles';
+    case '.tif':
+      return 'image/tiff';
     case '.json':
       return 'application/json';
     default:

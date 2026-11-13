@@ -63,7 +63,15 @@ commit them.
 - Panel says data layers are not available: `manifest.json` is missing
   or not valid; build the layers, then reload.
 - A layer missing or wrong: check `--status` for it, and the browser
-  console (or screenshot `page error` lines).
+  console (or screenshot `page error` lines). `Layer "<name>" skipped:
+  could not read ...` names the file the map could not open: a vector
+  layer's `.pmtiles` or a raster layer's `.cog.tif` (missing, or not
+  built yet). A raster is read with range requests through the `cog://`
+  protocol: `curl -fsSI -r 0-99 http://localhost:8080/tiles/<name>.cog.tif`
+  should answer `206` with `image/tiff`; if not, the web image is stale
+  (rerun with `--build`). A raster drawn but nearly transparent was built
+  before COGs with an older colour ramp: `--status` says `stale`;
+  rebuild it.
 
 ## Stop
 

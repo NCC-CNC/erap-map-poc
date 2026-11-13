@@ -11,6 +11,7 @@ setup() {
   RUN="${PIPELINE_ROOT}/bin/run.sh"
   export PIPELINE_INPUT_DIR="${BATS_TEST_TMPDIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
+  export PIPELINE_WORK_DIR="${BATS_TEST_TMPDIR}/work"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
   MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR"
@@ -263,16 +264,17 @@ add_raster() {
   [ "$status" -eq 0 ]
   run jq -e '
     (.layers[] | select(.name == "cover")
-      | .state == "current" and .type == "raster" and .format == "png"
-        and .archive_bytes > 0 and .tile_count > 0 and .feature_count == null
+      | .state == "current" and .type == "raster" and .format == "cog"
+        and .archive_bytes > 0 and .width > 0 and .height > 0
+        and .tile_count == null and .feature_count == null
         and .minzoom == 3 and .maxzoom == 6)
     and (.layers[] | select(.name == "alpha")
       | .type == "vector" and .format == "mvt" and .feature_count == 15
-        and .tile_count == null)' <<<"$output"
+        and .tile_count == null and .width == null)' <<<"$output"
   [ "$status" -eq 0 ]
   run "$RUN" --status
   [ "$status" -eq 0 ]
-  [[ $output == *"cover "*"current"*" tiles"* ]]
+  [[ $output == *"cover "*"current"*" px"* ]]
 
   # The source raster (under RAW_DIR) changing makes it stale.
   touch_later "${PIPELINE_INPUT_DIR}/cover.tif"
@@ -285,7 +287,7 @@ add_raster() {
   # --remove takes the raster archive, entry and style source; alpha stays.
   run "$RUN" --remove cover
   [ "$status" -eq 0 ]
-  [ ! -e "${PIPELINE_OUTPUT_DIR}/cover.pmtiles" ]
+  [ ! -e "${PIPELINE_OUTPUT_DIR}/cover.cog.tif" ]
   run jq -r '[.layers[].name] | join(",")' "$MANIFEST"
   [ "$output" = alpha ]
   run jq -r '[.sources | keys[]] | join(",")' "${PIPELINE_OUTPUT_DIR}/style.json"

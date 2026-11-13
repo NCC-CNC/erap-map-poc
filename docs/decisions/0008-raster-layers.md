@@ -4,6 +4,11 @@
 
 Accepted. Adds raster layers alongside the vector ones of
 0002-bash-gdal-tippecanoe-pipeline.md and 0007-data-driven-layer-styles.md.
+Superseded in part by 0010-raster-layers-as-cogs.md: a raster layer is now
+stored as one Cloud Optimized GeoTIFF, not PNG tiles in a `.pmtiles`
+archive, and built faster. The rest stands: binary rasters only, the share
+covered as a grey level, coloured in the map by a `color-relief` layer on
+a `raster-dem` source, display only.
 
 ## Context
 

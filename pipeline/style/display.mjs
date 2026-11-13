@@ -187,9 +187,10 @@ export function rgba(hex, alpha) {
 /**
  * The raster shorthand's style layer: a `color-relief` layer on the
  * layer's `raster-dem` source, whose "elevation" is the share of the pixel
- * covered by 1 cells (0 to 1, see RASTER_SOURCE). None is transparent, all
- * is the colour, and part cover (lower zooms) is the colour at that share
- * of full opacity. `nearest` keeps cell edges sharp past the max zoom.
+ * covered by 1 cells as a grey level (0 to RASTER_FULL, see layerSource).
+ * None is transparent, all is the colour, and part cover (lower zooms) is
+ * the colour at that share of full opacity. `nearest` keeps cell edges
+ * sharp past the max zoom.
  */
 export function rasterLayers(symbology) {
   return [
@@ -203,7 +204,7 @@ export function rasterLayers(symbology) {
           ['elevation'],
           0,
           rgba(symbology.color, 0),
-          1,
+          RASTER_FULL,
           rgba(symbology.color, 1),
         ],
         'color-relief-opacity': symbology.opacity,
@@ -431,17 +432,28 @@ export function sourcedLayers(layerName, layers, visible, type = 'vector') {
 
 const usesText = (layers) => layers.some((l) => l.type === 'symbol' && l.layout?.['text-field']);
 
+/** The grey level of full cover in a raster layer's data (ADR 0010). */
+export const RASTER_FULL = 255;
+
 /**
- * How a raster layer's archive is read (ADR 0008): 256 px grey PNG tiles
- * whose grey level is the share of the pixel covered by 1 cells, 0 to 255,
- * decoded as an "elevation" of 0 to 1 for the `color-relief` layer. The
- * web app uses the same source (web/src/layers/spec.ts).
+ * How a raster layer's COG is read (ADR 0010): through the `cog://`
+ * protocol (@geomatico/maplibre-cog-protocol, registered by the web app),
+ * whose `#dem` mode encodes each pixel value, the grey level 0 to 255, as a
+ * Terrain-RGB "elevation" for the `color-relief` layer. The web app uses
+ * the same source (web/src/layers/spec.ts).
  */
-export const RASTER_SOURCE = Object.freeze({
+export const RASTER_SOURCE = Object.freeze({ type: 'raster-dem', tileSize: 256 });
+
+/**
+ * How a raster layer built before COGs is read (ADR 0008): 256 px grey PNG
+ * tiles in a .pmtiles archive, whose red channel is the grey level 0 to 255.
+ * Kept so such a build still shows until it is rebuilt.
+ */
+export const RASTER_PNG_SOURCE = Object.freeze({
   type: 'raster-dem',
   tileSize: 256,
   encoding: 'custom',
-  redFactor: 1 / 255,
+  redFactor: 1,
   greenFactor: 0,
   blueFactor: 0,
   baseShift: 0,
@@ -452,17 +464,23 @@ export function configType(config) {
   return config?.symbology?.geometry === 'raster' ? 'raster' : 'vector';
 }
 
-/** The MapLibre source of a data layer of the given type. */
+/**
+ * The MapLibre source of a data layer of the given type, from its archive
+ * file: `cog://<file>#dem` for a raster COG (.cog.tif), `pmtiles://<file>`
+ * otherwise.
+ */
 export function layerSource(type, file) {
-  const url = `pmtiles://${file}`;
-  return type === 'raster' ? { ...RASTER_SOURCE, url } : { type: 'vector', url };
+  if (type !== 'raster') return { type: 'vector', url: `pmtiles://${file}` };
+  if (file.endsWith('.cog.tif')) return { ...RASTER_SOURCE, url: `cog://${file}#dem` };
+  return { ...RASTER_PNG_SOURCE, url: `pmtiles://${file}` };
 }
 
 /**
  * A standalone MapLibre style of data layers, each entry being
  * `{name, file, type, display}` (`type` as in the manifest, `vector` when
- * missing), drawn in the order given. Sources are `pmtiles://<file>`,
- * relative to the folder holding the style. `view`, the map config's
+ * missing), drawn in the order given. Sources are `pmtiles://<file>`, or
+ * `cog://<file>#dem` for a raster layer (layerSource), relative to the
+ * folder holding the style; a viewer needs both protocols registered. `view`, the map config's
  * opening `center` and `zoom` (ADR 0009), sets the style's own when given.
  */
 export function buildStyle(entries, view = {}) {
@@ -565,7 +583,8 @@ export function resolveDisplay(layerName, config, valuesOf, type = configType(co
     legend,
   };
 
-  const style = buildStyle([{ name: layerName, file: `${layerName}.pmtiles`, type, display }]);
+  const file = type === 'raster' ? `${layerName}.cog.tif` : `${layerName}.pmtiles`;
+  const style = buildStyle([{ name: layerName, file, type, display }]);
   // Validate as if glyphs were there: the web map's basemap provides them.
   const problems = styleProblems({ ...style, glyphs: GLYPHS_URL });
   if (problems.length) throw new DisplayError(problems.map((p) => `MapLibre style: ${p}`));

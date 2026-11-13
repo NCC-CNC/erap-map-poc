@@ -13,8 +13,8 @@ setting), `docs/design/02_data_layers_and_popups.md` and
 test layers `pipeline/tests/layers/sample*` as worked examples (`forest` in
 `pipeline/layers/` for a raster).
 
-Never commit data: `data/raw/`, `data/tiles/`, `.pmtiles` and screenshots
-stay out of git. Commands below run from the repo root in Git Bash; give
+Never commit data: `data/raw/`, `data/tiles/`, `data/work/`, `.pmtiles`,
+`.cog.tif` and screenshots stay out of git. Commands below run from the repo root in Git Bash; give
 paths relative to `data/raw/` (no leading `/`).
 
 First ask, unless the user already said: is the layer just for them, or
@@ -27,39 +27,98 @@ as below, and skip the draft PR. For everyone: the steps below.
 ## Raster sources (GeoTIFF)
 
 A binary raster (cells of 1 on 0 or nodata, for example a forest or
-cropland mask) is a raster layer, display only (ADR 0008,
-`docs/design/02_data_layers_and_popups.md`, Raster layers). Large source
-rasters usually live outside the repo: `RAW_DIR` in `.env` points at their
-folder, mounted read-only at `/data/raw`. Never copy them into the repo.
-For a raster, follow this section in place of steps 1 and 2, then steps 3
-to 5.
+cropland mask) is a raster layer: one Cloud Optimized GeoTIFF in
+`data/tiles/<name>.cog.tif`, display only, no pop-up (ADR 0008 and 0010,
+`docs/design/02_data_layers_and_popups.md`, Raster layers; README, Tile
+formats). Large source rasters usually live outside the repo: `RAW_DIR`
+in `.env` points at their folder, mounted read-only at `/data/raw`. Never
+copy them into the repo. For a raster, follow this section in place of
+steps 1 to 4, then step 5.
 
-1. Inspect with GDAL (`inspect.sh` is for vector data):
+1. Inspect with GDAL (`inspect.sh` is for vector data), in two steps.
+   First the header, which takes seconds:
 
    ```sh
    MSYS_NO_PATHCONV=1 docker compose run --rm --build --entrypoint gdalinfo pipeline \
-     -stats /data/raw/<file.tif>
+     -json /data/raw/<file.tif>
    ```
 
-   Note the CRS, size and pixel size, data type, nodata value, block
-   layout and the min and max. Values must be 0, 1 and nodata only; if not,
-   stop and ask (other values are drawn as covered).
-2. `<name>.env`: `LAYER_TYPE=raster`, `LAYER_INPUT=<file.tif>` (relative to
-   `RAW_DIR`), `LAYER_MIN_ZOOM` (2 for Canada-wide, higher for a region),
-   `LAYER_MAX_ZOOM` close to the source resolution (12 for 30 m, at most
-   14). `LAYER_NODATA` only if gdalinfo shows no nodata value (or a wrong
-   one); `LAYER_SOURCE_SRS` only if there is no CRS. No `LAYER_FIELDS`,
-   feature id, profile or tippecanoe flags.
-3. `<name>.style.json`: the raster shorthand only, no `popup`:
+   Note the band count (`bands | length`), the data type
+   (`bands[0].type`), the nodata value (`bands[0].noDataValue`), the CRS
+   (`coordinateSystem`, or none), size and pixel size, and the block
+   layout (`bands[0].block`; `[width, 1]` is a strip layout, which the
+   first build handles). More than one band: stop here (step 2). Then the
+   values, which reads the whole file: about 5 minutes for a Canada-wide 30 m
+   raster in strips (say so, and run it in the background):
+
+   ```sh
+   MSYS_NO_PATHCONV=1 docker compose run --rm --entrypoint gdalinfo pipeline \
+     -json -approx_stats -hist /data/raw/<file.tif>
+   ```
+
+   Note the min and max (`bands[0].minimum`, `maximum`) and which
+   histogram buckets have counts (`bands[0].histogram`: 256 buckets from
+   `min` to `max`; a binary raster has counts only in the first and last).
+   Nothing is written: `RAW_DIR` is mounted read-only, so GDAL may warn
+   that it cannot save the statistics.
+2. Stop and explain, without writing any config, unless it is a
+   single-band binary raster: only binary rasters are supported (one band,
+   values 0, 1 and nodata).
+   - More than one band (an RGB image, a stack of indicators):
+     multiband rasters are not supported yet; each band would be its own
+     layer.
+   - Values other than 0, 1 and nodata (class codes such as land cover, or
+     a continuous value such as a probability or density): categorical
+     and continuous rasters are not supported yet. The build would draw
+     every non-zero value as covered and average it at lower zooms, which
+     is wrong for both. Supporting them needs a raster-kind setting
+     (mode or nearest resampling for classes, average for continuous
+     values), which is left for later.
+   - Values 0 and 1 plus one other value with no nodata declared (often
+     255, or -9999): that value is probably nodata; confirm with the user
+     and set `LAYER_NODATA` to it.
+3. `<name>.env` (copy the layout of `pipeline/layers/forest.env`):
+   `LAYER_TYPE=raster`, `LAYER_INPUT=<file.tif>` (relative to `RAW_DIR`),
+   `LAYER_MIN_ZOOM` (2 for Canada-wide, higher for a region),
+   `LAYER_MAX_ZOOM` close to the source resolution (12 for 30 m, 13 for
+   10 to 20 m, at most 14). `LAYER_NODATA` only when step 2 found an
+   undeclared or wrong nodata value; `LAYER_SOURCE_SRS` only when there is
+   no CRS (ask which). No `LAYER_FIELDS`, feature id, profile or
+   tippecanoe flags.
+4. `<name>.style.json` (copy `pipeline/layers/forest.style.json`): `title`,
+   `defaultVisible`, an `order` below the vector layers (they are drawn
+   over it), and the raster shorthand only, no `popup`:
    `"symbology": {"geometry": "raster", "color": "#rrggbb", "opacity": 0.7,
-   "label": "..."}` and an `order` below the vector layers. The colour and
-   opacity are applied by the map, not stored in the tiles.
-4. Build (step 3 below). A Canada-wide 30 m raster takes tens of minutes
-   and a few GB; say so before starting, and try a regional clip first if
-   the user only wants a look. The report is `tile_count`, `bytes`,
-   `build_seconds` and per-zoom `zooms[]` (`tiles`, `max_tile_bytes`);
-   there is no drop guard. Then screenshots as in step 4: check the low
-   zooms read as cover density and cells stay sharp at the max zoom.
+   "label": "..."}`. Ask the user for the colour if they have one in mind;
+   pick one that differs from the other raster layers. The colour is
+   applied by the map, not stored in the COG, so it can change later with
+   `--style-only` (restyle-layer).
+5. Build:
+
+   ```sh
+   docker compose run --rm --build pipeline <name>
+   ```
+
+   Say before starting: a Canada-wide 30 m raster takes about 9 to 10
+   minutes on a 16-CPU laptop the first time, because the source is
+   prepared once into `data/work/raster/` (a cache of about 0.1 to 0.7 GB
+   per source, kept until the source file changes); later builds of it
+   skip that and take 5 to 8 minutes. The log times each step
+   (`prepare`, `warp`, `overviews`, `cog`). Offer a regional clip first if
+   the user only wants a look. A raster with no 1 cells fails with
+   `no cover`.
+6. Read the layer's entry in `data/tiles/manifest.json`: `file`
+   `<name>.cog.tif`, `format` `cog`, `bytes` (the COG's size), `width` and
+   `height` (pixels at the max zoom; padded to the tile grid, mostly
+   empty), `block_size` 256, `overview_count` (one per zoom below the
+   max), `zooms[]` (each zoom's `width` and `height`), `bounds` and
+   `build_seconds`. There is no drop guard and no tile count.
+7. Screenshot as in step 4 below, at the whole extent (the min zoom), a
+   mid zoom (about 6) and the max zoom on an area with data: check the low
+   zooms read as cover density (paler where partly covered), cells stay
+   sharp at the max zoom, the colour reads on both basemaps, and the
+   vector layers draw over it. Then the draft PR (step 5 below), saying
+   the layer is a binary raster and giving the build time and COG size.
 
 ## 1. Inspect
 

@@ -49,7 +49,8 @@ shell) to the folder holding it, which compose mounts read-only at
 A layer is `pipeline/layers/<layer>.env` (input and tiling) plus
 `pipeline/layers/<layer>.style.json` (title, draw order, style, legend,
 pop-up), described in `docs/design/02_data_layers_and_popups.md`, ADR 0007
-and, for binary raster layers (`LAYER_TYPE=raster`), ADR 0008, with a
+and, for binary raster layers (`LAYER_TYPE=raster`, one COG each), ADR 0008
+and 0010, with a
 step-by-step guide in `README.md` (Adding a layer). Nothing in `web/`
 changes: the map reads every layer from `data/tiles/manifest.json`. Rerun
 the pipeline for that layer and reload the page; compose mounts

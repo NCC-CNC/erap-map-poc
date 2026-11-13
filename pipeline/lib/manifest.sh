@@ -5,7 +5,7 @@
 #     "updated_at": "2026-01-01T00:00:00Z",
 #     "map": { "center": [lon, lat], "zoom": 3, "basemap": "light" },
 #     "layers": [
-#       { "name": "sample", "file": "sample.pmtiles",
+#       { "name": "sample", "file": "sample.pmtiles",   (or forest.cog.tif)
 #         "type": "vector", "format": "mvt",
 #         "minzoom": 0, "maxzoom": 8,
 #         "bounds": [west, south, east, north], "center": [lon, lat, zoom],
@@ -22,8 +22,12 @@
 #
 # `map` is the local map config's opening view and basemap (ADR 0009), left
 # out when it sets none. `type` is the layer's LAYER_TYPE (`vector` or
-# `raster`) and `format` the archive's tile type from its PMTiles header
-# (`mvt` or `png`). The fields up to `enabled` are the ones the web app
+# `raster`). `file` is the archive: `<layer>.pmtiles` for a vector layer,
+# `<layer>.cog.tif` for a raster one (ADR 0010; a raster built before that
+# is a `.pmtiles` of PNG tiles until rebuilt). `format` is the tile type:
+# from the PMTiles header for a vector layer (`mvt`), `cog` for a raster
+# (`png` for an older raster build), whose zooms, bounds and center come
+# from the build (raster_header). The fields up to `enabled` are the ones the web app
 # reads (display is the resolved <layer>.style.json, lib/display.sh).
 # `enabled` is false for a layer built before but left out by the map
 # config: the map does not show it (manifest_apply_config); an entry
@@ -48,30 +52,78 @@
 #                        "required": 15, "required_present": 15,
 #                        "max_tile_bytes": 1234 }, ... ]
 #           (from the drop guard, lib/guard.sh)
-#   raster: "tile_count": 2745, "max_tile_bytes": 15000,
-#           "zooms": [ { "zoom": 3, "tiles": 1, "max_tile_bytes": 1621 }, ... ]
-#           (lib/raster.sh)
+#   raster: "width": 447240, "height": 290531, "block_size": 256,
+#           "overview_count": 10,
+#           "zooms": [ { "zoom": 12, "width": 447240, "height": 290531 }, ... ]
+#           (the COG's levels, max zoom first; lib/raster.sh). An older
+#           raster build has "tile_count" and "max_tile_bytes" instead.
 #
 # Updating one layer keeps the other entries. Written via a temp file and
 # `mv`, like the tiles.
 
+# layer_archive_file LAYER TYPE: the archive file name a build of TYPE
+# writes: LAYER.cog.tif for a raster layer, LAYER.pmtiles otherwise.
+layer_archive_file() {
+  if [[ $2 == raster ]]; then
+    printf '%s.cog.tif\n' "$1"
+  else
+    printf '%s.pmtiles\n' "$1"
+  fi
+}
+
+# layer_archives OUT_DIR LAYER: the paths of LAYER's archives in OUT_DIR
+# that exist (.cog.tif first, then .pmtiles), one per line; returns 1 if
+# there is none.
+layer_archives() {
+  local out_dir=$1 layer=$2 f found=1
+  for f in "${out_dir}/${layer}.cog.tif" "${out_dir}/${layer}.pmtiles"; do
+    if [[ -f $f ]]; then
+      printf '%s\n' "$f"
+      found=0
+    fi
+  done
+  return "$found"
+}
+
+# layer_archive OUT_DIR LAYER: the path of LAYER's built archive: the file
+# its manifest entry names, or else the first of layer_archives. Prints
+# nothing and returns 1 if there is none.
+layer_archive() {
+  local out_dir=$1 layer=$2 file=""
+  if [[ -s "${out_dir}/manifest.json" ]]; then
+    file=$(jq -r --arg n "$layer" 'first(.layers[]? | select(.name == $n)) | .file // empty' \
+      "${out_dir}/manifest.json" 2>/dev/null) || file=""
+  fi
+  if [[ -n $file && -f "${out_dir}/${file}" ]]; then
+    printf '%s\n' "${out_dir}/${file}"
+    return 0
+  fi
+  layer_archives "$out_dir" "$layer" | head -n 1 | grep .
+}
+
 # manifest_update OUT_DIR LAYER TYPE DISPLAY_FILE REPORT_JSON BUILD_SECONDS
-# [PROVENANCE_JSON]
+# [PROVENANCE_JSON] [HEADER_JSON]
 # DISPLAY_FILE is the resolved display block from resolve_display (null when
 # empty); REPORT_JSON is a JSON object holding the layer type's build report,
 # added to the entry as it is; PROVENANCE_JSON is the layer's provenance
-# (null when not given). The new entry is enabled.
+# (null when not given). HEADER_JSON, {tile_type, minzoom, maxzoom, bounds,
+# center}, gives the archive fields of a raster layer (raster_header); a
+# vector layer's come from its PMTiles header. The archive is
+# layer_archive_file's. The new entry is enabled.
 manifest_update() {
   local out_dir=$1 layer=$2 type=$3 display_file=$4 report=${5:-'{}'} seconds=${6:-null}
-  local provenance=${7:-null}
-  local manifest="${out_dir}/manifest.json"
-  local pmtiles_file="${out_dir}/${layer}.pmtiles"
-  local now header current bytes
+  local provenance=${7:-null} header=${8:-}
+  local manifest="${out_dir}/manifest.json" file
+  file=$(layer_archive_file "$layer" "$type")
+  local archive="${out_dir}/${file}"
+  local now current bytes
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-  header=$(pmtiles show --header-json "$pmtiles_file") \
-    || die "cannot read header of $pmtiles_file"
-  bytes=$(stat -c %s "$pmtiles_file") || die "cannot read the size of $pmtiles_file"
+  if [[ -z $header ]]; then
+    header=$(pmtiles show --header-json "$archive") \
+      || die "cannot read header of $archive"
+  fi
+  bytes=$(stat -c %s "$archive") || die "cannot read the size of $archive"
 
   local display=null
   if [[ -n $display_file ]]; then
@@ -92,7 +144,7 @@ manifest_update() {
     --argjson current "$current" \
     --argjson header "$header" \
     --arg name "$layer" \
-    --arg file "${layer}.pmtiles" \
+    --arg file "$file" \
     --arg type "$type" \
     --arg now "$now" \
     --argjson display "$display" \

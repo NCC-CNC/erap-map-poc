@@ -10,7 +10,8 @@ ERAP Map PoC
 ## Project purpose
 
 A proof of concept that turns input spatial data into vector tiles (PMTiles)
-with a bash pipeline, and displays them in a web map where clicking a feature
+and binary rasters into Cloud Optimized GeoTIFFs (COGs) with a bash
+pipeline, and displays them in a web map where clicking a feature
 opens a pop-up with summary stats and plots. The aim is to prove the pattern
 end to end so a decision can be made on building it out. Internal use for
 now; conservation planning staff more widely if it continues. See
@@ -28,14 +29,18 @@ with chart). They are test layers in `pipeline/tests/layers/`, not built by
 a default run (#17). Left: Dependabot for base images (#28) and a hands-on browser
 check. Next is M2, real data (#13): first play data arrived in November
 2026 (two binary 30 m Canada-wide GeoTIFFs, forest and agriculture, plus
-ecoregion and protected-area polygons in file geodatabases), so raster
-layers need a pipeline path (GDAL MBTiles then `pmtiles convert`; display
-only, no pop-ups). Styling and pop-up content are TBC (#14). Open GitHub issues are the live
+ecoregion and protected-area polygons in file geodatabases). Raster layers
+are binary only and display only (no pop-ups): one Web Mercator COG per
+layer, coloured in the browser (ADR 0008, 0010; about 10 minutes per
+Canada-wide 30 m raster, less once its source is cached in `data/work/`).
+Categorical, continuous and multiband rasters are not supported yet.
+Styling and pop-up content are TBC (#14). Open GitHub issues are the live
 task tracker; `docs/design/03_milestones.md` is the shape of the plan.
 
 ## Scope
 
-In scope: an on-demand pipeline that builds `.pmtiles` per layer, a read-only
+In scope: an on-demand pipeline that builds a `.pmtiles` per vector layer and
+a `.cog.tif` per raster layer, a read-only
 web map with pop-ups (stats and Chart.js charts), and a docker-compose setup to
 run both locally.
 
@@ -47,10 +52,12 @@ design note in `docs/design/` or an ADR in `docs/decisions/`.
 
 - Pipeline (`pipeline/`): bash, GDAL/OGR, tippecanoe, `pmtiles` CLI, in a
   custom image on a pinned `ghcr.io/osgeo/gdal` base. shellcheck and bats.
-  See ADR 0002. Node in the same image runs the display config tool
+  See ADR 0002; raster layers are GDAL only (warp, overviews, COG; ADR
+  0010). Node in the same image runs the display config tool
   (`pipeline/style/`, ajv and the MapLibre style spec; ADR 0007).
 - Web app (`web/`): React, TypeScript, Vite, MapLibre GL JS, `pmtiles`,
-  Chart.js, OpenFreeMap basemaps (ADR 0006); served by nginx. ESLint, `tsc`,
+  `@geomatico/maplibre-cog-protocol` (raster COGs, ADR 0010), Chart.js,
+  OpenFreeMap basemaps (ADR 0006); served by nginx. ESLint, `tsc`,
   vitest. See ADR 0003.
 - Runtime: one Dockerfile per component and a root `docker-compose.yml`; the
   pipeline writes `data/tiles/`, nginx serves it as static files with range
@@ -123,7 +130,7 @@ change is ready.
 
 Planned layout is in `docs/design/01_architecture.md`. In short: `pipeline/`
 and `web/` are independent components; `data/raw/` and `data/tiles/` are not
-committed; real data and `.pmtiles` never go in git. CI uses a synthetic
+committed; real data, `.pmtiles` and `.cog.tif` never go in git. CI uses a synthetic
 test case in `pipeline/tests/fixtures/`. `web/` never reads `data/raw/`.
 
 ## Adding or restyling a layer
@@ -139,7 +146,7 @@ and `--remove`, `pipeline/bin/inspect.sh`, `scripts/setup.sh` with
 pipeline or `scripts/` with tests first. Claude Code stays optional.
 `remove-layer` always confirms with the user. Data is never committed: a
 layer PR holds the two config files only, never anything from `data/`,
-`.pmtiles` or screenshots. Skills that change a layer ask whether the
+`.pmtiles`, `.cog.tif` or screenshots. Skills that change a layer ask whether the
 change is just for the user (their `map.config.json`, no PR) or for
 everyone (the committed files and a draft PR).
 

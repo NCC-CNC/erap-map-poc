@@ -49,6 +49,10 @@ services:
       # repo (for example a shared data drive); the default is data/raw/.
       - ${RAW_DIR:-./data/raw}:/data/raw:ro
       - ./data/tiles:/data/tiles
+      # Work dir kept between runs: raster sources prepared once (tiled
+      # 0/1 GeoTIFFs, about 0.1 GB per Canada-wide 30 m layer), reused
+      # until the source changes. Safe to delete. See pipeline/lib/raster.sh.
+      - ./data/work:/data/work
       # The layer configs (.env and .style.json) from the repo, so editing a
       # layer needs no image rebuild: rerun the pipeline and reload the map.
       - ./pipeline/layers:/opt/pipeline/layers:ro

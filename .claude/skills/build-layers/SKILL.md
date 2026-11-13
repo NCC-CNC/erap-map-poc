@@ -6,7 +6,8 @@ description: Build or rebuild map layer tiles with the pipeline (one layer, seve
 # Build layers
 
 The pipeline turns each `pipeline/layers/<name>.env` plus
-`<name>.style.json` into `data/tiles/<name>.pmtiles` and a
+`<name>.style.json` into `data/tiles/<name>.pmtiles` (vector) or
+`data/tiles/<name>.cog.tif` (raster, one COG; README, Tile formats) and a
 `manifest.json` entry. Commands run from the repo root in Git Bash.
 Nothing under `data/` is ever committed.
 
@@ -64,13 +65,22 @@ Find each `[ERROR] <name>:` line in the log and match it:
   invisible gaps). Explain the trade-off; let the user choose.
 - `tippecanoe failed`: a bad flag in `LAYER_TIPPECANOE_FLAGS`, or a
   tile too large with no dropping flag; the tippecanoe message says which.
-- Raster layers (`LAYER_TYPE=raster`): `gdalwarp failed` or `input not
-  found` means `LAYER_INPUT` or `RAW_DIR` is wrong (the source is under
-  `RAW_DIR`, mounted at `/data/raw`); `no tiles: no 1 cells` means the
-  raster has no 1 values in the zoom range (check its nodata value,
-  `LAYER_NODATA`); a style error saying a raster layer needs the raster
-  shorthand means `<name>.style.json` is not `"geometry": "raster"`. A
-  Canada-wide raster takes tens of minutes; build it on its own.
+- Raster layers (`LAYER_TYPE=raster`): `input not found` or `cannot read`
+  means `LAYER_INPUT` or `RAW_DIR` is wrong (the source is under
+  `RAW_DIR`, mounted at `/data/raw`); `no cover: no 1 cells` means the
+  raster has no 1 values (check its nodata value, `LAYER_NODATA`, and that
+  it is binary); `cannot create .../raster` or `work dir not writable`
+  means `data/work/` is not writable by the container (Linux: README,
+  Linux file ownership); `not a valid COG` or `cannot write the COG` is
+  a GDAL problem, often a full disk (the build needs about 10 GB of
+  scratch). A style error saying a raster layer needs the raster
+  shorthand means `<name>.style.json` is not `"geometry": "raster"`.
+  A Canada-wide 30 m raster takes about 9 to 10 minutes the first time
+  (the log times `prepare`, `warp`, `overviews` and `cog`); build it on
+  its own. Its source is prepared once into `data/work/raster/`, so later
+  builds skip `prepare` (`prepared source cached` in the log) until the
+  source file, `LAYER_SOURCE_SRS` or `LAYER_NODATA` changes. Deleting
+  `data/work/raster/` only costs that step on the next build.
 - `LAYER_... is not set` or `must be an integer`: fix the `.env`
   (every setting is described in `pipeline/lib/config.sh`).
 
@@ -83,8 +93,13 @@ docker compose run --rm --build pipeline --status <name> ...
 Then the layer's entry in `data/tiles/manifest.json`: `feature_count`
 against what the source holds, and per zoom in `zooms[]` that
 `required_present` equals `required` and `max_tile_bytes` stays under
-about 500 kB. A raster layer (`type` raster) has no drop guard: its entry
-has `tile_count`, `bytes`, `build_seconds` and per zoom `tiles` and
-`max_tile_bytes`. Summarise per layer: state, features (or tiles), zooms,
-largest tile,
-and anything to act on. To see the result, use the run-map skill.
+about 500 kB. A raster layer (`type` raster, `format` cog) has no drop
+guard and no tiles to count: its entry describes the COG, `bytes` (file
+size), `width` and `height` (pixels at the max zoom, padded to the tile
+grid, so mostly empty), `block_size` (256, one map tile),
+`overview_count` (one per zoom below the max; it should equal `maxzoom -
+minzoom`), `zooms[]` (each zoom's `width` and `height`, halving per zoom)
+and `build_seconds`. A raster entry with `format` png and `tile_count` is
+a build from before COGs: rebuild it. Summarise per layer: state,
+features (or the COG's size), zooms, largest tile (vector), and anything
+to act on. To see the result, use the run-map skill.

@@ -35,7 +35,9 @@ export {
   type ManifestLayers,
 } from './manifest';
 export {
+  RASTER_PNG_SOURCE,
   RASTER_SOURCE,
+  isCog,
   styleLayerId,
   styleLayerIds,
   toMapLibre,

@@ -305,6 +305,39 @@ All notable changes to this project are documented here. The format is based on
   without any data, run the pipeline with
   `-e PIPELINE_LAYERS_DIR=/opt/pipeline/tests/layers`. A test checks that
   no config in `pipeline/layers/` reads the synthetic fixtures.
+- Raster layers are one Cloud Optimized GeoTIFF each, built in minutes
+  (#62, ADR 0010, superseding the storage part of ADR 0008): a raster
+  layer is now `data/tiles/<layer>.cog.tif`, read by the browser with range
+  requests through `@geomatico/maplibre-cog-protocol` 0.10.0, in place of
+  PNG tiles in a `.pmtiles` archive; vector layers stay PMTiles. A
+  full-Canada 30 m raster at z2 to z12 now builds in about 9 to 10
+  minutes on a 16-CPU laptop the first time and 5 to 8 minutes after
+  (agriculture 0.38 GB, forest 2.27 GB), where ADR 0008 estimated 40
+  minutes to over an hour. Each
+  raster source is prepared once into a tiled 0/255 Byte GeoTIFF cached
+  in `data/work/raster/` (the new `PIPELINE_WORK_DIR`, mounted by
+  compose), keyed by the source's path, size and modification time and
+  the layer's `LAYER_SOURCE_SRS` and `LAYER_NODATA`; the warp to Web
+  Mercator writes ZSTD level 1 over an extent snapped to the tile grid,
+  the lower zooms are `gdaladdo -r average` overviews, and
+  `gdal_translate -of COG` writes the result (256 px blocks on the map's
+  tiles, checked, written atomically). Values stay grey levels 0 to 255
+  (the colour ramp runs to 255). The manifest entry has `format` `cog` and
+  a COG build report (`width`, `height`, `block_size`, `overview_count`,
+  per-zoom sizes) in place of tile counts; `--status` shows the size in
+  pixels, lists a raster built as PNG tiles as `stale`, and its rebuild
+  deletes the old `.pmtiles`; `--remove` deletes either. The map still
+  reads an older raster `.pmtiles`. The COG code loads only when a COG
+  layer exists. nginx and the dev server serve `.tif` as `image/tiff`.
+  `sqlite3` is gone from the pipeline image. Only binary rasters are
+  supported (one band of 0, 1 and nodata); categorical, continuous and
+  multiband rasters are left for later. Docs: README sections Tile formats
+  and Styling a layer, the data contract, and the add-layer, build-layers,
+  layer-status, update-layer-data, remove-layer, restyle-layer,
+  inspect-data, run-map and setup skills. Tests: `raster.bats` rewritten
+  for the COG (layout, tile grid alignment, values, report, empty raster,
+  replacing an older build, `--remove`, the prepare cache), display tool
+  and web tests for the `cog://` source.
 - README pass (#37): a screenshot of the map (synthetic layers, a pop-up
   open), a project map in place of the template's "What's included", and
   new "Using the map" and "Adding a layer" sections for per-layer `.env`

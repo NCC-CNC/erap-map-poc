@@ -21,8 +21,9 @@
 #                           dataset; defaults to the first layer.
 #   LAYER_SOURCE_SRS        optional. Source CRS (for example EPSG:3347) for
 #                           inputs without a usable one, such as a shapefile
-#                           with no .prj. Passed to ogr2ogr (or, for a
-#                           raster, gdalwarp) as -s_srs.
+#                           with no .prj. Passed to ogr2ogr as -s_srs (for a
+#                           raster, to the prepare step as -a_srs; changing
+#                           it prepares the source again).
 #   LAYER_ENCODING          optional, vector only. Attribute encoding (for
 #                           example ISO-8859-1) for shapefiles without a .cpg.
 #                           Passed to ogr2ogr as the open option ENCODING.
@@ -37,9 +38,13 @@
 #   LAYER_MAX_ZOOM          required. Maximum tile zoom. For a raster, also
 #                           the resolution it is resampled to (z12 is about
 #                           38 m at the equator, 19 to 27 m across Canada).
+#                           Changing a raster's zooms reuses its prepared
+#                           source (lib/raster.sh, PIPELINE_WORK_DIR).
 #   LAYER_NODATA            optional, raster only. Source nodata value, for
 #                           a raster that does not declare one (or declares
-#                           the wrong one). Passed to gdalwarp as -srcnodata.
+#                           the wrong one). Used by the prepare step
+#                           (lib/raster.sh), which turns nodata into 0;
+#                           changing it prepares the source again.
 #   LAYER_PROFILE           optional, vector only. A named set of tippecanoe
 #                           flags; see layer_profile_flags. Empty for none.
 #   LAYER_TIPPECANOE_FLAGS  optional array, vector only. Extra tippecanoe

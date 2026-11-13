@@ -12,6 +12,7 @@ setup() {
   # The synthetic test layers (read only); a test that edits configs makes
   # its own layers dir with make_layers_dir or copy_layers.
   export PIPELINE_LAYERS_DIR="${PIPELINE_ROOT}/tests/layers"
+  export PIPELINE_WORK_DIR="${BATS_TEST_TMPDIR}/work"
   mkdir -p "$PIPELINE_INPUT_DIR"
 }
 

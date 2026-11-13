@@ -11,6 +11,7 @@ setup() {
   RUN="${PIPELINE_ROOT}/bin/run.sh"
   export PIPELINE_INPUT_DIR="${BATS_TEST_TMPDIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
+  export PIPELINE_WORK_DIR="${BATS_TEST_TMPDIR}/work"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
   MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
   STYLE="${PIPELINE_OUTPUT_DIR}/style.json"
@@ -203,7 +204,7 @@ assert_no_temp_files() {
   add_raster cover
   run "$RUN"
   [ "$status" -eq 0 ]
-  local archive="${PIPELINE_OUTPUT_DIR}/cover.pmtiles" before report
+  local archive="${PIPELINE_OUTPUT_DIR}/cover.cog.tif" before report
   before=$(sha256sum "$archive")
   report=$(entry_without cover display display_updated_at provenance)
 
