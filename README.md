@@ -3,9 +3,11 @@
 A proof of concept for processing spatial data into vector tiles and viewing
 them in an interactive web map.
 
-![The web map with the two synthetic layers on the Light basemap, the layer
-panel with legends on the left, and the pop-up of a clicked polygon showing
-its stats and a bar chart](docs/images/map-popup.png)
+![The web map on the Light basemap with the ERAP ecoregions coloured by
+percent protected over the forest and protected area layers, the layer
+panel with its "Colour by" choice and legends on the left, and the click
+modal of the Mid-Boreal Lowland ecoregion showing its summary, a habitat
+table and a grouped bar chart](docs/images/map-modal.png)
 
 - **Pipeline** (`pipeline/`): bash scripts using GDAL, tippecanoe, and the
   `pmtiles` CLI turn source data in `data/raw/` into one `.pmtiles` file per
