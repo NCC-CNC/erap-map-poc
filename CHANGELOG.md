@@ -7,6 +7,22 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- The first real vector layers, from the November 2026 play data (#58):
+  `ecoregions` (`ERAP_2026_ecoregions.gdb`, 149 ecoregions, on top,
+  clickable) with four blue colour themes (% protected by default, Where
+  To Work % and total area, area-based conservation actions), the click
+  modal of #14 (Summary, Habitat, Direct threats, Opportunities, Action
+  recommendations), the calculated fields and the action rules, and
+  low-zoom generalisation to z7; and `protected_areas`
+  (`protected_areas.gdb`, the dissolved CPCAD, 112,050 polygons, one
+  green fill, no pop-up). The ecoregion template moved from
+  `pipeline/tests/fixtures/ecoregions.example.*` to
+  `pipeline/layers/ecoregions.*`, and the display config and web tests
+  read the committed file (`web-dev` mounts `pipeline/layers/`
+  read-only). Design note 02 records both layers, the decisions from #14
+  and what is still open (licences, provenance, update frequency and
+  stable ids, #13). `forest` is now off by default; order bottom to top:
+  forest, agriculture, protected areas, ecoregions.
 - Calculated fields and action recommendation rules (#60, ADR 0011): all
   calculations happen in the pipeline, the app only displays tile
   attributes. `LAYER_CALCULATED` in a layer's `.env` adds attributes from

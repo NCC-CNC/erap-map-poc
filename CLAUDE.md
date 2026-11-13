@@ -34,7 +34,10 @@ are binary only and display only (no pop-ups): one Web Mercator COG per
 layer, coloured in the browser (ADR 0008, 0010; about 10 minutes per
 Canada-wide 30 m raster, less once its source is cached in `data/work/`).
 Categorical, continuous and multiband rasters are not supported yet.
-Styling and pop-up content are TBC (#14). Open GitHub issues are the live
+All four are committed layers (`ecoregions` on top with colour themes and
+a click modal, `protected_areas`, `forest`, `agriculture`; #58), styled
+as decided in #14 (design note 02); licences, provenance and stable ids
+are still TBC (#13). Open GitHub issues are the live
 task tracker; `docs/design/03_milestones.md` is the shape of the plan.
 
 ## Scope
