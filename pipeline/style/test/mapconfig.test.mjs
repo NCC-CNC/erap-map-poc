@@ -89,7 +89,26 @@ describe('settings as bash', () => {
     ]);
   });
 
+  it('appends calculated fields and sets the rules table from the config folder (ADR 0011)', () => {
+    const lines = overrideEnvLines(
+      { calculated: { gap: "a - b", old: null, label: "iif(a > 1, 'it''s', 'no')" }, rules: 'mine.rules.json' },
+      '/repo',
+    );
+    assert.deepEqual(lines, [
+      "LAYER_CALCULATED+=('gap=a - b' 'old=' 'label=iif(a > 1, '\\''it'\\'''\\''s'\\'', '\\''no'\\'')')",
+      "LAYER_RULES='/repo/mine.rules.json'",
+    ]);
+    const out = execFileSync('bash', ['-c', `LAYER_CALCULATED=(x=1); ${lines[0]}; printf '%s\\n' "\${LAYER_CALCULATED[@]}"`]);
+    assert.equal(out.toString(), "x=1\ngap=a - b\nold=\nlabel=iif(a > 1, 'it''s', 'no')\n");
+    assert.deepEqual(overrideEnvLines({ rules: null }), ["LAYER_RULES=''"]);
+    assert.deepEqual(overrideEnvLines({ rules: '/abs/t.rules.json' }, '/repo'), ["LAYER_RULES='/abs/t.rules.json'"]);
+  });
+
   it('splits build keys from display keys', () => {
+    assert.deepEqual(pick({ calculated: { a: '1' }, rules: null, title: 'T' }, BUILD_KEYS), {
+      calculated: { a: '1' },
+      rules: null,
+    });
     const override = { input: 'x', title: 'T', style: {} };
     assert.deepEqual(pick(override, BUILD_KEYS), { input: 'x' });
     assert.deepEqual(pick(override, DISPLAY_KEYS), { title: 'T', style: {} });
@@ -109,6 +128,18 @@ describe('validateMapConfig', () => {
       overrides: { alpha: { input: 'a2.geojson', env: { LAYER_MAX_ZOOM: 6 }, title: 'A', order: 2, defaultVisible: false, style: { symbology: null } } },
     });
     validateMapConfig({});
+    validateMapConfig({ overrides: { alpha: { calculated: { gap: 'a - b', old: null }, rules: 'x.rules.json' } } });
+    validateMapConfig({ overrides: { alpha: { rules: null } } });
+  });
+
+  it('checks calculated field names and the rules value', () => {
+    const problems = problemsOf(() =>
+      validateMapConfig({ overrides: { alpha: { calculated: { 'Bad Name': 'x', ok: 3 }, rules: 7 } } }),
+    );
+    const text = problems.join('\n');
+    assert.match(text, /\/overrides\/alpha\/calculated property name must be valid/);
+    assert.match(text, /\/overrides\/alpha\/calculated\/ok must be string/);
+    assert.match(text, /\/overrides\/alpha\/rules must be string/);
   });
 
   it('reports unknown keys, bad names, bad values and a LAYER_INPUT in env', () => {

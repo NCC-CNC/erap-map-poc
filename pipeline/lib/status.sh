@@ -12,8 +12,9 @@
 #   stale      built, but its .env or its source data has changed since
 #              (file modification time against the manifest's built_at),
 #              the settings it is built from differ (the map config's
-#              `input` or `env`: the hash in the entry's provenance), or
-#              its archive is missing. Rebuild it.
+#              `input`, `env`, `calculated` or `rules`: the hash in the
+#              entry's provenance), its rules table changed (ADR 0011: the
+#              table's hash), or its archive is missing. Rebuild it.
 #   restyle    built and not stale, but its .style.json has changed since
 #              the display was last updated (the manifest's
 #              display_updated_at, set by a build or by `run.sh
@@ -24,9 +25,9 @@
 #              configured, but its source data is not found (for example
 #              RAW_DIR not set). A full build skips it. A previous build, if
 #              any, is still served.
-#   invalid    the config cannot be built as it is: the .env does not load
-#              or the .style.json is missing. A previous build, if any, is
-#              still served.
+#   invalid    the config cannot be built as it is: the .env does not load,
+#              the .style.json is missing or the rules table it names is
+#              not found. A previous build, if any, is still served.
 #   disabled   configured, but not enabled in the map config: not built,
 #              and hidden from the map if built before.
 #   orphan     built, but its config is gone. `run.sh --remove` removes it.
@@ -42,7 +43,15 @@
 #       "display_updated_at": "2026-01-01T00:00:00Z", "archive_bytes": 12345,
 #       "minzoom": 0, "maxzoom": 8, "feature_count": 15, "width": null,
 #       "height": null, "tile_count": null,
-#       "max_tile_bytes": 1234 }, ... ] }
+#       "max_tile_bytes": 1234,
+#       "calculated_fields": ["x"],
+#       "rules": { "file": "...", "actions": 1, "types": { "t": 4 } } },
+#     ... ] }
+#
+# `calculated_fields` and `rules` are from the build (ADR 0011): the
+# calculated field names, and the rules table with its number of actions
+# and, per action type, the features with at least one of its actions;
+# null when the build had none, or the layer is not built.
 #
 # Fields from the manifest are null when the layer is not built. `type` is
 # the manifest's (vector when an older entry has none), or the config's
@@ -132,6 +141,22 @@ _config_input() {
   printf '%s\n' "${result:-$(printf 'invalid\t%s does not load' "${1##*/}")}"
 }
 
+# _config_rules CONFIG DIR: load CONFIG in a subshell and print the rules
+# table its LAYER_RULES names, relative to DIR (lib/derive.sh); nothing for
+# none or if CONFIG does not load.
+_config_rules() {
+  (
+    # Report nothing for a config error (_config_input reports it). Called
+    # by load_layer_config.
+    # shellcheck disable=SC2329
+    die() {
+      exit 0
+    }
+    load_layer_config "$1" 2>/dev/null
+    rules_file "$LAYER_RULES" "$2"
+  ) || true
+}
+
 # _layer_status NAME OUT_DIR ENTRIES: one layer's status object. ENTRIES is
 # the manifest's layers array; the layer set is LAYERS_JSON.
 _layer_status() {
@@ -196,6 +221,13 @@ _layer_status() {
       problems+=("${cfg#*$'\t'}")
     fi
     [[ -f $style ]] || problems+=("no ${name}.style.json")
+    local rules rules_sha=""
+    rules=$(_config_rules "$env" "$(layer_config_dir "$name")")
+    if [[ -n $rules && -f $rules ]]; then
+      rules_sha=$(file_sha256 "$rules")
+    elif [[ -n $rules ]]; then
+      problems+=("rules table not found: $rules")
+    fi
 
     local src="" missing=""
     if [[ -n $input ]] && ! src=$(source_mtime "$input"); then
@@ -213,9 +245,10 @@ _layer_status() {
       state="not built"
       if [[ -n $archive && -f $archive ]]; then notes+=("archive with no manifest entry"); fi
     else
-      local recorded_env recorded_style
-      read -r recorded_env recorded_style < <(jq -r \
-        '"\(.provenance.env_sha256 // "-") \(.provenance.style_sha256 // "-")"' <<<"$entry")
+      local recorded_env recorded_style recorded_rules
+      read -r recorded_env recorded_style recorded_rules < <(jq -r \
+        '"\(.provenance.env_sha256 // "-") \(.provenance.style_sha256 // "-") \(.provenance.rules_sha256 // "-")"' \
+        <<<"$entry")
       [[ -f $archive ]] || notes+=("archive missing")
       if [[ $legacy == true ]]; then
         notes+=("built as PNG tiles in ${name}.pmtiles: rebuild it as a COG (ADR 0010)")
@@ -225,7 +258,11 @@ _layer_status() {
       if ((${mtime:-0} > built_at)); then
         notes+=("${name}.env changed since the build")
       elif [[ $recorded_env != - && $recorded_env != "$env_sha" ]]; then
-        notes+=("settings changed since the build (${name}.env or the map config's input or env)")
+        notes+=("settings changed since the build (${name}.env or the map config's input, env, calculated or rules)")
+      elif [[ ${rules_sha:--} != "$recorded_rules" ]]; then
+        # An entry from before rules tables has no hash: stale only if the
+        # layer now has one, which its .env or map config change shows too.
+        notes+=("rules table changed since the build (${rules:-none now})")
       fi
       if ((${src:-0} > built_at)); then notes+=("source data changed since the build"); fi
       # The display config against the last display update, so a
@@ -270,7 +307,13 @@ _layer_status() {
       feature_count: $entry.feature_count,
       width: $entry.width, height: $entry.height,
       tile_count: $entry.tile_count,
-      max_tile_bytes: $entry.max_tile_bytes}' \
+      max_tile_bytes: $entry.max_tile_bytes,
+      calculated_fields: (if $entry.calculated_fields == null then null
+                          else [$entry.calculated_fields[].name] end),
+      rules: (if $entry.rules == null then null
+              else {file: $entry.rules.file, actions: ($entry.rules.actions | length),
+                    types: ($entry.rules.types | map({key: .id, value: .features})
+                            | from_entries)} end)}' \
     --args "${notes[@]}"
 }
 
@@ -316,7 +359,8 @@ layer_status_json() {
 }
 
 # print_layer_status: the JSON from layer_status_json, on stdin, as a table
-# with each layer's notes under it.
+# with each layer's calculated fields and rules (from its build) and its
+# notes under it.
 print_layer_status() {
   jq -r '
     def size: if . == null then "-"
@@ -330,19 +374,27 @@ print_layer_status() {
         elif .width != null then "\(.width)x\(.height) px"
         elif .tile_count != null then "\(.tile_count) tiles" else "-" end),
        (.max_tile_bytes | size),
-       (.notes | join("\u001f"))]
+       (.notes | join("\u001f")),
+       ([(if .calculated_fields then "calculated: \(.calculated_fields | join(", "))" else empty end),
+         (if .rules then "rules \(.rules.file | split("/") | last), \(.rules.actions) action(s); features with an action: "
+            + (.rules.types | to_entries | map("\(.key) \(.value)") | join(", ")) else empty end)]
+        | join("\u001f"))]
     | @tsv' | awk -F'\t' '
     # cell(i, s): column i padded to its width, or ending the line.
     function cell(i, s) { if (i < 7) printf("%-" w[i] "s  ", s); else printf("%s\n", s) }
     BEGIN { split("LAYER STATE BUILT SIZE ZOOMS FEATURES MAX_TILE", head, " "); head[7] = "MAX TILE"
             for (i = 1; i <= 7; i++) w[i] = length(head[i]) }
-    { n++; for (i = 1; i <= 8; i++) row[n, i] = $i
+    { n++; for (i = 1; i <= 9; i++) row[n, i] = $i
       for (i = 1; i <= 7; i++) if (length($i) > w[i]) w[i] = length($i) }
     END {
       if (n == 0) { print "no layers configured or built"; exit }
       for (i = 1; i <= 7; i++) cell(i, head[i])
       for (r = 1; r <= n; r++) {
         for (i = 1; i <= 7; i++) cell(i, row[r, i])
+        if (row[r, 9] != "") {
+          k = split(row[r, 9], info, "\037")
+          for (j = 1; j <= k; j++) printf "  %s\n", info[j]
+        }
         if (row[r, 8] != "") {
           k = split(row[r, 8], notes, "\037")
           for (j = 1; j <= k; j++) printf "  - %s\n", notes[j]

@@ -65,11 +65,12 @@ EOF
   [[ $output == *"# fail 0"* || $output == *"fail 0"* ]]
 }
 
-@test "the repo's layer configs and the test layers pass the pre-check" {
-  run node "$TOOL" check "${PIPELINE_ROOT}"/layers/*.style.json \
+@test "the repo's layer configs, rules tables and the test layers pass the pre-check" {
+  run node "$TOOL" check "${PIPELINE_ROOT}"/layers/*.json \
     "${PIPELINE_ROOT}"/tests/layers/*.style.json
   [ "$status" -eq 0 ]
   [[ $output == *"forest.style.json: ok"* ]]
+  [[ $output == *"ecoregions.rules.json: ok"* ]]
   [[ $output == *"sample.style.json: ok"* ]]
   [[ $output == *"sample_points.style.json: ok"* ]]
 }

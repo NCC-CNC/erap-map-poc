@@ -15,6 +15,9 @@ export const SCHEMA_URL = new URL('../schema/layer-style.schema.json', import.me
 /** The local map config's JSON Schema (ADR 0009), which refers to the one above. */
 export const MAP_CONFIG_SCHEMA_URL = new URL('../schema/map-config.schema.json', import.meta.url);
 
+/** The action recommendation rules table's JSON Schema (ADR 0011). */
+export const RULES_SCHEMA_URL = new URL('../schema/action-rules.schema.json', import.meta.url);
+
 /** Default draw order of a layer without `order`. */
 export const DEFAULT_ORDER = 0;
 
@@ -35,19 +38,23 @@ let validators;
 
 /**
  * Compiled schema validators: `config` for a .style.json, `display` for the
- * resolved block and `mapConfig` for the local map config.
+ * resolved block, `mapConfig` for the local map config and `rules` for an
+ * action rules table.
  */
 export function schemaValidators() {
   if (!validators) {
     const schema = JSON.parse(readFileSync(SCHEMA_URL, 'utf8'));
     const mapSchema = JSON.parse(readFileSync(MAP_CONFIG_SCHEMA_URL, 'utf8'));
+    const rulesSchema = JSON.parse(readFileSync(RULES_SCHEMA_URL, 'utf8'));
     const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false });
     ajv.addSchema(schema);
     ajv.addSchema(mapSchema);
+    ajv.addSchema(rulesSchema);
     validators = {
       config: ajv.getSchema(schema.$id),
       display: ajv.getSchema(`${schema.$id}#/$defs/display`),
       mapConfig: ajv.getSchema(mapSchema.$id),
+      rules: ajv.getSchema(rulesSchema.$id),
     };
   }
   return validators;

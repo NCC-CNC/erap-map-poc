@@ -167,7 +167,7 @@ notes_of() {
   config '{"overrides": {"alpha": {"input": "other.geojson", "env": {"LAYER_MAX_ZOOM": 3,
     "LAYER_FIELDS": ["id", "NAME_EN:name", "area_ha", "score", "v2020", "v2021", "v2022", "v2023", "v2024"]}}}}'
   [ "$(state_of alpha)" = stale ]
-  [ "$(notes_of alpha)" = "settings changed since the build (alpha.env or the map config's input or env)" ]
+  [ "$(notes_of alpha)" = "settings changed since the build (alpha.env or the map config's input, env, calculated or rules)" ]
   run "$RUN" alpha
   [ "$status" -eq 0 ]
   [ "$(entry alpha .maxzoom)" = 3 ]

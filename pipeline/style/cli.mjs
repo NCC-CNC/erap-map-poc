@@ -10,7 +10,9 @@
 //   cli.mjs check CONFIG...
 //       Check configs without data (schema, legend, MapLibre validation);
 //       `breaks` are resolved against placeholder values, and the layer
-//       type is the one the config implies.
+//       type is the one the config implies. A CONFIG ending in .rules.json
+//       is an action rules table (ADR 0011): its schema, ids, types and
+//       condition syntax are checked (the attributes need the layer).
 //   cli.mjs style MANIFEST OUT
 //       Write the combined MapLibre style of every enabled layer in
 //       MANIFEST that has a `display` block to OUT, drawn in display order,
@@ -21,6 +23,13 @@
 //       OUT_DIR/layers.json, plus a <layer>.env and <layer>.style.json in
 //       OUT_DIR for each layer the map config defines or changes. See
 //       layersCommand.
+//   cli.mjs derive OUT TABLE FIELDS CALCULATED [RULES]
+//       Check a vector layer's calculated fields and rules table (ADR 0011)
+//       and write the plan that adds them to OUT: the SQLite statement on
+//       the data's table TABLE, the attribute names it adds and the fields
+//       and rules as planned (derive.mjs, derivePlan). FIELDS and
+//       CALCULATED are JSON files holding lists: the layer's attributes and
+//       its LAYER_CALCULATED entries. RULES is the rules table, or `-`.
 //
 // Problems go to stderr, one per line; the exit status is 1 on any problem
 // and 2 for a usage error.
@@ -44,6 +53,7 @@ import {
   resolveDisplay,
   styleProblems,
 } from './display.mjs';
+import { derivePlan, validateRulesTable } from './derive.mjs';
 import { resolveLayers, validateMapConfig } from './mapconfig.mjs';
 
 /** Writes text through a temp file and a rename, like the rest of the pipeline. */
@@ -93,6 +103,11 @@ function checkCommand(configs) {
   for (const config of configs) {
     const layer = basename(config).replace(/\.style\.json$/, '');
     try {
+      if (config.endsWith('.rules.json')) {
+        validateRulesTable(readJson(config, 'rules table'));
+        console.log(`${config}: ok`);
+        continue;
+      }
       // Placeholder data: 0 to 99, enough distinct values for any breaks.
       resolveDisplay(layer, readJson(config, 'display config'), () =>
         Array.from({ length: 100 }, (_, i) => i),
@@ -115,6 +130,19 @@ function styleCommand([manifest, out]) {
   const problems = styleProblems(style);
   if (problems.length) throw new DisplayError(problems.map((p) => `MapLibre style: ${p}`));
   writeJson(out, style);
+  return 0;
+}
+
+function deriveCommand([out, table, fields, calculated, rules = '-']) {
+  if (!calculated) return usage();
+  const plan = derivePlan({
+    fields: readJson(fields, 'attribute list'),
+    calculated: readJson(calculated, 'calculated field list'),
+    rules: rules === '-' ? null : readJson(rules, 'rules table'),
+    rulesFile: rules === '-' ? undefined : basename(rules),
+    table,
+  });
+  writeJson(out, plan);
   return 0;
 }
 
@@ -188,9 +216,18 @@ function layersCommand([configPath, layersDir, outDir]) {
     if (existsSync(path) && statSync(path).isDirectory()) found.push(...layerConfigs(path, 'local'));
     else missing.push(`${configPath}: layerDirs: folder not found: ${dir} (${path})`);
   }
+  for (const [name, override] of Object.entries(config?.overrides ?? {})) {
+    if (typeof override.rules !== 'string') continue;
+    const path = resolve(dirname(configPath), override.rules);
+    if (!existsSync(path) || !statSync(path).isFile()) {
+      missing.push(`${configPath}: overrides.${name}.rules: file not found: ${override.rules} (${path})`);
+    }
+  }
   if (missing.length) throw new DisplayError(missing);
 
-  const resolved = prefixed(configPath, () => resolveLayers(config, found));
+  const resolved = prefixed(configPath, () =>
+    resolveLayers(config, found, config ? dirname(resolve(configPath)) : '.'),
+  );
 
   mkdirSync(outDir, { recursive: true });
   const layers = resolved.layers.map((layer) => {
@@ -232,7 +269,7 @@ function layersCommand([configPath, layersDir, outDir]) {
 
 function usage() {
   console.error(
-    'usage: cli.mjs resolve LAYER CONFIG DATA OUT [vector|raster] | check CONFIG... | style MANIFEST OUT | layers MAP_CONFIG LAYERS_DIR OUT_DIR',
+    'usage: cli.mjs resolve LAYER CONFIG DATA OUT [vector|raster] | check CONFIG... | style MANIFEST OUT | layers MAP_CONFIG LAYERS_DIR OUT_DIR | derive OUT TABLE FIELDS CALCULATED [RULES]',
   );
   return 2;
 }
@@ -243,6 +280,7 @@ const commands = {
   check: checkCommand,
   style: styleCommand,
   layers: layersCommand,
+  derive: deriveCommand,
 };
 
 try {

@@ -62,7 +62,7 @@
       "additionalProperties": { "$ref": "#/$defs/localLayer" }
     },
     "overrides": {
-      "description": "Changes to layers (committed or local-only), by name. `input` and `env` change the tiles: rebuild the layer. The rest changes only its display: `run.sh --style-only` is enough.",
+      "description": "Changes to layers (committed or local-only), by name. `input`, `env`, `calculated` and `rules` change the tiles: rebuild the layer. The rest changes only its display: `run.sh --style-only` is enough.",
       "type": "object",
       "propertyNames": { "$ref": "#/$defs/layerName" },
       "additionalProperties": { "$ref": "#/$defs/override" }
@@ -114,6 +114,25 @@
           "$ref": "#/$defs/settings",
           "type": "object",
           "not": { "type": "object", "required": ["LAYER_INPUT"] }
+        },
+        "calculated": {
+          "description": "Calculated fields to add, change or remove (null), by name: an expression on the layer's attributes, as in LAYER_CALCULATED (ADR 0011). Applied on top of the layer's own. Changes the tiles.",
+          "type": "object",
+          "propertyNames": { "pattern": "^[a-z][a-z0-9_]{0,62}$" },
+          "minProperties": 1,
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string", "minLength": 1, "maxLength": 2000 },
+              { "type": "null" }
+            ]
+          }
+        },
+        "rules": {
+          "description": "An action rules table to use instead of the layer's (LAYER_RULES): a .rules.json file, relative to this file, for example pipeline/layers.local/my-actions.rules.json; null for none. ADR 0011. Changes the tiles.",
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "null" }
+          ]
         },
         "title": {
           "description": "Layer title. Display only.",
