@@ -7,10 +7,11 @@
 // Pure functions, like display.mjs; cli.mjs reads the files and writes the
 // resolved layer set.
 
+import { isAbsolute, resolve } from 'node:path';
 import { DisplayError, resolveDisplay, schemaProblems, schemaValidators } from './display.mjs';
 
 /** Override keys that change the tiles: the layer must be rebuilt. */
-export const BUILD_KEYS = Object.freeze(['input', 'env']);
+export const BUILD_KEYS = Object.freeze(['input', 'env', 'calculated', 'rules']);
 
 /** Override keys that change only the display: `--style-only` is enough. */
 export const DISPLAY_KEYS = Object.freeze(['title', 'order', 'defaultVisible', 'style']);
@@ -49,12 +50,28 @@ export function envAssignment(key, value) {
   return `${key}=${shellQuote(value)}`;
 }
 
-/** The settings of an override (`input` first, as LAYER_INPUT) as bash lines. */
-export function overrideEnvLines(override = {}) {
+/**
+ * The settings of an override as bash lines: `input` first, as LAYER_INPUT,
+ * then `env`, then `calculated` (ADR 0011), appended to LAYER_CALCULATED as
+ * `name=expression` entries (a later entry for a name replaces the
+ * layer's, an empty one, from null, removes it), and `rules`, as
+ * LAYER_RULES: the rules table's path relative to `configDir` (the map
+ * config's folder), made absolute, or empty (null) for none.
+ */
+export function overrideEnvLines(override = {}, configDir = '.') {
   const lines = [];
   if (override.input !== undefined) lines.push(envAssignment('LAYER_INPUT', override.input));
   for (const [key, value] of Object.entries(override.env ?? {})) {
     lines.push(envAssignment(key, value));
+  }
+  const calculated = Object.entries(override.calculated ?? {});
+  if (calculated.length) {
+    const entries = calculated.map(([name, expr]) => shellQuote(`${name}=${expr ?? ''}`));
+    lines.push(`LAYER_CALCULATED+=(${entries.join(' ')})`);
+  }
+  if (override.rules !== undefined) {
+    const path = override.rules === null ? '' : override.rules;
+    lines.push(envAssignment('LAYER_RULES', path && !isAbsolute(path) ? resolve(configDir, path) : path));
   }
   return lines;
 }
@@ -92,6 +109,8 @@ function checkDisplay(name, style) {
  *   the layer configs found in the committed layers dir and in the config's
  *   `layerDirs` (`style` null when the .style.json is missing, undefined
  *   when it is not valid JSON, which the build reports).
+ * @param {string} [configDir] the map config's folder, for the relative
+ *   rules table paths in its overrides.
  * @returns {{map: object|null, layers: Array<object>}} each layer with
  *   `name`, `origin` (committed, local or config), `enabled`, `envSource`
  *   and `styleSource` (the files it comes from; null for a layer defined
@@ -99,7 +118,7 @@ function checkDisplay(name, style) {
  *   display config, or null when they are the source files as they are)
  *   and `overrides` (as applied, or null), in name order.
  */
-export function resolveLayers(config, found) {
+export function resolveLayers(config, found, configDir = '.') {
   const problems = [];
   const layers = new Map();
   for (const f of found) {
@@ -168,7 +187,7 @@ export function resolveLayers(config, found) {
     if (unknown('overrides', name)) continue;
     const layer = layers.get(name);
     layer.overrides = override;
-    const lines = overrideEnvLines(override);
+    const lines = overrideEnvLines(override, configDir);
     if (lines.length) {
       const base = layer.envText ?? found.find((f) => f.name === name).envText;
       layer.envText = [

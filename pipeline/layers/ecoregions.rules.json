@@ -1,0 +1,18 @@
+{
+  "$schema": "../schema/action-rules.schema.json",
+  "description": "ERAP action recommendations for the ecoregion layer (LAYER_RULES=ecoregions). Only the one known rule so far; the rest come from the current ERAP app's action recommendation reference table (issue #60), added here as a table-only change.",
+  "types": [
+    { "id": "area_based_conservation", "label": "Area-based conservation" },
+    { "id": "landscape_conservation", "label": "Landscape conservation" }
+  ],
+  "actions": [
+    {
+      "id": "area_based_30x30",
+      "type": "area_based_conservation",
+      "title": "Area-based conservation - 30x30 goals",
+      "condition": "protected_pcnt < 30",
+      "reason": "recommended because current protection is less than 30%",
+      "source": "Stakeholder example in issue #60"
+    }
+  ]
+}

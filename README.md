@@ -278,6 +278,17 @@ worked examples, and
      feature keeps its largest) and borders are simplified as a coverage
      by `LAYER_GENERALISE_SIMPLIFY_PX` (default 1) pixels; higher zooms
      keep full detail. See design note 02, Low-zoom generalisation.
+   - `LAYER_CALCULATED` (optional): calculated fields, as
+     `name=expression` on the kept attributes, for example
+     `'unprotected_intact_pcnt=round(intact_pcnt - protected_intact_pcnt, 2)'`,
+     evaluated at build time and tiled like any attribute; the app never
+     calculates. `LAYER_RULES` (optional) names an action rules table,
+     `pipeline/layers/<table>.rules.json` (such as `ecoregions.rules.json`):
+     each action's condition, for example `protected_pcnt < 30`, becomes
+     the attributes `action_<id>` (1 or 0), `action_<id>_reason` and
+     `actions_<type>_count`. New rules are a change to the table only. See
+     design note 02, Calculated fields and action rules, for the
+     expression language, and ADR 0011.
 
    A raster layer needs only `LAYER_TYPE=raster`, `LAYER_INPUT`, the zooms
    (up to z14; z12 is about 30 m) and, if the GeoTIFF does not declare
@@ -291,11 +302,12 @@ worked examples, and
    an optional `popup` (title, stats, bar or line charts; without one the
    layer is not clickable). A raster layer uses `"symbology": {"geometry":
    "raster", "color", "opacity", "label"}` (see `forest.style.json`) and
-   has no pop-up. Check display configs without building:
+   has no pop-up. Check display configs (and rules tables) without
+   building:
 
    ```sh
    docker compose run --rm --entrypoint sh pipeline -c \
-     'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.style.json'
+     'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.json'
    ```
 
 4. Build it with `docker compose run --rm pipeline <layer>` and reload the
@@ -312,6 +324,9 @@ worked examples, and
    `format` `cog`, the COG's `width` and `height` in pixels at the max
    zoom, `block_size` (256), `overview_count` (one per lower zoom), and
    `zooms`, each zoom's `width` and `height`; `bytes` is the file size.
+   With calculated fields or rules, `calculated_fields` (each one's
+   expression and value range) and `rules` (how many features each
+   action is recommended for) too; `--status` lists them under the layer.
 
 To change how a layer looks, see Styling a layer below: no rebuild.
 
@@ -322,6 +337,11 @@ for the options):
 ```sh
 docker compose run --rm --entrypoint inspect.sh pipeline my/data.gpkg
 ```
+
+`--config <layer>` instead of a path shows a configured layer's data as
+its build sees it: the kept attributes, its calculated fields with their
+expressions and values, and how many features each rule recommends an
+action for, so expressions can be checked before a build.
 
 When a layer's source data is replaced, inspect the new file and compare
 its fields, CRS and feature count with the layer's `.env`, then rebuild
@@ -419,8 +439,11 @@ relative to the repo root, so you can keep several and switch.
 - `overrides` change a layer by name. `input` (the source data, relative
   to `RAW_DIR`) and `env` (any other `.env` setting, such as
   `LAYER_MAX_ZOOM` or `LAYER_FIELDS`) change the tiles: rebuild the
-  layer. `title`, `order`, `defaultVisible` and `style` change only how it
-  looks. `style` is merged over the layer's `.style.json`: objects key by
+  layer. So do `calculated` (calculated fields to add or change by name,
+  `null` to remove one, on top of the layer's `LAYER_CALCULATED`) and
+  `rules` (another action rules table, relative to this file, or `null`
+  for none; ADR 0011). `title`, `order`, `defaultVisible` and `style`
+  change only how it looks. `style` is merged over the layer's `.style.json`: objects key by
   key, anything else (lists too) replaced, and `null` removes a key.
 - `localLayers` are layers only you have, written inline in the same
   shape as a `.env` (`env`) and `.style.json` (`style`). Or keep them as

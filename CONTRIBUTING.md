@@ -66,7 +66,7 @@ instead, with no pull request: see `README.md` (Your map config) and ADR
 
 ```sh
 docker compose run --rm --entrypoint sh pipeline -c \
-  'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.style.json'
+  'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.json'
 ```
 
 Helpers for checking a layer by hand (Claude Code's skills use the same
@@ -121,7 +121,7 @@ same tools at the same versions as CI, all in Docker:
 export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
-# pipeline job: shellcheck, hadolint, bats (100 tests, including the display
+# pipeline job: shellcheck, hadolint, bats (120 tests, including the display
 # tool's node:test unit tests; 41 more for scripts/setup.sh), runtime image
 docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
   pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \

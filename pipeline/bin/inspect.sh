@@ -7,6 +7,8 @@
 #
 # Usage: inspect.sh [-h|--help] [--json] [--layer NAME] [--no-checks]
 #                   [--gap-width METRES] INPUT
+#        inspect.sh [-h|--help] [--json] [--no-checks] [--gap-width METRES]
+#                   --config LAYER
 #
 #   INPUT        source dataset. Relative paths are resolved against
 #                PIPELINE_INPUT_DIR (default /data/raw), like LAYER_INPUT. A
@@ -17,6 +19,14 @@
 #   --no-checks  skip the geometry and coverage checks (slow on big data).
 #   --gap-width  narrowest gap between neighbours that is not flagged by
 #                the coverage check, in Web Mercator metres (default 100).
+#   --config     inspect configured layer LAYER as its build sees it, instead
+#                of an INPUT: its source data (LAYER_INPUT and
+#                LAYER_SOURCE_LAYER) normalised (the LAYER_FIELDS kept,
+#                renamed, in EPSG:4326, made valid) with its calculated
+#                fields and rule attributes added (ADR 0011), with the map
+#                config's overrides, if any. Each calculated field shows its
+#                expression; the rules table, how many features each action
+#                is recommended for. Checks expressions before a build.
 #
 # Fields: per scalar field the non-null count, distinct count, min and max,
 # and the values with their counts when there are at most 12 distinct ones.
@@ -36,8 +46,18 @@ PIPELINE_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 source "${PIPELINE_ROOT}/lib/log.sh"
 # shellcheck source=lib/normalise.sh
 source "${PIPELINE_ROOT}/lib/normalise.sh"
+# For --config: the layer set, its settings and the derived attributes.
+# shellcheck source=lib/config.sh
+source "${PIPELINE_ROOT}/lib/config.sh"
+# shellcheck source=lib/display.sh
+source "${PIPELINE_ROOT}/lib/display.sh"
+# shellcheck source=lib/mapconfig.sh
+source "${PIPELINE_ROOT}/lib/mapconfig.sh"
+# shellcheck source=lib/derive.sh
+source "${PIPELINE_ROOT}/lib/derive.sh"
 
 PIPELINE_INPUT_DIR=${PIPELINE_INPUT_DIR:-/data/raw}
+PIPELINE_LAYERS_DIR=${PIPELINE_LAYERS_DIR:-${PIPELINE_ROOT}/layers}
 
 # Fields with at most this many distinct values get their values listed.
 INSPECT_MAX_VALUES=12
@@ -231,11 +251,55 @@ inspect() {
         ($checks.union_parts < $count and ($checks.overlap_pct // 0) <= 0.001) end)'
 }
 
+# config_data NAME OUT_DIR: for --config, write configured layer NAME's data
+# as its build sees it to OUT_DIR/NAME.geojsonl: normalised, with its
+# calculated fields and rule attributes added (lib/derive.sh), and its plan
+# to OUT_DIR/derive.json if it has any. Prints LAYER_INPUT. Run in a
+# subshell: it loads the layer's settings.
+config_data() {
+  local name=$1 out=$2
+  layer_known "$name" || die "no layer named $name (layers: $(layer_names | paste -sd ' '))"
+  PIPELINE_LOG_PREFIX=$name
+  load_layer_config "$(layer_get "$name" env)"
+  [[ $LAYER_TYPE == vector ]] || die "$name is a $LAYER_TYPE layer: inspect its LAYER_INPUT instead"
+  local data="${out}/${name}.geojsonl" plan=""
+  if layer_derives; then
+    plan="${out}/derive.json"
+    derive_plan "$name" "$name" "$plan"
+  fi
+  normalise "$LAYER_INPUT" "$LAYER_SOURCE_LAYER" "$LAYER_SOURCE_SRS" "$LAYER_ENCODING" \
+    "$data" "${LAYER_FIELDS[@]}"
+  if [[ -n $plan ]]; then derive_apply "$data" "$plan"; fi
+  printf '%s\n' "$LAYER_INPUT"
+}
+
+# with_config SUMMARY OUT_DIR NAME INPUT: SUMMARY (the JSON from inspect on
+# config_data's output) with `config`: the layer, its input, and its
+# calculated fields and rules with their counts (derive_report), and each
+# calculated field's `calculated` expression.
+with_config() {
+  local summary=$1 out=$2 name=$3 input=$4 plan='{"calculated": [], "rules": null}'
+  local derived='{"calculated_fields": null, "rules": null}'
+  if [[ -s "${out}/derive.json" ]]; then
+    plan=$(jq -c '.' "${out}/derive.json")
+    derived=$(derive_report "${out}/${name}.geojsonl" "${out}/derive.json")
+  fi
+  jq -c --arg name "$name" --arg input "$input" --argjson plan "$plan" --argjson d "$derived" '
+    .driver = "as built" | .config = {layer: $name, input: $input,
+               calculated_fields: $d.calculated_fields, rules: $d.rules}
+    | .fields |= map(.name as $n
+        | ([$plan.calculated[] | select(.name == $n) | .expression] | first) as $e
+        | if $e then . + {calculated: $e} else . end)' <<<"$summary"
+}
+
 # human JSON: the summary as text.
 human() {
   jq -r '
     def num: if type == "number" and . != floor then (. * 1000 | round / 1000) else . end;
     def v: if . == null then "-" else (num | tostring) end;
+    (if .config then
+      "Config:     layer \(.config.layer), as built (LAYER_FIELDS, calculated fields, rules) from \(.config.input)"
+     else empty end),
     "Input:      \(.input) (\(.driver))",
     (if (.layers | length) > 1 then "Layers:     \(.layers | join(", ")) (showing \(.layer))" else empty end),
     "Layer:      \(.layer)",
@@ -249,7 +313,14 @@ human() {
     "",
     "Fields:",
     (.fields[] | "  \(.name) \(.type)\(if .width then "(\(.width))" else "" end): non-null \(.non_null | v), distinct \(.distinct | v), min \(.min | v), max \(.max | v)"
+      + (if .calculated then "\n    calculated: \(.calculated)" else "" end)
       + (if .values then "\n    values: " + ([.values[] | "\(.value | v) (\(.count))"] | join(", ")) else "" end)),
+    (if .config.rules then
+      "",
+      "Rules:      \(.config.rules.file)",
+      (.config.rules.actions[] | "  \(.id) (\(.type)): \(.condition)\n    recommended for \(.recommended) feature(s): \(.attribute), \(.reason_attribute)"),
+      (.config.rules.types[] | "  type \(.id): \(.features) feature(s) with an action (\(.attribute))")
+     else empty end),
     (if .checks then
       "",
       "Checks:",
@@ -264,7 +335,7 @@ human() {
 }
 
 main() {
-  local json=0 layer="" checks=1 gap=100 input=""
+  local json=0 layer="" checks=1 gap=100 input="" config=""
   while (($# > 0)); do
     case $1 in
       -h | --help)
@@ -273,12 +344,16 @@ main() {
         ;;
       --json) json=1 ;;
       --no-checks) checks=0 ;;
-      --layer | --gap-width)
+      --layer | --gap-width | --config)
         if (($# < 2)); then
           log_error "$1 needs a value"
           return 2
         fi
-        if [[ $1 == --layer ]]; then layer=$2; else gap=$2; fi
+        case $1 in
+          --layer) layer=$2 ;;
+          --config) config=$2 ;;
+          *) gap=$2 ;;
+        esac
         shift
         ;;
       -*)
@@ -296,7 +371,11 @@ main() {
     esac
     shift
   done
-  if [[ -z $input ]]; then
+  if [[ -n $config && ( -n $input || -n $layer ) ]]; then
+    log_error "--config takes the input and layer from the layer's config: give no INPUT or --layer"
+    return 2
+  fi
+  if [[ -z $input && -z $config ]]; then
     log_error "no input given"
     usage >&2
     return 2
@@ -306,10 +385,21 @@ main() {
     return 2
   fi
 
-  [[ $input == /* ]] || input="${PIPELINE_INPUT_DIR}/${input}"
   local dataset summary
-  dataset=$(gdal_input_path "$input") || return 1
-  summary=$(inspect "$dataset" "$input" "$layer" "$checks" "$gap")
+  if [[ -n $config ]]; then
+    local scratch
+    scratch=$(mktemp -d "${TMPDIR:-/tmp}/inspect.XXXXXX")
+    # shellcheck disable=SC2064 # expand now: scratch is local to main.
+    trap "rm -rf '${scratch}'" EXIT
+    resolve_layers "${scratch}/resolved" || return 2
+    input=$(config_data "$config" "$scratch") || return 1
+    summary=$(inspect "${scratch}/${config}.geojsonl" "$input" "" "$checks" "$gap")
+    summary=$(with_config "$summary" "$scratch" "$config" "${input#"${PIPELINE_INPUT_DIR}"/}")
+  else
+    [[ $input == /* ]] || input="${PIPELINE_INPUT_DIR}/${input}"
+    dataset=$(gdal_input_path "$input") || return 1
+    summary=$(inspect "$dataset" "$input" "$layer" "$checks" "$gap")
+  fi
   if ((json)); then
     printf '%s\n' "$summary"
   else

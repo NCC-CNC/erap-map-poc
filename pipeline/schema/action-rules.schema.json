@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NCC-CNC/erap-map-poc/pipeline/schema/action-rules.schema.json",
+  "title": "Action recommendation rules",
+  "description": "A rules table, pipeline/layers/<table>.rules.json, that a vector layer names in LAYER_RULES. The pipeline evaluates every action's condition per feature at build time and writes the results as tile attributes: action_<id> (1 or 0), action_<id>_reason (the title and reason, only when recommended) and actions_<type>_count (per action type). ADR 0011; docs/design/02_data_layers_and_popups.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["types", "actions"],
+  "properties": {
+    "$schema": {
+      "description": "Optional, for editors: the path to this schema.",
+      "type": "string"
+    },
+    "description": {
+      "description": "What the table is and where its rules come from.",
+      "type": "string"
+    },
+    "types": {
+      "description": "The action types. Each gets a count attribute, actions_<id>_count, even with no actions yet.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "label": { "$ref": "#/$defs/text" }
+        }
+      }
+    },
+    "actions": {
+      "description": "The actions, each recommended for a feature when its condition is true. A condition that is false or null (a missing value) does not recommend the action.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "title", "condition", "reason"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "type": {
+            "description": "The id of one of `types`.",
+            "$ref": "#/$defs/id"
+          },
+          "title": {
+            "description": "The action, for example \"Area-based conservation - 30x30 goals\".",
+            "$ref": "#/$defs/text"
+          },
+          "condition": {
+            "description": "When the action is recommended: an expression on the layer's attributes (after LAYER_FIELDS renames) and calculated fields, for example \"protected_pcnt < 30\". The expression language is in docs/design/02_data_layers_and_popups.md (Calculated fields and action rules).",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "reason": {
+            "description": "Why, after the title in action_<id>_reason, for example \"recommended because current protection is less than 30%\".",
+            "$ref": "#/$defs/text"
+          },
+          "source": {
+            "description": "Optional: where the rule comes from (for people; not tiled).",
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "description": "Lower case letters, digits and _, starting with a letter; part of attribute names.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "maxLength": 48
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "^[^\\u0000-\\u001f]*$"
+    }
+  }
+}
