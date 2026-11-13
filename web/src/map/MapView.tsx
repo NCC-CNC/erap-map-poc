@@ -12,7 +12,7 @@ import {
   type VisibilityState,
 } from '../layers';
 import { FeatureModal } from '../modal/FeatureModal';
-import { keepModal, openModal, type OpenModal } from '../modal/state';
+import { keepModal, openModal, withTab, type OpenModal, type TabState } from '../modal/state';
 import { BASEMAP_STYLES, DEFAULT_BASEMAP_THEME, type BasemapTheme } from './basemap';
 import { BasemapToggle } from './BasemapToggle';
 import { createMap, setBasemapStyle, setLayerTheme, setLayerVisibility, tilesBaseUrl } from './createMap';
@@ -32,7 +32,8 @@ const NO_LAYERS: readonly LayerDefinition[] = [];
  * applied once it has loaded, unless the URL already holds a view.
  * Clicking a feature of a visible layer with a pop-up definition opens its
  * pop-up, and one with a modal template opens the modal dialog (ADR 0012),
- * which closes when its layer is hidden. A layer with colour themes is
+ * which closes when its layer is hidden and keeps each layer's selected tab
+ * from one feature to the next. A layer with colour themes is
  * drawn in the theme chosen in the layer panel. MapLibre lives outside
  * React's render tree: the map is created once and removed on unmount.
  */
@@ -51,6 +52,8 @@ export function MapView() {
   // Layers not in here are in their default theme.
   const [themes, setThemes] = useState<ThemeState>({});
   const [modal, setModal] = useState<OpenModal | null>(null);
+  // Each layer's selected modal tab, kept from one feature to the next.
+  const [modalTabs, setModalTabs] = useState<TabState>({});
   // Read when the map is created; later changes go through setBasemapStyle.
   const initialTheme = useRef(theme);
   // Read by the map each time it adds the data layers (on every style.load).
@@ -154,7 +157,14 @@ export function MapView() {
           onThemeChange={(id, themeId) => setThemes((state) => withTheme(state, id, themeId))}
         />
       </MapPanel>
-      {shownModal && <FeatureModal content={shownModal.content} onClose={closeModal} />}
+      {shownModal && (
+        <FeatureModal
+          content={shownModal.content}
+          onClose={closeModal}
+          tab={modalTabs[shownModal.layerId]}
+          onTabChange={(index) => setModalTabs((state) => withTab(state, shownModal.layerId, index))}
+        />
+      )}
     </>
   );
 }

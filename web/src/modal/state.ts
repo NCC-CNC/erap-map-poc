@@ -27,3 +27,15 @@ export function keepModal(
   const def = layers.find((d) => d.id === open.layerId);
   return def && isVisible(visibility, def) ? open : null;
 }
+
+/**
+ * The selected tab of each layer's modal, as the section's template index
+ * (ADR 0012), kept while the map is open: the next feature of the layer,
+ * or the modal opened again, shows the same tab when it has it.
+ */
+export type TabState = Readonly<Record<string, number>>;
+
+/** `state` with `layerId`'s selected tab set to the section `index`. */
+export function withTab(state: TabState, layerId: string, index: number): TabState {
+  return state[layerId] === index ? state : { ...state, [layerId]: index };
+}

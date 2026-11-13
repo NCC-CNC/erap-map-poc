@@ -5,6 +5,8 @@
 Accepted. Extends 0007-data-driven-layer-styles.md: the display config
 gains a click modal, switchable colour themes, a gradient colour rule and
 number format presets; the app stays a generic renderer of the manifest.
+Amended by #75: the modal's sections are tabs by default (Decision,
+Tabs).
 
 ## Context
 
@@ -37,6 +39,20 @@ tiles hold.
   returned on close, closed by Escape, the close button or the backdrop,
   scrolling inside, full screen on narrow screens, and closed when its
   layer is hidden. The small pop-up stays for simple layers.
+- **Tabs** (amended by #75): one long scroll in a dialog nearly as tall
+  as the window was too big, so by default each section the feature has
+  values for is a tab (labelled by the section's `heading`, or a shorter
+  optional `tab`), shown one at a time in a smaller dialog of fixed size
+  whose panel scrolls; with one such section there is no tab list. The
+  modal's optional `layout` is `tabs` (the default) or `scroll`, the
+  earlier single scroll. The tabs follow the WAI-ARIA tabs pattern
+  (roving tabindex, arrow keys, Home and End, selection follows focus);
+  only the selected panel is rendered; and the map keeps each layer's
+  selected tab, by the section's position in the template, for its next
+  feature or the next opening. The pipeline also rejects two tabs with
+  the same label. The manifest carries `layout` and `tab` only when the
+  config gives them (the template is copied as it is) and the app applies
+  the default, so a manifest built before #75 shows tabs.
 - **Colour themes**: the polygon and point shorthand may give `themes`
   (each an id, label, colour rule and optional legend) and a
   `defaultTheme` in place of one `color`. The pipeline resolves every

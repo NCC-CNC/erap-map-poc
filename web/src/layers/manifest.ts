@@ -5,6 +5,7 @@ import type {
   LayerDefinition,
   LayerType,
   MapDefaults,
+  ModalLayout,
 } from './types';
 
 /**
@@ -274,17 +275,28 @@ function modalBlock(value: unknown, path: string, problems: Problems): void {
   problems.push(`${path}.type must be one of ${BLOCK_TYPES.join(', ')}`);
 }
 
+/** The modal layouts (schema `$defs/modal`), the default first. */
+export const MODAL_LAYOUTS: readonly ModalLayout[] = ['tabs', 'scroll'];
+
 /** A click modal template (schema `$defs/modal`). */
 function modal(value: unknown, path: string, problems: Problems): void {
-  const m = object(value, path, problems, ['title', 'sections'], ['subtitle']);
+  const m = object(value, path, problems, ['title', 'sections'], ['subtitle', 'layout']);
   if (!m) return;
   check(isText(m.title), `${path}.title must be text`, problems);
   if (m.subtitle !== undefined) check(isText(m.subtitle), `${path}.subtitle must be text`, problems);
+  if (m.layout !== undefined) {
+    check(
+      MODAL_LAYOUTS.includes(m.layout as ModalLayout),
+      `${path}.layout must be one of ${MODAL_LAYOUTS.join(', ')}`,
+      problems,
+    );
+  }
   list(m.sections, `${path}.sections`, problems, 1).forEach((item, i) => {
     const where = `${path}.sections[${i}]`;
-    const section = object(item, where, problems, ['heading'], ['description', 'blocks']);
+    const section = object(item, where, problems, ['heading'], ['tab', 'description', 'blocks']);
     if (!section) return;
     check(isText(section.heading), `${where}.heading must be text`, problems);
+    if (section.tab !== undefined) check(isText(section.tab), `${where}.tab must be text`, problems);
     check(
       section.description !== undefined || section.blocks !== undefined,
       `${where} needs a description or blocks`,

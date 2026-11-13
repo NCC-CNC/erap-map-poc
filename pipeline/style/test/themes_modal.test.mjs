@@ -288,6 +288,35 @@ describe('modal template', () => {
     const m = modal([{ heading: 'A', blocks: [{ type: 'list', items: [{ text: '{bad name}' }], empty: 'None' }] }]);
     assert.match(modalProblems(m)[0], /^modal.sections\[0\].blocks\[0\].items\[0\].text:/);
   });
+
+  it('takes a layout and short tab labels, copied as they are', () => {
+    for (const layout of ['tabs', 'scroll']) {
+      const m = { ...modal([{ heading: 'Direct threats', tab: 'Threats', description: 'x' }]), layout };
+      assert.deepEqual(resolveDisplay('t', withModal(m)).modal, m);
+    }
+  });
+
+  it('rejects a layout not known and an empty tab label (schema)', () => {
+    const layout = { ...modal([{ heading: 'A', description: 'x' }]), layout: 'accordion' };
+    assert.ok(problemsOf(() => resolveDisplay('t', withModal(layout))).length > 0);
+    const empty = modal([{ heading: 'A', tab: '', description: 'x' }]);
+    assert.ok(problemsOf(() => resolveDisplay('t', withModal(empty))).length > 0);
+  });
+
+  it('in the tabs layout, rejects two sections with the same tab label', () => {
+    const sections = [
+      { heading: 'Threats', description: 'x' },
+      { heading: 'Direct threats', tab: 'Threats', description: 'y' },
+      { heading: 'Threats', tab: 'Other', description: 'z' },
+    ];
+    const problem =
+      'modal.sections[1]: tab label "Threats" is also used by modal.sections[0] (give one a different "tab")';
+    assert.deepEqual(modalProblems(modal(sections)), [problem]);
+    assert.deepEqual(modalProblems({ ...modal(sections), layout: 'tabs' }), [problem]);
+    assert.deepEqual(problemsOf(() => resolveDisplay('t', withModal(modal(sections)))), [problem]);
+    // The scroll layout shows no tabs, so labels may repeat.
+    assert.deepEqual(modalProblems({ ...modal(sections), layout: 'scroll' }), []);
+  });
 });
 
 describe('the ecoregions example config', () => {

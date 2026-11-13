@@ -12,9 +12,15 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
-/** The elements in `container` that Tab reaches, in order. */
+/**
+ * The elements in `container` that Tab reaches, in order: not hidden, and
+ * not taken out of the Tab order with `tabindex="-1"` (as the tabs that
+ * are not selected are, with a roving tabindex).
+ */
 export function focusableIn(container: HTMLElement): HTMLElement[] {
-  return [...container.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => !el.hidden);
+  return [...container.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+    (el) => !el.hidden && el.getAttribute('tabindex') !== '-1',
+  );
 }
 
 /**

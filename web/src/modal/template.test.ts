@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ModalDefinition } from '../layers';
 import { ecoregionsExample, sampleModal } from '../test/fixtures';
-import { MISSING_CELL, buildModalContent, fillTemplate, isTrue, placeholders } from './template';
+import { MISSING_CELL, buildModalContent, fillTemplate, isTrue, placeholders, selectedSection } from './template';
 
 const modal = sampleModal.modal as ModalDefinition;
 
@@ -46,9 +46,12 @@ describe('buildModalContent for the sample modal', () => {
     expect(buildModalContent(modal, cedar, sampleModal.title)).toEqual({
       title: 'Cedar',
       subtitle: 'Sample feature 7',
+      layout: 'tabs',
       sections: [
         {
-          heading: 'Summary',
+          index: 0,
+          heading: 'Summary of the feature',
+          tab: 'Summary',
           description: 'A made-up feature of 12,346 ha.',
           blocks: [
             {
@@ -62,7 +65,9 @@ describe('buildModalContent for the sample modal', () => {
           ],
         },
         {
+          index: 1,
           heading: 'Values',
+          tab: 'Values',
           blocks: [
             {
               type: 'table',
@@ -103,7 +108,9 @@ describe('buildModalContent for the sample modal', () => {
           ],
         },
         {
+          index: 2,
           heading: 'Notes',
+          tab: 'Notes',
           blocks: [
             { type: 'text', text: 'Scored 57 out of 100.' },
             { type: 'list', items: ['Has a score of 57'], empty: 'Nothing to list.' },
@@ -115,7 +122,7 @@ describe('buildModalContent for the sample modal', () => {
 
   it('hides what the feature has no values for, down to whole sections', () => {
     const content = buildModalContent(modal, { properties: { name: 'Bare' } }, sampleModal.title);
-    expect(content).toEqual({ title: 'Bare', sections: [] });
+    expect(content).toEqual({ title: 'Bare', layout: 'tabs', sections: [] });
   });
 
   it('falls back to the layer title, and shows n/a for a missing cell in a row with values', () => {
@@ -130,7 +137,7 @@ describe('buildModalContent for the sample modal', () => {
       columns: ['Value', 'Score'],
       rows: [{ label: '2021', cells: ['5', ''] }],
     });
-    const summary = content.sections.find((s) => s.heading === 'Summary');
+    const summary = content.sections.find((s) => s.tab === 'Summary');
     expect(summary?.blocks).toEqual([{ type: 'attributes', items: [{ label: 'ID', value: '3' }] }]);
     expect(summary?.description).toBeUndefined();
 
@@ -168,6 +175,36 @@ describe('buildModalContent for the sample modal', () => {
     // A flag set but its text missing: the item is left out.
     expect(notes({ flag: 1 })?.blocks).toEqual([{ type: 'list', items: [], empty: 'Nothing to list.' }]);
     expect(notes({})).toBeUndefined();
+  });
+});
+
+describe('tabs', () => {
+  // Has a Summary (its id) and Notes (a flag), not Values.
+  const elm = { id: 4, properties: { name: 'Elm', flag: 1, flag_reason: 'too low' } };
+
+  it('label each shown section with its tab, else its heading, and keep its template index', () => {
+    const content = buildModalContent(modal, elm, 'x');
+    expect(content.sections.map((s) => [s.index, s.tab, s.heading])).toEqual([
+      [0, 'Summary', 'Summary of the feature'],
+      [2, 'Notes', 'Notes'],
+    ]);
+  });
+
+  it('are the default layout; scroll is kept as given', () => {
+    expect(buildModalContent(modal, cedar, 'x').layout).toBe('tabs');
+    expect(buildModalContent({ ...modal, layout: 'scroll' }, cedar, 'x').layout).toBe('scroll');
+  });
+
+  it('keep the selected section when the feature has it, else select the first shown', () => {
+    const all = buildModalContent(modal, cedar, 'x');
+    const some = buildModalContent(modal, elm, 'x');
+    expect(selectedSection(all, 1)).toBe(1);
+    expect(selectedSection(all, undefined)).toBe(0);
+    expect(selectedSection(some, 2)).toBe(2);
+    // Values (1) is hidden for this feature, and 9 is no section.
+    expect(selectedSection(some, 1)).toBe(0);
+    expect(selectedSection(some, 9)).toBe(0);
+    expect(selectedSection(buildModalContent(modal, { properties: {} }, 'x'), 1)).toBeUndefined();
   });
 });
 

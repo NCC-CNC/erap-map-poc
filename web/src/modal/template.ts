@@ -5,6 +5,7 @@ import type {
   ListBlock,
   ModalBlock,
   ModalDefinition,
+  ModalLayout,
   TableBlock,
   Template,
 } from '../layers';
@@ -44,7 +45,11 @@ export type BlockContent =
 
 /** A section ready to show: only the blocks the feature has values for. */
 export interface SectionContent {
+  /** Its position in the template, the same for every feature of the layer. */
+  index: number;
   heading: string;
+  /** The label of its tab: the section's `tab`, else its heading. */
+  tab: string;
   description?: string;
   blocks: BlockContent[];
 }
@@ -53,6 +58,7 @@ export interface SectionContent {
 export interface ModalContent {
   title: string;
   subtitle?: string;
+  layout: ModalLayout;
   sections: SectionContent[];
 }
 
@@ -195,18 +201,37 @@ export function buildModalContent(
   fallbackTitle: string,
 ): ModalContent {
   const subtitle = modal.subtitle ? fillTemplate(modal.subtitle, feature) : null;
-  const sections = modal.sections.flatMap((section): SectionContent[] => {
+  const sections = modal.sections.flatMap((section, index): SectionContent[] => {
     const description = section.description ? fillTemplate(section.description, feature) : null;
     const blocks = (section.blocks ?? [])
       .map((block) => blockContent(block, feature))
       .filter((block) => block !== null);
     const shown = section.blocks ? blocks.length > 0 : description !== null;
     if (!shown) return [];
-    return [{ heading: section.heading, ...(description !== null ? { description } : {}), blocks }];
+    return [
+      {
+        index,
+        heading: section.heading,
+        tab: section.tab ?? section.heading,
+        ...(description !== null ? { description } : {}),
+        blocks,
+      },
+    ];
   });
   return {
     title: fillTemplate(modal.title, feature) ?? fallbackTitle,
     ...(subtitle !== null ? { subtitle } : {}),
+    layout: modal.layout ?? 'tabs',
     sections,
   };
+}
+
+/**
+ * The section whose tab is selected, by its template `index`: `wanted`
+ * when this feature shows that section, else the first shown; undefined
+ * with none. Keeps the reader's tab from one feature of a layer to the next.
+ */
+export function selectedSection(content: ModalContent, wanted: number | undefined): number | undefined {
+  const shown = content.sections.find((s) => s.index === wanted) ?? content.sections[0];
+  return shown?.index;
 }

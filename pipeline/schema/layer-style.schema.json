@@ -634,6 +634,11 @@
       "anyOf": [{ "required": ["description"] }, { "required": ["blocks"] }],
       "properties": {
         "heading": { "type": "string", "minLength": 1 },
+        "tab": {
+          "description": "A shorter label for the section's tab in the `tabs` layout, for example `Threats` for `Direct threats`; default the heading. With a `tab`, the heading is also shown above the section's content. In the `tabs` layout, tab labels (or headings) must be unique within the modal.",
+          "type": "string",
+          "minLength": 1
+        },
         "description": { "$ref": "#/$defs/template" },
         "blocks": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/modalBlock" } }
       }
@@ -651,6 +656,10 @@
         "subtitle": {
           "description": "A line under the heading; hidden when a placeholder has no value.",
           "$ref": "#/$defs/template"
+        },
+        "layout": {
+          "description": "How the sections are shown. `tabs` (the default): a tab per section the feature has values for, one section at a time in a dialog of fixed size whose content scrolls; with only one such section, no tabs. `scroll`: every section one after another in a taller dialog that scrolls.",
+          "enum": ["tabs", "scroll"]
         },
         "sections": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/modalSection" } }
       }

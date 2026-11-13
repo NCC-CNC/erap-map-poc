@@ -7,6 +7,23 @@ All notable changes to this project are documented here. The format is based on
 
 ### Added
 
+- Click modal tabs (#75, ADR 0012 amended). A modal's sections are now
+  tabs by default, one per section the feature has values for (no tab
+  list with only one), in a smaller dialog of fixed size (34 by 36 rem,
+  less on a small window; full screen at 600 px or less as before) whose
+  tab panel scrolls, with charts sized for it. The modal's optional
+  `layout` is `tabs` (the default) or `scroll` (the earlier single
+  scroll), and a section's optional `tab` gives a shorter tab label than
+  its `heading`, which then also shows above the section. The tabs follow
+  the WAI-ARIA tabs pattern (roving tabindex, arrow keys, Home and End,
+  focus trap, Escape and close as before), and the map keeps each layer's
+  selected tab for the next feature or the next opening when that feature
+  has the section. The display config tool rejects two sections with the
+  same tab label in the `tabs` layout. `scripts/screenshot.sh --tab
+  LABEL` (with `--click`, repeatable) takes one more screenshot per modal
+  tab. The ecoregion example labels Direct threats and Action
+  recommendations `Threats` and `Actions`.
+
 - Calculated fields and action recommendation rules (#60, ADR 0011): all
   calculations happen in the pipeline, the app only displays tile
   attributes. `LAYER_CALCULATED` in a layer's `.env` adds attributes from
