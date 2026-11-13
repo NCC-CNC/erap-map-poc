@@ -17,8 +17,9 @@ From `git status` and `git diff --name-only main...`:
 - Only `docs/` or `*.md` changed: the repo-hygiene job only (that is all
   CI runs).
 - `pipeline/`, `scripts/*.sh` or a Dockerfile: the pipeline job.
-- `web/`, or `pipeline/schema/` or `pipeline/tests/fixtures/` (the web
-  tests read them): the web job.
+- `web/`, or `pipeline/schema/`, `pipeline/tests/fixtures/` or
+  `pipeline/layers/ecoregions.style.json` (the web tests read them): the
+  web job.
 - `docker-compose.yml` or `.env.example`: the compose job.
 - `pipeline/layers/*.style.json` or `*.rules.json`: also the display config check from
   `CONTRIBUTING.md` (Adding or changing a layer).

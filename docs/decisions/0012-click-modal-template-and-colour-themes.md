@@ -89,6 +89,7 @@ tiles hold.
   are defaults until confirmed against the current ERAP app (#58); the
   ecoregion template lives as an example
   (`pipeline/tests/fixtures/ecoregions.example.*`) until #58 commits the
-  layer.
+  layer. (#58 did: it is now `pipeline/layers/ecoregions.*`, and the tests
+  read that.)
 - Not done: themes for raw `layers`, a theme choice in the map config, a
   gradient legend derived from a raw `interpolate`, French text.

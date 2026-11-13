@@ -1,19 +1,22 @@
 # 02 Data, Layers and Pop-ups
 
-Status: skeleton. The data, styling, and pop-up content are TBC. This note is
-the data contract between the pipeline and the web app; fill it in per layer
-as each is confirmed, and change pipeline and web app together when it
-changes.
+Status: first real layers in (#58). The four play data layers, their
+styling and the ecoregion modal follow the decisions in #14 (Decisions
+from #14, below); licences, provenance, update frequency and stable ids
+are still TBC (#13, Open questions). This note is the data contract
+between the pipeline and the web app; fill it in per layer as each is
+confirmed, and change pipeline and web app together when it changes.
 
 ## Layer inventory
 
-| Layer id | Source dataset | Format | Geometry | Approx. size | Status |
-| --- | --- | --- | --- | --- | --- |
-| `sample` | Synthetic test fixture (`pipeline/tests/fixtures/sample.geojson`) | GeoJSON | Polygon | 15 features, about 5 KB | Test layer (`pipeline/tests/layers/`), not built by default |
-| `sample_points` | Synthetic test fixture (`pipeline/tests/fixtures/sample_points.geojson`) | GeoJSON | Point | 30 features, about 5 KB | Test layer (`pipeline/tests/layers/`), not built by default |
-| `forest` | Play data, `Forest_AAFC_LUTS_2020_NFIS_2022_30m.tif` (via `RAW_DIR`) | GeoTIFF | Binary raster | 200,792 x 131,690 cells, 620 MB | Built locally: `forest.cog.tif`, 2.27 GB, about 10 min (ADR 0010) |
-| `agriculture` | Play data, `HM_CA_ag2022_r90_merged_prj_30_binary.tif` (via `RAW_DIR`) | GeoTIFF | Binary raster | 235,461 x 137,833 cells, 1.3 GB | Built locally: `agriculture.cog.tif`, 0.38 GB, about 9 min (ADR 0010) |
-| `example` | TBC | TBC | TBC | TBC | Placeholder |
+| Layer id | Source dataset | Format | Geometry | Approx. size | Feature id | Licence, provenance, updates | Status |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `sample` | Synthetic test fixture (`pipeline/tests/fixtures/sample.geojson`) | GeoJSON | Polygon | 15 features, about 5 KB | `id` | Made up | Test layer (`pipeline/tests/layers/`), not built by default |
+| `sample_points` | Synthetic test fixture (`pipeline/tests/fixtures/sample_points.geojson`) | GeoJSON | Point | 30 features, about 5 KB | `id` | Made up | Test layer (`pipeline/tests/layers/`), not built by default |
+| `forest` | Play data, `Forest_AAFC_LUTS_2020_NFIS_2022_30m.tif` (via `RAW_DIR`) | GeoTIFF | Binary raster | 200,792 x 131,690 cells, 620 MB | None (raster) | TBC | Built locally: `forest.cog.tif`, 2.27 GB, about 10 min (ADR 0010) |
+| `agriculture` | Play data, `HM_CA_ag2022_r90_merged_prj_30_binary.tif` (via `RAW_DIR`) | GeoTIFF | Binary raster | 235,461 x 137,833 cells, 1.3 GB | None (raster) | TBC | Built locally: `agriculture.cog.tif`, 0.38 GB, about 9 min (ADR 0010) |
+| `protected_areas` | Play data, `protected_areas.gdb`, layer `cpcad_ncc_dslv_2025` (CPCAD 2025, dissolved; via `RAW_DIR`) | File geodatabase | MultiPolygon, no attributes | 112,050 features, 130 MB | `OBJECTID` (stable id TBC) | TBC | Built locally: `protected_areas.pmtiles`, 70 MB, about 23 min |
+| `ecoregions` | Play data, `ERAP_2026_ecoregions.gdb`, layer `ERAP_2026_ecoregions` (via `RAW_DIR`) | File geodatabase | MultiPolygon, a coverage | 149 features, 72 attributes, 43 MB | `OBJECTID` (`ECOREGION_ID` is text; stable id TBC) | TBC | Built locally: `ecoregions.pmtiles`, 21 MB, about 6 min |
 
 ## Per-layer contract
 
@@ -192,8 +195,8 @@ at least two, ascending) or `colors` (2 to 12) spread evenly from `min`
 to `max`, each of which defaults to the data's minimum or maximum (read
 from the data like `breaks`). Its legend is a `gradient`: a colour bar
 with each stop's value under it at its `position`, then the fallback if
-it has a label. For example (the ecoregion example's themes are in
-`pipeline/tests/fixtures/ecoregions.example.style.json`):
+it has a label. For example (the `ecoregions` layer's themes are in
+`pipeline/layers/ecoregions.style.json`):
 
 ```json
 "symbology": {
@@ -329,14 +332,12 @@ dialog is 40 rem wide, as tall as its content up to the window, and its
 body scrolls. On a narrow screen (600 px or less) the dialog fills it in
 either layout.
 
-The ecoregion example, `pipeline/tests/fixtures/ecoregions.example.env`
-and `.style.json`, uses the attributes the play data has now: a Summary
-(ids, ecozone, area, protected, Where To Work, intact, modified), Habitat
-(a table and a grouped bar chart of forest, grassland, wetland and lakes
-by cover, protected and Where To Work, and a table of rivers and
-shoreline by length, protected and Where To Work) and Direct threats (the
-footprint of each threat). The display config tests check it; #58 turns
-it into the committed layer and adds the ERAP metrics.
+The `ecoregions` layer (`pipeline/layers/ecoregions.env` and
+`.style.json`, section `ecoregions` below) is the worked example: every
+section of the #14 template, from the attributes the play data has now.
+It started as a test fixture in #57 and became the committed layer in
+issue #58; the display config tests and the web tests read the committed
+file, so there is one copy.
 
 ### `sample`
 
@@ -439,9 +440,10 @@ not built by default (#17).
   `pipeline/layers/forest.env`.
 - Pipeline steps: the raster branch (Raster layers, below).
 - Tile settings: z2 to z12, one COG of the cover share (`forest.cog.tif`).
-- Display (`forest.style.json`, `order` 1, under the vector layers): dark
-  green `#1b7837` at 70% opacity, legend "Forest (2020 to 2022)". Shown by
-  default.
+- Licence, provenance and update frequency: TBC (#13).
+- Display (`forest.style.json`, `order` 1, the bottom layer): dark
+  green `#1b7837` at 70% opacity, legend "Forest (2020 to 2022)". Off by
+  default (#14).
 - Pop-up: none (display only).
 
 ### `agriculture`
@@ -454,9 +456,152 @@ not built by default (#17).
 - Pipeline steps: the raster branch; 0 and nodata are both transparent.
 - Tile settings: z2 to z12, one COG of the cover share
   (`agriculture.cog.tif`).
-- Display (`agriculture.style.json`, `order` 2): orange `#d95f02` at 70%
-  opacity, legend "Agricultural land (2022)". Off by default.
+- Licence, provenance and update frequency: TBC (#13).
+- Display (`agriculture.style.json`, `order` 2, above `forest`): orange
+  `#d95f02` at 70% opacity, legend "Agricultural land (2022)". Off by
+  default.
 - Pop-up: none (display only).
+
+### `protected_areas`
+
+- Source: play data (November 2026), `protected_areas.gdb`, layer
+  `cpcad_ncc_dslv_2025`: Canada's protected and conserved areas (CPCAD,
+  2025), dissolved by NCC into 112,050 MultiPolygons with no attributes
+  (only `Shape_Length` and `Shape_Area`). Canada Albers (WGS 84), file
+  geodatabase of about 130 MB. Via `RAW_DIR`. Licence, provenance (CPCAD
+  release, how and by whom it was dissolved) and update frequency: TBC
+  (#13). Config: `pipeline/layers/protected_areas.env`.
+- Pipeline steps: reproject to EPSG:4326, make valid; no attributes kept.
+- Tile settings: z0 to z12, no profile (dissolved, so no overlaps, but not
+  a contiguous coverage) and no tippecanoe flags, so nothing is dropped
+  beyond what tiny polygon reduction and simplification collapse. Drop
+  guard `LAYER_MIN_VISIBLE_PX=4`: every area whose largest part covers 4
+  pixels at a zoom (4 x 4 CSS pixels on the map) is in that zoom's tiles.
+  The default of 1 failed at z12 on one sliver, `OBJECTID` 66341 (399 m2,
+  2.7 km of outline, under a metre wide), which simplification collapses
+  to nothing; 4 px leaves room for such slivers and still keeps every
+  area that can be seen. Build (November 2026): 70.3 MB, 1,363 s,
+  largest tile 234 KB (z6); present at z0 1,284 of 112,050 (all 17
+  required), at z12 110,440 (all 82,069 required).
+- Feature id: `OBJECTID` as `id`, the geodatabase's row id, kept only for
+  the drop guard; not stable across exports (Open questions).
+- Attributes kept in tiles: none.
+- Display (`protected_areas.style.json`, `order` 30, above the rasters,
+  under `ecoregions`): the shorthand, one semi-transparent green fill
+  `#41ab5d` at 60% opacity with a darker green outline `#006d2c` of
+  0.5 px, legend "Protected and conserved areas", title "Protected areas
+  (CPCAD)". Shown by default.
+- Pop-up: none. CPCAD attributes in a pop-up (names, types, IUCN
+  category) need the undissolved CPCAD and are deferred (#14).
+
+### `ecoregions`
+
+- Source: play data (November 2026), `ERAP_2026_ecoregions.gdb`, layer
+  `ERAP_2026_ecoregions`: the 149 ERAP ecoregions (MultiPolygon, a
+  contiguous coverage with about 90,000 polygon parts, mostly islands)
+  with their ERAP metrics, 72 attributes. Canada Albers (WGS 84), file
+  geodatabase of about 43 MB. Via `RAW_DIR`. Licence, provenance (which
+  ERAP run produced the metrics) and update frequency: TBC (#13).
+  Config: `pipeline/layers/ecoregions.env`.
+- Pipeline steps: reproject to EPSG:4326, make valid, keep and rename the
+  attributes below; calculated fields and action rules (Calculated fields
+  and action rules, below); low-zoom generalisation to z7.
+- Tile settings: z0 to z10, `LAYER_PROFILE=coverage`,
+  `LAYER_GENERALISE_MAX_ZOOM=7` (parts under 4 px dropped, borders
+  simplified at 1 px; z8 to z10 full detail), default drop guard (1 px).
+  Build (November 2026): 21.4 MB, 358 s (36 s of it generalising),
+  largest tile 6 to 28 KB at z0 to z7 and 59 KB at z8 to z10; every
+  ecoregion at every zoom but one small one at z0 (all 112 required
+  there present).
+- Feature id: `OBJECTID` as `id`, the geodatabase's row id. Tippecanoe
+  needs an integer id and `ECOREGION_ID` is text (for example `"100"`), so
+  `ECOREGION_ID` is kept as the attribute `ecoregion_id` and shown in the
+  modal. `OBJECTID` may change when the data is exported again; a stable
+  integer id is TBC (Open questions).
+- Attributes kept in tiles (English only; the French names are not
+  tiled): `ecoregion_id`, `name` (`ECOREGION_NAME_EN`), `ecozone_id`,
+  `ecozone` (`ECOZONE_NAME_EN`), `landscape_ha` (area), `protected_pcnt`,
+  `wtw_percent` and `wtw_area_ha` (NCC Where To Work, % and ha),
+  `intact_pcnt`, `modified_pcnt`, `protected_intact_pcnt`,
+  `protected_modified_pcnt`; per habitat (forest, grassland, wetland,
+  lakes) `pcnt_landscape_<habitat>_cover`, `pcnt_<habitat>_protected` and
+  `pcnt_<habitat>_wtw`; `rivers_km` and `coastline_km` with
+  `pcnt_<rivers|coastline>_protected` and `_wtw`; the direct threats
+  `forestry_pcnt`, `agriculture_pcnt`, `transport_high_pcnt`,
+  `transport_low_pcnt`, `energy_pcnt` and `builtup_pcnt`. Percentages are
+  0 to 100. Calculated: `unprotected_intact_pcnt` and
+  `unprotected_modified_pcnt` (intact or modified land outside protected
+  areas, % of the ecoregion). Rules (`ecoregions.rules.json`):
+  `action_area_based_30x30` and its `_reason` (122 of 149 ecoregions),
+  `actions_area_based_conservation_count` and
+  `actions_landscape_conservation_count` (0 everywhere until its rules
+  arrive). Peatlands, the hectare columns other than area and Where To
+  Work area, and the river and coast km breakdowns stay out.
+- Display (`ecoregions.style.json`, `order` 40, on top): a light fill at
+  35% opacity and a clear dark blue outline (`#08306b`, 1 px), so the
+  layers underneath stay readable. Colour themes, blue sequential, in the
+  "Colour by" list:
+  - Protected (%), the default: stepped, under 10 `#deebf7`, 10 to 17
+    `#9ecae1`, 17 to 30 `#4292c6`, 30 and over `#08519c`.
+  - Where To Work (%): a gradient `#f7fbff` to `#6baed6` to `#08306b`
+    from 0 to the data's maximum.
+  - Where To Work (total area, ha): a gradient on `wtw_area_ha`, 0,
+    1,000,000 and 2,500,000 ha.
+  - Action recommendations: area-based conservation: stepped on
+    `actions_area_based_conservation_count`, none, 1, 2 or more.
+  - Each with grey `#bdbdbd` "No data" for a missing value. Title
+    "ERAP ecoregions". Shown by default.
+- Click: a modal (Click modal, above), title `{name}`, subtitle
+  `{ecozone} ecozone`, sections:
+  1. Summary: ecoregion ID, ecozone and its ID, area, protected (%),
+     Where To Work (% and area), intact and modified (%).
+  2. Habitat: a table of forest, grassland, wetland and lakes by cover in
+     the ecoregion, protected and in Where To Work (%), the same as a
+     grouped bar chart, and a table of rivers and shoreline by total
+     length (km), protected and in Where To Work (%).
+  3. Direct threats: a description, then forestry, agriculture, transport
+     (high and low), energy and mining, and urban and built-up footprint
+     (%).
+  4. Opportunities: a description and a pie of unprotected intact and
+     modified land (the calculated fields).
+  5. Action recommendations: an introduction, then each recommended
+     action with its reason, or "No actions recommended by the rules so
+     far."
+
+  The description texts and colours are placeholders until confirmed
+  (Open questions).
+
+### Decisions from #14
+
+Recorded from issue #14 (2026-11-12); its later comments supersede the
+earlier ones. The "sidebar" there described the current ERAP app (ERAP
+Map Viewer, beta) and was never a requirement: the click opens a modal,
+one standard template filled from each ecoregion's tile attributes
+(#57, ADR 0012), so ERAP metrics and plots can be added later as
+template changes.
+
+- Order, bottom to top: `forest` (1), `agriculture` (2), `protected_areas`
+  (30), `ecoregions` (40). Only `ecoregions` is clickable.
+- On by default: `ecoregions` and `protected_areas`; the rasters are off.
+- Forest, CPCAD and agriculture are display-only layers with no click.
+  Many more layers may follow, so the general path (and full-Canada build
+  times) must hold up.
+- Ecoregions: light fill and clear outlines, on top; colour switchable in
+  the map (themes, blue sequential) by % protected (default, classes
+  under 10, 10 to 17, 17 to 30, 30 and over), Where To Work (%), Where To
+  Work (total area), count of action recommendations: area-based
+  conservation, and count of action recommendations: landscape
+  conservation (not yet: no rule, so always 0). `wtw` is NCC's Where To
+  Work and is labelled so. English only for now.
+- Modal sections: Summary, Habitat, Direct threats, Opportunities, Action
+  recommendations, as above. Peatlands are in the data but not shown.
+- Calculations happen in the pipeline, not the app (ADR 0011): the
+  unprotected intact and modified shares, and the action recommendations
+  from the committed rules table.
+- Protected areas: single semi-transparent green fill, darker outline, no
+  pop-up, small drop guard threshold.
+- Deferred: Indigenous territories (needs a dataset), CPCAD attributes
+  in a pop-up (needs the undissolved CPCAD), peatlands, French text.
 
 ## Raster layers
 
@@ -575,7 +720,7 @@ from its own, evaluated per feature at build time and tiled like the rest.
   (`id`, `label`) and the `actions` (`id`, `type`, `title`, `condition`,
   `reason`, optional `source`). New rules are a change to this file only.
 
-Example, the ecoregion layer (its `.env` arrives with #58):
+Example, from the ecoregion layer (`pipeline/layers/ecoregions.env`):
 
 ```sh
 LAYER_FIELDS+=(protected_intact_pcnt protected_modified_pcnt)
@@ -1030,6 +1175,31 @@ once the real data is known, and record the choice as an ADR if it differs.
 ## Open questions
 
 - All of the TBC fields above.
+- Licence, provenance and update frequency of `forest`, `agriculture`,
+  `protected_areas` and `ecoregions` (#13): who publishes each dataset,
+  under what licence, which version or run it is, and how often it
+  changes.
+- Stable feature ids (#13): `ecoregions` and `protected_areas` use
+  `OBJECTID`, the file geodatabase's row id, which may change when the
+  data is exported again. `ECOREGION_ID` is stable but text; tippecanoe
+  needs an integer. Options: an integer copy of `ECOREGION_ID` in the
+  source, or a calculated field `CAST(ecoregion_id AS integer)` as the
+  feature id (not tried yet). The dissolved CPCAD has no id of its
+  own, which is fine while it has no pop-up.
+- Ecoregion modal texts (#14): the section descriptions and the action
+  recommendations introduction are placeholders.
+- Ecoregion colours (#14): the blue ramps, the Opportunities pie colours
+  and the outline are defaults until confirmed against the current ERAP
+  app.
+- Where To Work (total area) theme: uses `wtw_area_ha` from the data, on
+  a gradient to 2,500,000 ha; confirm that this column is the total area
+  meant in #14.
+- Landscape conservation count theme (#14): left out until the rules
+  table has a landscape conservation action (the count is 0 for every
+  ecoregion now); then it is a theme on
+  `actions_landscape_conservation_count`, a style-only change.
+- More action rules from the ERAP app's reference table (#60): a change
+  to `ecoregions.rules.json` only.
 - Do any pop-ups aggregate across many features (for example, stats for
   everything inside a clicked boundary)? If so, precompute in the pipeline
   rather than in the browser.

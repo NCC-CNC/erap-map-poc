@@ -319,9 +319,11 @@ describe('modal template', () => {
   });
 });
 
-describe('the ecoregions example config', () => {
+describe('the committed ecoregions config', () => {
   it('passes the check', () => {
-    const config = readJson('ecoregions.example.style.json');
+    const config = JSON.parse(
+      readFileSync(new URL('../../layers/ecoregions.style.json', import.meta.url), 'utf8'),
+    );
     const display = resolveDisplay('ecoregions', config, () => Array.from({ length: 100 }, (_, i) => i));
     assert.ok(display.modal);
     assert.ok(display.themes.length > 1);

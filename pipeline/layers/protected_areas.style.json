@@ -1,0 +1,12 @@
+{
+  "$schema": "../schema/layer-style.schema.json",
+  "title": "Protected areas (CPCAD)",
+  "defaultVisible": true,
+  "order": 30,
+  "symbology": {
+    "geometry": "polygon",
+    "color": { "type": "single", "color": "#41ab5d", "label": "Protected and conserved areas" },
+    "fillOpacity": 0.6,
+    "outline": { "color": "#006d2c", "width": 0.5 }
+  }
+}

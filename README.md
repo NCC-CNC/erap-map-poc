@@ -76,7 +76,7 @@ language, helps write `.env` and opens the map.
   map config and rules tables. `style/` is the Node tool that checks
   them, resolves display configs and parses calculated field
   expressions. `tests/` has the bats tests, the `sample` test layers
-  and synthetic fixtures, including the ecoregion example template.
+  and synthetic fixtures.
 - `web/`: the map app (`src/map/` the map, layer panel, "Colour by" and
   click wiring, `src/layers/` the manifest reader and colour themes,
   `src/popup/` pop-up content and number formats, `src/modal/` the click
@@ -108,9 +108,9 @@ they are not pushed anywhere.
 
 ```sh
 # Build tiles into data/tiles/: every layer in pipeline/layers/, or only
-# the ones named. The layers (`forest`, `agriculture`) read their source
-# from RAW_DIR, here the folder holding the November 2026 play data (see
-# .env.example).
+# the ones named. The layers (`ecoregions`, `protected_areas`, `forest`,
+# `agriculture`) read their source from RAW_DIR, here the folder holding
+# the November 2026 play data (see .env.example).
 RAW_DIR=C:/data/ERAP_play_data docker compose run --rm --build pipeline forest
 RAW_DIR=C:/data/ERAP_play_data docker compose run --rm pipeline   # every enabled layer
 
@@ -262,8 +262,10 @@ closes its pop-up or dialog.
 
 A layer is two files in `pipeline/layers/`, and nothing in `web/`: the map
 reads every layer from `data/tiles/manifest.json` at startup (ADR 0007).
-`forest.env` and `forest.style.json` (raster) and the test layers in
-`pipeline/tests/layers/` (`sample.env` and `sample.style.json`, vector) are
+`forest.env` and `forest.style.json` (raster), `protected_areas` (a
+single-colour polygon layer), `ecoregions` (colour themes, a click modal,
+calculated fields and action rules) and the test layers in
+`pipeline/tests/layers/` (`sample.env` and `sample.style.json`) are
 worked examples, and
 `docs/design/02_data_layers_and_popups.md` is the full data contract.
 
@@ -324,7 +326,7 @@ worked examples, and
    out), and either an optional `popup` (title, stats, bar or line charts)
    or a `modal` (a dialog of sections with values, tables, charts, text
    and lists, from one template; see
-   `pipeline/tests/fixtures/ecoregions.example.style.json`); without
+   `pipeline/layers/ecoregions.style.json`); without
    either the layer is not clickable. Number formats can be presets
    (`percent`, `hectares`, `km`, `count`). Design note 02 (Display
    config) has the details. A raster layer uses `"symbology": {"geometry":

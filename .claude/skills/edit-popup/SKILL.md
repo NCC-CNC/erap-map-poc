@@ -10,8 +10,9 @@ a `popup` (small map pop-up) or a `modal` (a dialog of sections), never
 both. Colours, colour themes and legends are the restyle-layer skill.
 Reference: `docs/design/02_data_layers_and_popups.md` (Display config,
 Number formats, Click modal), `pipeline/schema/layer-style.schema.json`
-and ADR 0012; `pipeline/tests/fixtures/ecoregions.example.style.json` is
-a worked modal. Never commit data or screenshots.
+and ADR 0012; `pipeline/layers/ecoregions.style.json` is a worked modal
+(the web and display config tests read it, so run the web checks after
+changing it). Never commit data or screenshots.
 
 The map only shows tile attributes: no sums, shares or rules in the app.
 A derived value has to be an attribute in the tiles, from the source or
