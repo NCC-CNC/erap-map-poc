@@ -25,6 +25,7 @@
       "type": "integer"
     },
     "popup": { "$ref": "#/$defs/popup" },
+    "modal": { "$ref": "#/$defs/modal" },
     "symbology": { "$ref": "#/$defs/symbology" },
     "layers": {
       "description": "Raw MapLibre style-spec layers for a vector layer, in draw order (last on top), without `source` or `source-layer`, which the pipeline and the app fill in. Each `id` must be unique within the file; it is prefixed with `<layer>-` on the map. Not for raster layers, which use the raster `symbology`.",
@@ -40,6 +41,10 @@
   "if": { "required": ["layers"] },
   "then": { "properties": { "symbology": false } },
   "else": { "required": ["symbology"] },
+  "not": {
+    "description": "A layer has a pop-up or a modal for click details, not both.",
+    "required": ["popup", "modal"]
+  },
   "$defs": {
     "color": {
       "description": "A CSS colour, as MapLibre accepts it, for example #2c7fb8.",
@@ -147,11 +152,50 @@
         "classes": { "type": "integer", "minimum": 2, "maximum": 12 }
       }
     },
+    "interpolatedColor": {
+      "description": "A continuous colour gradient on a numeric attribute (MapLibre `interpolate`, linear), with a gradient legend. Either explicit `stops` (ascending `value`, at least two) or `colors` (2 to 12) spread evenly from `min` to `max`, each of which defaults to the attribute's minimum or maximum in the layer's data (resolved by the pipeline, like `breaks`). Values outside the range take the end colours; features without a numeric value take the `fallback`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "attribute", "fallback"],
+      "properties": {
+        "type": { "const": "interpolated" },
+        "attribute": { "$ref": "#/$defs/attribute" },
+        "stops": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "color"],
+            "properties": {
+              "value": { "type": "number" },
+              "color": { "$ref": "#/$defs/color" }
+            }
+          }
+        },
+        "colors": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 12,
+          "items": { "$ref": "#/$defs/color" }
+        },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "fallback": { "$ref": "#/$defs/fallback" }
+      },
+      "if": { "required": ["stops"] },
+      "then": { "properties": { "colors": false, "min": false, "max": false } },
+      "else": { "required": ["colors"] }
+    },
     "colorRule": {
       "type": "object",
       "required": ["type"],
-      "properties": { "type": { "enum": ["single", "categorical", "stepped"] } },
+      "properties": { "type": { "enum": ["single", "categorical", "stepped", "interpolated"] } },
       "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "interpolated" } } },
+          "then": { "$ref": "#/$defs/interpolatedColor" }
+        },
         {
           "if": { "properties": { "type": { "const": "single" } } },
           "then": { "$ref": "#/$defs/singleColor" }
@@ -166,26 +210,64 @@
         }
       ]
     },
-    "polygonSymbology": {
-      "description": "Polygons: a fill coloured by `color` with a thin outline.",
+    "themeId": {
+      "description": "A colour theme id: unique within the layer.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "theme": {
+      "description": "One named colour theme: what the \"Colour by\" choice in the layer panel switches to, in the browser, with no rebuild.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["geometry", "color", "fillOpacity", "outline"],
+      "required": ["id", "label", "color"],
+      "properties": {
+        "id": { "$ref": "#/$defs/themeId" },
+        "label": {
+          "description": "The name in the \"Colour by\" list, for example `Protected (%)`.",
+          "type": "string",
+          "minLength": 1
+        },
+        "color": { "$ref": "#/$defs/colorRule" },
+        "legend": {
+          "description": "An explicit legend for this theme, as the top-level `legend` is for a single `color`.",
+          "$ref": "#/$defs/legend"
+        }
+      }
+    },
+    "themes": {
+      "description": "Several named colour themes in place of one `color`: the map opens on `defaultTheme` (default: the first) and the layer panel offers a \"Colour by\" choice. Each theme has its own legend; the top-level `legend` is not used with themes.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/theme" }
+    },
+    "polygonSymbology": {
+      "description": "Polygons: a fill coloured by `color` (or by switchable `themes`) with a thin outline.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["geometry", "fillOpacity", "outline"],
+      "oneOf": [{ "required": ["color"] }, { "required": ["themes"] }],
+      "dependentRequired": { "defaultTheme": ["themes"] },
       "properties": {
         "geometry": { "const": "polygon" },
         "color": { "$ref": "#/$defs/colorRule" },
+        "themes": { "$ref": "#/$defs/themes" },
+        "defaultTheme": { "$ref": "#/$defs/themeId" },
         "fillOpacity": { "type": "number", "minimum": 0, "maximum": 1 },
         "outline": { "$ref": "#/$defs/stroke" }
       }
     },
     "pointSymbology": {
-      "description": "Points: circles coloured by `color` with a contrasting stroke.",
+      "description": "Points: circles coloured by `color` (or by switchable `themes`) with a contrasting stroke.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["geometry", "color", "radius", "stroke"],
+      "required": ["geometry", "radius", "stroke"],
+      "oneOf": [{ "required": ["color"] }, { "required": ["themes"] }],
+      "dependentRequired": { "defaultTheme": ["themes"] },
       "properties": {
         "geometry": { "const": "point" },
         "color": { "$ref": "#/$defs/colorRule" },
+        "themes": { "$ref": "#/$defs/themes" },
+        "defaultTheme": { "$ref": "#/$defs/themeId" },
         "radius": { "type": "number", "exclusiveMinimum": 0 },
         "stroke": { "$ref": "#/$defs/stroke" }
       }
@@ -252,12 +334,18 @@
       "required": ["color", "label"],
       "properties": {
         "color": { "$ref": "#/$defs/color" },
-        "label": { "type": "string", "minLength": 1 }
+        "label": { "type": "string", "minLength": 1 },
+        "position": {
+          "description": "In a `gradient` legend, where the colour sits on the bar, from 0 (start) to 1 (end). Items without one (such as a no data colour) show as separate swatches.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
       }
     },
     "legendKind": {
-      "description": "`ramp` for classes of a numeric value, `categories` for categories, `single` for one colour.",
-      "enum": ["single", "categories", "ramp"]
+      "description": "`ramp` for classes of a numeric value, `gradient` for a continuous colour ramp, `categories` for categories, `single` for one colour.",
+      "enum": ["single", "categories", "ramp", "gradient"]
     },
     "legendShape": {
       "description": "Swatch shape: `square` for fills, `circle` for points, `line` for lines.",
@@ -307,14 +395,26 @@
       ]
     },
     "numberFormat": {
-      "description": "How a number is shown. Without one, values are shown as they are.",
+      "description": "How a number is shown: an optional `preset`, changed by any of `decimals`, `grouping` and `suffix`. Without a format, values are shown as they are.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "preset": { "$ref": "#/$defs/formatPreset" },
         "decimals": { "type": "integer", "minimum": 0, "maximum": 20 },
         "grouping": { "type": "boolean" },
-        "suffix": { "type": "string" }
+        "suffix": {
+          "description": "Unit after the number, separated by a space (the `percent` preset's `%` has none).",
+          "type": "string"
+        }
       }
+    },
+    "formatPreset": {
+      "description": "A named number format: `number` (0 decimals, thousands separators), `count` (the same, for counts), `percent` (a value already 0 to 100: 1 decimal, then `%`), `hectares` (0 decimals, `ha`) and `km` (1 decimal, `km`).",
+      "enum": ["number", "count", "percent", "hectares", "km"]
+    },
+    "format": {
+      "description": "A number format: a preset name, for example \"percent\", or a numberFormat object.",
+      "oneOf": [{ "$ref": "#/$defs/formatPreset" }, { "$ref": "#/$defs/numberFormat" }]
     },
     "popupStat": {
       "type": "object",
@@ -323,7 +423,7 @@
       "properties": {
         "label": { "type": "string", "minLength": 1 },
         "value": { "$ref": "#/$defs/valueSource" },
-        "format": { "$ref": "#/$defs/numberFormat" }
+        "format": { "$ref": "#/$defs/format" }
       }
     },
     "popupChartPoint": {
@@ -357,18 +457,238 @@
         "charts": { "type": "array", "items": { "$ref": "#/$defs/popupChart" } }
       }
     },
+    "template": {
+      "description": "Text with attribute placeholders: `{attribute}` is the value of a tile attribute as it is, `{attribute:preset}` the value in a number format preset (for example `{area_ha:hectares}`), and `{$id}` the feature id.",
+      "type": "string",
+      "minLength": 1
+    },
+    "cellAttribute": {
+      "description": "The attribute for one value, or null for none (an empty cell).",
+      "oneOf": [{ "$ref": "#/$defs/attribute" }, { "type": "null" }]
+    },
+    "attributesBlock": {
+      "description": "A list of labelled values, as in a pop-up. An item the feature has no value for is hidden; with none left, the block is hidden.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "items"],
+      "properties": {
+        "type": { "const": "attributes" },
+        "items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/popupStat" } }
+      }
+    },
+    "tableBlock": {
+      "description": "A table of categories (rows) by attributes (columns). Each row gives one attribute per column in `values` (same length as `columns`). A missing value shows as n/a; a row with no values is hidden, and so is a table with no rows left.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "columns", "rows"],
+      "properties": {
+        "type": { "const": "table" },
+        "caption": { "type": "string", "minLength": 1 },
+        "rowHeader": {
+          "description": "Heading of the row label column (default none).",
+          "type": "string",
+          "minLength": 1
+        },
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label"],
+            "properties": {
+              "label": { "type": "string", "minLength": 1 },
+              "format": { "$ref": "#/$defs/format" }
+            }
+          }
+        },
+        "rows": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "values"],
+            "properties": {
+              "label": { "type": "string", "minLength": 1 },
+              "values": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/cellAttribute" } }
+            }
+          }
+        }
+      }
+    },
+    "chartBlock": {
+      "description": "A Chart.js chart over `categories` (bars or slices). `bar` takes one or more `series`; several make a grouped bar chart with a series legend. `pie` and `doughnut` take exactly one. Each series gives one attribute per category in `attributes` (same length as `categories`). A missing value is a gap; a chart with no values is hidden.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "chart", "title", "valueLabel", "categories", "series"],
+      "properties": {
+        "type": { "const": "chart" },
+        "chart": { "enum": ["bar", "pie", "doughnut"] },
+        "title": {
+          "description": "Heading above the chart, also in its accessible label.",
+          "type": "string",
+          "minLength": 1
+        },
+        "valueLabel": {
+          "description": "What the values are, for the accessible summary, for example `% cover`.",
+          "type": "string",
+          "minLength": 1
+        },
+        "format": {
+          "description": "Number format of the values in tooltips and the accessible summary.",
+          "$ref": "#/$defs/format"
+        },
+        "categories": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "series": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "attributes"],
+            "properties": {
+              "label": { "type": "string", "minLength": 1 },
+              "attributes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/cellAttribute" } },
+              "color": { "$ref": "#/$defs/color" }
+            }
+          }
+        },
+        "colors": {
+          "description": "Slice colours of a pie or doughnut, one per category (default: the app's palette).",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/color" }
+        }
+      }
+    },
+    "textBlock": {
+      "description": "A paragraph; hidden when a placeholder has no value.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "const": "text" },
+        "text": { "$ref": "#/$defs/template" }
+      }
+    },
+    "listBlock": {
+      "description": "A bulleted list of items from attributes, for example recommended actions and their reasons. An item shows when its `when` attribute, if given, is true (true, a number other than 0, or text other than empty, 0, false or no) and its text has a value for every placeholder. With no item to show, `empty` is shown; when the feature has none of the attributes at all, the block is hidden.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "items", "empty"],
+      "properties": {
+        "type": { "const": "list" },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["text"],
+            "properties": {
+              "text": { "$ref": "#/$defs/template" },
+              "when": { "$ref": "#/$defs/attribute" }
+            }
+          }
+        },
+        "empty": {
+          "description": "Shown when no item applies, for example `No actions recommended.`",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "modalBlock": {
+      "type": "object",
+      "required": ["type"],
+      "properties": { "type": { "enum": ["attributes", "table", "chart", "text", "list"] } },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "attributes" } } },
+          "then": { "$ref": "#/$defs/attributesBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "table" } } },
+          "then": { "$ref": "#/$defs/tableBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "chart" } } },
+          "then": { "$ref": "#/$defs/chartBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "text" } } },
+          "then": { "$ref": "#/$defs/textBlock" }
+        },
+        {
+          "if": { "properties": { "type": { "const": "list" } } },
+          "then": { "$ref": "#/$defs/listBlock" }
+        }
+      ]
+    },
+    "modalSection": {
+      "description": "A section of the modal: a heading, optional description text, then its blocks in order. Hidden when every block is hidden (or, with no blocks, when the description is).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["heading"],
+      "anyOf": [{ "required": ["description"] }, { "required": ["blocks"] }],
+      "properties": {
+        "heading": { "type": "string", "minLength": 1 },
+        "description": { "$ref": "#/$defs/template" },
+        "blocks": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/modalBlock" } }
+      }
+    },
+    "modal": {
+      "description": "Click details in a modal dialog instead of a map pop-up: one template per layer, filled from the clicked feature's tile attributes, so adding a section is a config change only. A layer has `popup` or `modal`, not both; without either it is not clickable.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "sections"],
+      "properties": {
+        "title": {
+          "description": "The heading; the layer title when a placeholder has no value.",
+          "$ref": "#/$defs/template"
+        },
+        "subtitle": {
+          "description": "A line under the heading; hidden when a placeholder has no value.",
+          "$ref": "#/$defs/template"
+        },
+        "sections": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/modalSection" } }
+      }
+    },
+    "resolvedTheme": {
+      "description": "A colour theme as written to the manifest: the paint properties to set on the layer's style layers (by configured id) and the theme's legend.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "paint", "legend"],
+      "properties": {
+        "id": { "$ref": "#/$defs/themeId" },
+        "label": { "type": "string", "minLength": 1 },
+        "paint": {
+          "description": "Style layer id to MapLibre paint properties and their values.",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "object", "minProperties": 1 }
+        },
+        "legend": { "$ref": "#/$defs/resolvedLegend" }
+      }
+    },
     "display": {
-      "description": "The resolved display config, as the pipeline writes it into the layer's manifest.json entry and the web app reads it: the shorthand expanded, breaks resolved and the legend filled in. Style layer ids are as in the config, without the `<layer>-` prefix.",
+      "description": "The resolved display config, as the pipeline writes it into the layer's manifest.json entry and the web app reads it: the shorthand expanded, breaks resolved and the legend filled in. With colour themes, `layers` and `legend` are those of `defaultTheme`, and `themes` lists every theme. Style layer ids are as in the config, without the `<layer>-` prefix.",
       "type": "object",
       "additionalProperties": false,
       "required": ["title", "defaultVisible", "order", "layers", "legend"],
+      "dependentRequired": { "themes": ["defaultTheme"], "defaultTheme": ["themes"] },
+      "not": { "required": ["popup", "modal"] },
       "properties": {
         "title": { "type": "string", "minLength": 1 },
         "defaultVisible": { "type": "boolean" },
         "order": { "type": "integer" },
         "popup": { "$ref": "#/$defs/popup" },
+        "modal": { "$ref": "#/$defs/modal" },
         "layers": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/styleLayer" } },
-        "legend": { "$ref": "#/$defs/resolvedLegend" }
+        "legend": { "$ref": "#/$defs/resolvedLegend" },
+        "themes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/resolvedTheme" } },
+        "defaultTheme": { "$ref": "#/$defs/themeId" }
       }
     }
   }

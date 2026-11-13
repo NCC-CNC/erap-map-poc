@@ -1,0 +1,124 @@
+{
+  "$schema": "../../schema/layer-style.schema.json",
+  "title": "Sample polygons",
+  "defaultVisible": true,
+  "order": 10,
+  "symbology": {
+    "geometry": "polygon",
+    "themes": [
+      {
+        "id": "score",
+        "label": "Score (classes)",
+        "color": {
+          "type": "stepped",
+          "attribute": "score",
+          "stops": [
+            { "from": 0, "color": "#deebf7" },
+            { "from": 25, "color": "#9ecae1" },
+            { "from": 50, "color": "#4292c6" },
+            { "from": 75, "color": "#08519c" }
+          ],
+          "max": 100,
+          "fallback": { "color": "#9e9e9e", "label": "No score" }
+        }
+      },
+      {
+        "id": "score_gradient",
+        "label": "Score (gradient)",
+        "color": {
+          "type": "interpolated",
+          "attribute": "score",
+          "stops": [
+            { "value": 0, "color": "#f7fbff" },
+            { "value": 50, "color": "#6baed6" },
+            { "value": 100, "color": "#08306b" }
+          ],
+          "fallback": { "color": "#9e9e9e", "label": "No score" }
+        }
+      },
+      {
+        "id": "area",
+        "label": "Area (ha)",
+        "color": {
+          "type": "interpolated",
+          "attribute": "area_ha",
+          "colors": ["#eff3ff", "#08519c"],
+          "fallback": { "color": "#9e9e9e" }
+        }
+      }
+    ],
+    "defaultTheme": "score",
+    "fillOpacity": 0.7,
+    "outline": { "color": "#ffffff", "width": 0.75 }
+  },
+  "modal": {
+    "title": "{name}",
+    "subtitle": "Sample feature {$id}",
+    "sections": [
+      {
+        "heading": "Summary",
+        "description": "A made-up feature of {area_ha:hectares}.",
+        "blocks": [
+          {
+            "type": "attributes",
+            "items": [
+              { "label": "ID", "value": { "featureId": true } },
+              { "label": "Area", "value": { "attribute": "area_ha" }, "format": "hectares" },
+              { "label": "Score", "value": { "attribute": "score" }, "format": { "suffix": "/ 100" } }
+            ]
+          }
+        ]
+      },
+      {
+        "heading": "Values",
+        "blocks": [
+          {
+            "type": "table",
+            "caption": "Values by year",
+            "rowHeader": "Year",
+            "columns": [{ "label": "Value", "format": "count" }, { "label": "Score", "format": "percent" }],
+            "rows": [
+              { "label": "2020", "values": ["v2020", "score"] },
+              { "label": "2021", "values": ["v2021", null] },
+              { "label": "2022", "values": ["v2022", null] }
+            ]
+          },
+          {
+            "type": "chart",
+            "chart": "bar",
+            "title": "Values, early and late",
+            "valueLabel": "Value",
+            "format": "count",
+            "categories": ["First", "Second"],
+            "series": [
+              { "label": "Early", "attributes": ["v2020", "v2021"] },
+              { "label": "Late", "attributes": ["v2023", "v2024"] }
+            ]
+          },
+          {
+            "type": "chart",
+            "chart": "pie",
+            "title": "Share by year",
+            "valueLabel": "Value",
+            "categories": ["2020", "2024"],
+            "series": [{ "label": "Value", "attributes": ["v2020", "v2024"] }]
+          }
+        ]
+      },
+      {
+        "heading": "Notes",
+        "blocks": [
+          { "type": "text", "text": "Scored {score} out of 100." },
+          {
+            "type": "list",
+            "items": [
+              { "text": "Has a score of {score}", "when": "score" },
+              { "text": "Flagged: {flag_reason}", "when": "flag" }
+            ],
+            "empty": "Nothing to list."
+          }
+        ]
+      }
+    ]
+  }
+}

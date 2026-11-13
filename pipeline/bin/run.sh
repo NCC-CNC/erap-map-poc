@@ -26,7 +26,8 @@
 #                change (colours, legend, pop-up, title, order, visibility)
 #                of a vector or raster layer, or a change to the map
 #                config's layer selection or map view. A config with
-#                `breaks` re-reads the source data, but not the tiles.
+#                `breaks` (or a gradient range from the data) re-reads the
+#                source data, but not the tiles.
 #   --status     list every configured or built layer (or the named ones)
 #                with its state: current, stale (the .env, the map config's
 #                input or env, or the source data changed since the build),
@@ -219,9 +220,13 @@ restyle_layer() {
   type=$(jq -er --arg n "$name" 'first(.layers[] | select(.name == $n)) | .type // "vector"' \
     "$manifest") || die "no entry for $name in $manifest"
 
-  # `breaks` are computed from the data, which the tiles do not give back.
+  # `breaks`, and a gradient's range when not given, are computed from the
+  # data, which the tiles do not give back. Any colour rule counts: the one
+  # `color` or each of the colour `themes`.
   if [[ $type == vector ]] \
-    && jq -e 'any(.symbology.color? | objects; .breaks != null)' "$style" >/dev/null 2>&1; then
+    && jq -e 'any((.symbology.color?, .symbology.themes[]?.color) | objects;
+        .breaks != null or (.type == "interpolated" and .stops == null
+          and (.min == null or .max == null)))' "$style" >/dev/null 2>&1; then
     data="${layer_scratch}/${name}.geojsonl"
     restyle_data "$name" "$manifest" "$data"
   fi
