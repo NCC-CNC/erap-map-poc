@@ -253,9 +253,10 @@ heading to collapse it; it starts collapsed on narrow screens):
 Click a feature of a visible layer to open its pop-up: a title, summary
 stats, and any charts. Where features overlap, the layer drawn on top wins
 (a sample point over a sample polygon). Missing values show as "Not
-available". A layer with a modal opens a dialog instead, with sections of
-values, tables and charts; close it with Escape, its close button or a
-click outside. Hiding a layer closes its pop-up or dialog.
+available". A layer with a modal opens a dialog instead, with a tab for each
+section of values, tables and charts (arrow keys move between tabs); close
+it with Escape, its close button or a click outside. Hiding a layer
+closes its pop-up or dialog.
 
 ## Adding a layer
 

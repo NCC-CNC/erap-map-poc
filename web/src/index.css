@@ -418,6 +418,82 @@ body,
   height: 220px;
 }
 
+/*
+ * The tabs layout (the default): a smaller dialog of fixed size, so
+ * switching tabs does not resize it; the selected tab's panel scrolls.
+ */
+.feature-modal-tabs {
+  width: min(34rem, 100%);
+  height: min(36rem, 100%);
+}
+
+.feature-modal-tabs .feature-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.feature-modal-body[role='tabpanel'] {
+  padding-top: 0.75rem;
+}
+
+.feature-modal-body[role='tabpanel'] > h3:first-child {
+  margin-top: 0;
+}
+
+.feature-modal-header:has(+ .feature-modal-tablist) {
+  border-bottom: 0;
+  padding-bottom: 0.375rem;
+}
+
+.feature-modal-tablist {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 0 0.25rem;
+  padding: 0 0.75rem;
+  border-bottom: 1px solid #ddd;
+}
+
+.feature-modal-tab {
+  margin-bottom: -1px;
+  padding: 0.375rem 0.5rem;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  font: inherit;
+  color: #555;
+  cursor: pointer;
+}
+
+.feature-modal-tab:hover {
+  color: #222;
+  border-bottom-color: #ccc;
+}
+
+.feature-modal-tab[aria-selected='true'] {
+  border-bottom-color: #1a5fb4;
+  color: #1a5fb4;
+}
+
+.feature-modal-tab:focus-visible {
+  outline: 2px solid #1a5fb4;
+  outline-offset: -2px;
+}
+
+.feature-modal-tabs .feature-modal-body:focus-visible {
+  outline-offset: -2px;
+}
+
+/* Charts sized for the smaller panel. */
+.feature-modal-tabs .feature-chart-canvas {
+  height: 180px;
+}
+
+.feature-modal-tabs .feature-chart-round,
+.feature-modal-tabs .feature-chart-legend {
+  height: 200px;
+}
+
 /* Small screens: the dialog fills the screen and its body scrolls. */
 @media (max-width: 600px) {
   .feature-modal-backdrop {

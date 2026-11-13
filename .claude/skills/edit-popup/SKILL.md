@@ -89,7 +89,10 @@ Change only the `popup` or `modal` of `<name>.style.json`:
 - Pop-up: `title` (value source), `stats` (`label`, `value`, `format`),
   `charts` (`bar` or `line`, `points`).
 - Modal: `title` and `subtitle` with placeholders (`{attr}`,
-  `{attr:percent}`, `{$id}`), then `sections` (`heading`, `description`,
+  `{attr:percent}`, `{$id}`), an optional `layout` (`tabs`, the default:
+  one tab per section, labelled by its `heading` or a shorter `tab`, which
+  must not repeat; or `scroll`: all sections in one scroll), then
+  `sections` (`heading`, `tab`, `description`,
   `blocks`). Blocks: `attributes`, `table` (one attribute per column in
   each row's `values`, `null` for an empty cell), `chart` (`bar` with one
   or more `series`, `pie` or `doughnut` with one; one attribute per
@@ -140,7 +143,10 @@ Compare before and after (files in `tmp/screenshots/`, ending in
 `-click.png`): every new section or value shows, numbers are formatted as
 intended, nothing says n/a or is hidden unexpectedly, and there are no
 `page error` lines. Add `--size 390x844` for a phone-sized check of a
-modal. Iterate (edit, apply, screenshot) and show the user the final pair.
+modal. A modal in the `tabs` layout opens on its first tab: add `--tab
+<label>` (repeatable, the label as shown) for one more screenshot of each
+tab you changed (`-click-tab-<label>.png`), before and after. Iterate
+(edit, apply, screenshot) and show the user the final pair.
 
 ## 6. Draft PR
 
