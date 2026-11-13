@@ -1,16 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Map as MapLibreMap } from 'maplibre-gl';
 import {
+  activeTheme,
   isVisible,
   loadManifest,
   manifestUrl,
+  withTheme,
   withVisibility,
   type LayerDefinition,
+  type ThemeState,
   type VisibilityState,
 } from '../layers';
+import { FeatureModal } from '../modal/FeatureModal';
+import { keepModal, openModal, type OpenModal } from '../modal/state';
 import { BASEMAP_STYLES, DEFAULT_BASEMAP_THEME, type BasemapTheme } from './basemap';
 import { BasemapToggle } from './BasemapToggle';
-import { createMap, setBasemapStyle, setLayerVisibility, tilesBaseUrl } from './createMap';
+import { createMap, setBasemapStyle, setLayerTheme, setLayerVisibility, tilesBaseUrl } from './createMap';
 import { LayerList } from './LayerList';
 import { MapPanel } from './MapPanel';
 import { attachPopups, type PopupHandlers } from './popups';
@@ -26,8 +31,10 @@ const NO_LAYERS: readonly LayerDefinition[] = [];
  * manifest's `map` (the local map config's view and basemap, ADR 0009) is
  * applied once it has loaded, unless the URL already holds a view.
  * Clicking a feature of a visible layer with a pop-up definition opens its
- * pop-up. MapLibre lives outside React's render tree: the map is created
- * once and removed on unmount.
+ * pop-up, and one with a modal template opens the modal dialog (ADR 0012),
+ * which closes when its layer is hidden. A layer with colour themes is
+ * drawn in the theme chosen in the layer panel. MapLibre lives outside
+ * React's render tree: the map is created once and removed on unmount.
  */
 export function MapView() {
   const container = useRef<HTMLDivElement>(null);
@@ -41,10 +48,14 @@ export function MapView() {
   // Layers not in here are at their default visibility.
   const [visibility, setVisibility] = useState<VisibilityState>({});
   const [available, setAvailable] = useState<ReadonlySet<string> | null>(null);
+  // Layers not in here are in their default theme.
+  const [themes, setThemes] = useState<ThemeState>({});
+  const [modal, setModal] = useState<OpenModal | null>(null);
   // Read when the map is created; later changes go through setBasemapStyle.
   const initialTheme = useRef(theme);
   // Read by the map each time it adds the data layers (on every style.load).
   const currentVisibility = useRef(visibility);
+  const currentThemes = useRef(themes);
   // Read by the pop-up handlers at event time.
   const currentLayers = useRef<readonly LayerDefinition[]>(NO_LAYERS);
 
@@ -62,6 +73,7 @@ export function MapView() {
       tilesBaseUrl: baseUrl,
       signal: controller.signal,
       isVisible: (def) => isVisible(currentVisibility.current, def),
+      themeOf: (def) => activeTheme(currentThemes.current, def),
       onLayersChecked: setAvailable,
     });
     void loaded.then((result) => {
@@ -74,7 +86,11 @@ export function MapView() {
       if (view) created.jumpTo(view);
       if (result.map?.basemap) setTheme(result.map.basemap);
     });
-    const handlers = attachPopups(created, () => currentLayers.current);
+    const handlers = attachPopups(
+      created,
+      () => currentLayers.current,
+      (def, feature) => setModal(openModal(def, feature)),
+    );
     map.current = created;
     popups.current = handlers;
     appliedStyle.current = style;
@@ -107,6 +123,19 @@ export function MapView() {
     popups.current?.closeIfHidden();
   }, [visibility, layers]);
 
+  useEffect(() => {
+    currentThemes.current = themes;
+    if (!map.current) return;
+    for (const def of layers ?? NO_LAYERS) {
+      const theme = activeTheme(themes, def);
+      if (theme) setLayerTheme(map.current, def, theme);
+    }
+  }, [themes, layers]);
+
+  const closeModal = useCallback(() => setModal(null), []);
+  // Hidden with its layer, as a pop-up is.
+  const shownModal = keepModal(modal, layers ?? NO_LAYERS, visibility);
+
   return (
     <>
       <div ref={container} className="map" />
@@ -117,9 +146,15 @@ export function MapView() {
           problem={problem}
           visibility={visibility}
           available={available}
-          onChange={(id, visible) => setVisibility((state) => withVisibility(state, id, visible))}
+          onChange={(id, visible) => {
+            setVisibility((state) => withVisibility(state, id, visible));
+            if (!visible) setModal((open) => (open?.layerId === id ? null : open));
+          }}
+          themes={themes}
+          onThemeChange={(id, themeId) => setThemes((state) => withTheme(state, id, themeId))}
         />
       </MapPanel>
+      {shownModal && <FeatureModal content={shownModal.content} onClose={closeModal} />}
     </>
   );
 }

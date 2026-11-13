@@ -6,6 +6,9 @@
 //   SHOT_PREFIX  file name prefix; files go to /out
 //   SHOT_WIDTH, SHOT_HEIGHT  viewport size in CSS pixels
 //   SHOT_WAIT_MS settle time after the network goes quiet
+//   SHOT_CLICK   1 to click the map centre before the screenshot (optional)
+//   SHOT_COLOUR_BY  space-separated LAYER=THEME colour theme choices
+//                (optional)
 // Prints one line per file, and any page errors, to stdout.
 'use strict';
 
@@ -24,6 +27,11 @@ const prefix = env('SHOT_PREFIX');
 const width = Number(env('SHOT_WIDTH'));
 const height = Number(env('SHOT_HEIGHT'));
 const waitMs = Number(env('SHOT_WAIT_MS'));
+const click = process.env.SHOT_CLICK === '1';
+const colourBy = (process.env.SHOT_COLOUR_BY || '')
+  .split(' ')
+  .filter(Boolean)
+  .map((choice) => choice.split('='));
 
 // The theme labels in web/src/map/BasemapToggle.tsx.
 const LABELS = { light: 'Light', dark: 'Dark' };
@@ -31,6 +39,12 @@ const LABELS = { light: 'Light', dark: 'Dark' };
 async function settle(page) {
   await page.waitForLoadState('networkidle', { timeout: 60000 }).catch(() => {});
   await page.waitForTimeout(waitMs);
+}
+
+/** Opens the layer panel if it starts collapsed (narrow screens). */
+async function openPanel(page) {
+  const panel = page.locator('details.map-panel');
+  if ((await panel.getAttribute('open')) === null) await panel.locator('summary').click();
 }
 
 async function main() {
@@ -51,7 +65,23 @@ async function main() {
           await page.getByLabel(LABELS[theme], { exact: true }).check();
           await settle(page);
         }
-        const file = `${prefix}-${theme}-z${view.replace(/\//g, '_')}.png`;
+        // "Colour by" in web/src/map/LayerList.tsx: a select per layer.
+        for (const [layer, choice] of colourBy) {
+          await openPanel(page);
+          await page.locator(`#layer-theme-${layer}`).selectOption(choice, { timeout: 10000 });
+          await settle(page);
+        }
+        let file = `${prefix}-${theme}-z${view.replace(/\//g, '_')}`;
+        if (click) {
+          // The view's lat/lon is the centre of the map.
+          const box = await page.locator('.maplibregl-canvas').boundingBox();
+          await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+          await settle(page);
+          const opened = await page.locator('[role="dialog"], .maplibregl-popup').count();
+          if (!opened) console.log(`note: nothing to show at the centre of ${view}`);
+          file += '-click';
+        }
+        file += '.png';
         await page.screenshot({ path: `/out/${file}` });
         console.log(`wrote ${file}`);
         await page.close();

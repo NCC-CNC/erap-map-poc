@@ -18,9 +18,19 @@ export type Color = string;
  */
 export type ValueSource = { attribute: string } | { featureId: true };
 
+/**
+ * A named number format (schema `$defs/formatPreset`): `number` and
+ * `count` (0 decimals, thousands separators), `percent` (a value already 0
+ * to 100: 1 decimal, then `%`), `hectares` (0 decimals, `ha`) and `km`
+ * (1 decimal, `km`).
+ */
+export type FormatPreset = 'number' | 'count' | 'percent' | 'hectares' | 'km';
+
 /** How a number is shown. Text values are shown as they are. */
 export interface NumberFormat {
-  /** Decimal places, always shown. Defaults to 0. */
+  /** A preset to start from; the fields below change it. */
+  preset?: FormatPreset;
+  /** Decimal places, always shown. Defaults to 0 (or the preset's). */
   decimals?: number;
   /** Thousands separators. Defaults to true. */
   grouping?: boolean;
@@ -28,13 +38,16 @@ export interface NumberFormat {
   suffix?: string;
 }
 
+/** A number format: a preset name or a `NumberFormat` (schema `$defs/format`). */
+export type Format = FormatPreset | NumberFormat;
+
 /** One labelled value in the pop-up. */
 export interface PopupStat {
   /** Plain-language label, for example `Area`, not the attribute name. */
   label: string;
   value: ValueSource;
   /** Number formatting; without it numbers are shown as they are. */
-  format?: NumberFormat;
+  format?: Format;
 }
 
 /** One point of a chart: an x-axis label and the attribute holding its value. */
@@ -69,12 +82,20 @@ export interface PopupDefinition {
 export interface LegendItem {
   color: Color;
   label: string;
+  /**
+   * In a `gradient` legend, where the colour sits on the bar, 0 to 1. An
+   * item without one (a no data colour) is a separate swatch.
+   */
+  position?: number;
 }
 
 /** Everything a legend shows for one layer, as resolved by the pipeline. */
 export interface Legend {
-  /** `ramp` for classes of a number, `categories` for categories, `single` for one colour. */
-  kind: 'single' | 'categories' | 'ramp';
+  /**
+   * `ramp` for classes of a number, `gradient` for a continuous colour
+   * ramp, `categories` for categories, `single` for one colour.
+   */
+  kind: 'single' | 'categories' | 'ramp' | 'gradient';
   /** Swatch shape: `square` for fills, `circle` for points, `line` for lines. */
   shape: 'square' | 'circle' | 'line';
   /** Swatch border: the outline or stroke colour. */
@@ -93,14 +114,108 @@ type WithoutSource<T> = T extends unknown ? Omit<T, 'source' | 'source-layer'> :
  */
 export type StyleLayer = WithoutSource<Exclude<LayerSpecification, { type: 'background' }>>;
 
+/**
+ * One colour theme of a layer (ADR 0012), as the pipeline resolved it: the
+ * paint properties to set on its style layers (by configured id) and its
+ * legend. The "Colour by" choice in the layer panel switches between them.
+ */
+export interface Theme {
+  id: string;
+  /** The name in the "Colour by" list. */
+  label: string;
+  /** Style layer id (as configured) to paint property names and values. */
+  paint: Record<string, Record<string, unknown>>;
+  legend: Legend;
+}
+
+/**
+ * Text with attribute placeholders: `{attribute}`, `{attribute:preset}`
+ * (a number format preset) and `{$id}` (the feature id).
+ */
+export type Template = string;
+
+/** A list of labelled values, as in a pop-up. */
+export interface AttributesBlock {
+  type: 'attributes';
+  items: PopupStat[];
+}
+
+/** A table of categories (rows) by attributes (columns). */
+export interface TableBlock {
+  type: 'table';
+  caption?: string;
+  /** Heading of the row label column. */
+  rowHeader?: string;
+  columns: { label: string; format?: Format }[];
+  /** One attribute per column, or null for an empty cell. */
+  rows: { label: string; values: (string | null)[] }[];
+}
+
+/** One series of a modal chart: one attribute (or null) per category. */
+export interface ChartSeries {
+  label: string;
+  attributes: (string | null)[];
+  color?: Color;
+}
+
+/** A bar (one or more series), pie or doughnut chart. */
+export interface ChartBlock {
+  type: 'chart';
+  chart: 'bar' | 'pie' | 'doughnut';
+  title: string;
+  /** What the values are, for the accessible summary. */
+  valueLabel: string;
+  format?: Format;
+  categories: string[];
+  series: ChartSeries[];
+  /** Slice colours of a pie or doughnut, one per category. */
+  colors?: Color[];
+}
+
+/** A paragraph with placeholders. */
+export interface TextBlock {
+  type: 'text';
+  text: Template;
+}
+
+/** A bulleted list of items from attributes, with a message for none. */
+export interface ListBlock {
+  type: 'list';
+  /** An item shows when `when` (if given) is true and its text has every value. */
+  items: { text: Template; when?: string }[];
+  empty: string;
+}
+
+export type ModalBlock = AttributesBlock | TableBlock | ChartBlock | TextBlock | ListBlock;
+
+/** A section of the modal: a heading, optional text and blocks. */
+export interface ModalSection {
+  heading: string;
+  description?: Template;
+  blocks?: ModalBlock[];
+}
+
+/**
+ * Click details in a modal dialog (ADR 0012): one template per layer,
+ * filled from the clicked feature's tile attributes.
+ */
+export interface ModalDefinition {
+  title: Template;
+  subtitle?: Template;
+  sections: ModalSection[];
+}
+
 /** The `display` block of a manifest entry (schema `$defs/display`). */
 export interface Display {
   title: string;
   defaultVisible: boolean;
   order: number;
   popup?: PopupDefinition;
+  modal?: ModalDefinition;
   layers: StyleLayer[];
   legend: Legend;
+  themes?: Theme[];
+  defaultTheme?: string;
 }
 
 /**
@@ -131,6 +246,13 @@ export interface LayerDefinition {
   layers: StyleLayer[];
   legend: Legend;
   popup?: PopupDefinition;
+  modal?: ModalDefinition;
+  /**
+   * Colour themes, when the layer has them; `layers` and `legend` are then
+   * those of `defaultTheme`.
+   */
+  themes?: Theme[];
+  defaultTheme?: string;
 }
 
 /** A basemap theme the map config may open with (ADR 0006, ADR 0009). */

@@ -1,4 +1,11 @@
-import type { BasemapName, Display, LayerDefinition, LayerType, MapDefaults } from './types';
+import type {
+  BasemapName,
+  Display,
+  FormatPreset,
+  LayerDefinition,
+  LayerType,
+  MapDefaults,
+} from './types';
 
 /**
  * Reads the layers from the pipeline's `manifest.json` (ADR 0007), the
@@ -110,10 +117,23 @@ function valueSource(value: unknown, path: string, problems: Problems): void {
   if (source) check(isText(source.attribute), `${path}.attribute must be text`, problems);
 }
 
+/** The number format presets (schema `$defs/formatPreset`). */
+export const FORMAT_PRESETS: readonly FormatPreset[] = ['number', 'count', 'percent', 'hectares', 'km'];
+
+const isPreset = (v: unknown): v is FormatPreset => FORMAT_PRESETS.includes(v as FormatPreset);
+
+/** A format: a preset name, or an object (schema `$defs/format`). */
 function numberFormat(value: unknown, path: string, problems: Problems): void {
-  const format = object(value, path, problems, [], ['decimals', 'grouping', 'suffix']);
+  if (typeof value === 'string') {
+    check(isPreset(value), `${path} must be one of ${FORMAT_PRESETS.join(', ')}`, problems);
+    return;
+  }
+  const format = object(value, path, problems, [], ['preset', 'decimals', 'grouping', 'suffix']);
   if (!format) return;
-  const { decimals, grouping, suffix } = format;
+  const { preset, decimals, grouping, suffix } = format;
+  if (preset !== undefined) {
+    check(isPreset(preset), `${path}.preset must be one of ${FORMAT_PRESETS.join(', ')}`, problems);
+  }
   if (decimals !== undefined) {
     check(
       Number.isInteger(decimals) && (decimals as number) >= 0 && (decimals as number) <= 20,
@@ -125,18 +145,20 @@ function numberFormat(value: unknown, path: string, problems: Problems): void {
   if (suffix !== undefined) check(typeof suffix === 'string', `${path}.suffix must be text`, problems);
 }
 
+/** A labelled value (schema `$defs/popupStat`). */
+function stat(value: unknown, where: string, problems: Problems): void {
+  const s = object(value, where, problems, ['label', 'value'], ['format']);
+  if (!s) return;
+  check(isText(s.label), `${where}.label must be text`, problems);
+  valueSource(s.value, `${where}.value`, problems);
+  if (s.format !== undefined) numberFormat(s.format, `${where}.format`, problems);
+}
+
 function popup(value: unknown, path: string, problems: Problems): void {
   const p = object(value, path, problems, ['title', 'stats'], ['charts']);
   if (!p) return;
   valueSource(p.title, `${path}.title`, problems);
-  list(p.stats, `${path}.stats`, problems).forEach((item, i) => {
-    const where = `${path}.stats[${i}]`;
-    const stat = object(item, where, problems, ['label', 'value'], ['format']);
-    if (!stat) return;
-    check(isText(stat.label), `${where}.label must be text`, problems);
-    valueSource(stat.value, `${where}.value`, problems);
-    if (stat.format !== undefined) numberFormat(stat.format, `${where}.format`, problems);
-  });
+  list(p.stats, `${path}.stats`, problems).forEach((item, i) => stat(item, `${path}.stats[${i}]`, problems));
   if (p.charts === undefined) return;
   list(p.charts, `${path}.charts`, problems).forEach((item, i) => {
     const where = `${path}.charts[${i}]`;
@@ -155,14 +177,173 @@ function popup(value: unknown, path: string, problems: Problems): void {
   });
 }
 
+/** Text, or null where the schema allows it (`$defs/cellAttribute`). */
+function cells(value: unknown, path: string, problems: Problems, length: number, what: string): void {
+  const items = list(value, path, problems, 1);
+  items.forEach((v, i) => check(v === null || isText(v), `${path}[${i}] must be an attribute or null`, problems));
+  check(items.length === length, `${path} must have one item per ${what} (${length})`, problems);
+}
+
+const BLOCK_TYPES = ['attributes', 'table', 'chart', 'text', 'list'] as const;
+
+/** One block of a modal section (schema `$defs/modalBlock`). */
+function modalBlock(value: unknown, path: string, problems: Problems): void {
+  if (!isObject(value)) {
+    problems.push(`${path} must be an object`);
+    return;
+  }
+  switch (value.type) {
+    case 'attributes': {
+      const b = object(value, path, problems, ['type', 'items']);
+      if (b) list(b.items, `${path}.items`, problems, 1).forEach((item, i) => stat(item, `${path}.items[${i}]`, problems));
+      return;
+    }
+    case 'table': {
+      const b = object(value, path, problems, ['type', 'columns', 'rows'], ['caption', 'rowHeader']);
+      if (!b) return;
+      if (b.caption !== undefined) check(isText(b.caption), `${path}.caption must be text`, problems);
+      if (b.rowHeader !== undefined) check(isText(b.rowHeader), `${path}.rowHeader must be text`, problems);
+      const columns = list(b.columns, `${path}.columns`, problems, 1);
+      columns.forEach((item, i) => {
+        const where = `${path}.columns[${i}]`;
+        const column = object(item, where, problems, ['label'], ['format']);
+        if (!column) return;
+        check(isText(column.label), `${where}.label must be text`, problems);
+        if (column.format !== undefined) numberFormat(column.format, `${where}.format`, problems);
+      });
+      list(b.rows, `${path}.rows`, problems, 1).forEach((item, i) => {
+        const where = `${path}.rows[${i}]`;
+        const row = object(item, where, problems, ['label', 'values']);
+        if (!row) return;
+        check(isText(row.label), `${where}.label must be text`, problems);
+        cells(row.values, `${where}.values`, problems, columns.length, 'column');
+      });
+      return;
+    }
+    case 'chart': {
+      const b = object(
+        value,
+        path,
+        problems,
+        ['type', 'chart', 'title', 'valueLabel', 'categories', 'series'],
+        ['format', 'colors'],
+      );
+      if (!b) return;
+      check(['bar', 'pie', 'doughnut'].includes(b.chart as string), `${path}.chart must be bar, pie or doughnut`, problems);
+      check(isText(b.title), `${path}.title must be text`, problems);
+      check(isText(b.valueLabel), `${path}.valueLabel must be text`, problems);
+      if (b.format !== undefined) numberFormat(b.format, `${path}.format`, problems);
+      const categories = list(b.categories, `${path}.categories`, problems, 1);
+      categories.forEach((c, i) => check(isText(c), `${path}.categories[${i}] must be text`, problems));
+      const series = list(b.series, `${path}.series`, problems, 1);
+      series.forEach((item, i) => {
+        const where = `${path}.series[${i}]`;
+        const s = object(item, where, problems, ['label', 'attributes'], ['color']);
+        if (!s) return;
+        check(isText(s.label), `${where}.label must be text`, problems);
+        cells(s.attributes, `${where}.attributes`, problems, categories.length, 'category');
+        if (s.color !== undefined) check(isText(s.color), `${where}.color must be a colour`, problems);
+      });
+      if (b.chart !== 'bar') check(series.length === 1, `${path}: a ${String(b.chart)} chart takes one series`, problems);
+      if (b.colors !== undefined) {
+        const colors = list(b.colors, `${path}.colors`, problems, 1);
+        colors.forEach((c, i) => check(isText(c), `${path}.colors[${i}] must be a colour`, problems));
+        check(colors.length === categories.length, `${path}.colors must have one colour per category`, problems);
+      }
+      return;
+    }
+    case 'text': {
+      const b = object(value, path, problems, ['type', 'text']);
+      if (b) check(isText(b.text), `${path}.text must be text`, problems);
+      return;
+    }
+    case 'list': {
+      const b = object(value, path, problems, ['type', 'items', 'empty']);
+      if (!b) return;
+      check(isText(b.empty), `${path}.empty must be text`, problems);
+      list(b.items, `${path}.items`, problems, 1).forEach((item, i) => {
+        const where = `${path}.items[${i}]`;
+        const entry = object(item, where, problems, ['text'], ['when']);
+        if (!entry) return;
+        check(isText(entry.text), `${where}.text must be text`, problems);
+        if (entry.when !== undefined) check(isText(entry.when), `${where}.when must be an attribute`, problems);
+      });
+      return;
+    }
+  }
+  problems.push(`${path}.type must be one of ${BLOCK_TYPES.join(', ')}`);
+}
+
+/** A click modal template (schema `$defs/modal`). */
+function modal(value: unknown, path: string, problems: Problems): void {
+  const m = object(value, path, problems, ['title', 'sections'], ['subtitle']);
+  if (!m) return;
+  check(isText(m.title), `${path}.title must be text`, problems);
+  if (m.subtitle !== undefined) check(isText(m.subtitle), `${path}.subtitle must be text`, problems);
+  list(m.sections, `${path}.sections`, problems, 1).forEach((item, i) => {
+    const where = `${path}.sections[${i}]`;
+    const section = object(item, where, problems, ['heading'], ['description', 'blocks']);
+    if (!section) return;
+    check(isText(section.heading), `${where}.heading must be text`, problems);
+    check(
+      section.description !== undefined || section.blocks !== undefined,
+      `${where} needs a description or blocks`,
+      problems,
+    );
+    if (section.description !== undefined) {
+      check(isText(section.description), `${where}.description must be text`, problems);
+    }
+    if (section.blocks !== undefined) {
+      list(section.blocks, `${where}.blocks`, problems, 1).forEach((block, j) =>
+        modalBlock(block, `${where}.blocks[${j}]`, problems),
+      );
+    }
+  });
+}
+
+const THEME_ID = STYLE_LAYER_ID;
+
+/** Colour themes (schema `$defs/resolvedTheme`) and the default among them. */
+function themes(value: unknown, defaultTheme: unknown, path: string, problems: Problems): void {
+  const ids = new Set<string>();
+  list(value, `${path}.themes`, problems, 1).forEach((item, i) => {
+    const where = `${path}.themes[${i}]`;
+    const theme = object(item, where, problems, ['id', 'label', 'paint', 'legend']);
+    if (!theme) return;
+    const { id } = theme;
+    check(typeof id === 'string' && THEME_ID.test(id), `${where}.id is not a valid id`, problems);
+    if (typeof id === 'string') {
+      check(!ids.has(id), `${where}.id ${id} is used twice`, problems);
+      ids.add(id);
+    }
+    check(isText(theme.label), `${where}.label must be text`, problems);
+    const paint = theme.paint;
+    if (!isObject(paint) || Object.keys(paint).length === 0) {
+      problems.push(`${where}.paint must be an object of style layer paint properties`);
+    } else {
+      for (const [layerId, props] of Object.entries(paint)) {
+        check(
+          isObject(props) && Object.keys(props).length > 0,
+          `${where}.paint.${layerId} must be an object of paint properties`,
+          problems,
+        );
+      }
+    }
+    legend(theme.legend, `${where}.legend`, problems);
+  });
+  check(
+    typeof defaultTheme === 'string' && ids.has(defaultTheme),
+    `${path}.defaultTheme must be the id of one of the themes`,
+    problems,
+  );
+}
+
+const LEGEND_KINDS = ['single', 'categories', 'ramp', 'gradient'];
+
 function legend(value: unknown, path: string, problems: Problems): void {
   const l = object(value, path, problems, ['kind', 'shape', 'border', 'opacity', 'items']);
   if (!l) return;
-  check(
-    l.kind === 'single' || l.kind === 'categories' || l.kind === 'ramp',
-    `${path}.kind must be single, categories or ramp`,
-    problems,
-  );
+  check(LEGEND_KINDS.includes(l.kind as string), `${path}.kind must be ${LEGEND_KINDS.join(', ')}`, problems);
   check(
     l.shape === 'square' || l.shape === 'circle' || l.shape === 'line',
     `${path}.shape must be square, circle or line`,
@@ -176,10 +357,18 @@ function legend(value: unknown, path: string, problems: Problems): void {
   );
   list(l.items, `${path}.items`, problems, 1).forEach((item, i) => {
     const where = `${path}.items[${i}]`;
-    const entry = object(item, where, problems, ['color', 'label']);
+    const entry = object(item, where, problems, ['color', 'label'], ['position']);
     if (!entry) return;
     check(isText(entry.color), `${where}.color must be a colour`, problems);
     check(isText(entry.label), `${where}.label must be text`, problems);
+    const { position } = entry;
+    if (position !== undefined) {
+      check(
+        typeof position === 'number' && position >= 0 && position <= 1,
+        `${where}.position must be a number from 0 to 1`,
+        problems,
+      );
+    }
   });
 }
 
@@ -211,9 +400,10 @@ function styleLayers(value: unknown, path: string, problems: Problems, layerType
 /**
  * Problems with a manifest `display` block (schema `$defs/display`), as
  * plain text; empty when it is valid. Style layer ids must also be unique,
- * which the pipeline checks outside the schema. A raster layer has one
- * `color-relief` style layer and no pop-up; a vector layer has vector style
- * layers only.
+ * which the pipeline checks outside the schema, and theme paint must name
+ * them. A raster layer has one `color-relief` style layer and no pop-up,
+ * modal or themes; a vector layer has vector style layers only, and a
+ * pop-up or a modal, not both.
  */
 export function displayProblems(
   value: unknown,
@@ -221,16 +411,43 @@ export function displayProblems(
   layerType: LayerType = 'vector',
 ): string[] {
   const problems: Problems = [];
-  const d = object(value, path, problems, ['title', 'defaultVisible', 'order', 'layers', 'legend'], ['popup']);
+  const d = object(
+    value,
+    path,
+    problems,
+    ['title', 'defaultVisible', 'order', 'layers', 'legend'],
+    ['popup', 'modal', 'themes', 'defaultTheme'],
+  );
   if (!d) return problems;
   check(isText(d.title), `${path}.title must be text`, problems);
   check(typeof d.defaultVisible === 'boolean', `${path}.defaultVisible must be true or false`, problems);
   check(Number.isInteger(d.order), `${path}.order must be a whole number`, problems);
   styleLayers(d.layers, `${path}.layers`, problems, layerType);
   legend(d.legend, `${path}.legend`, problems);
+  const raster = layerType === 'raster';
+  if (d.popup !== undefined && d.modal !== undefined) {
+    problems.push(`${path} has both a popup and a modal`);
+  }
   if (d.popup !== undefined) {
-    if (layerType === 'raster') problems.push(`${path}.popup is not allowed on a raster layer`);
+    if (raster) problems.push(`${path}.popup is not allowed on a raster layer`);
     else popup(d.popup, `${path}.popup`, problems);
+  }
+  if (d.modal !== undefined) {
+    if (raster) problems.push(`${path}.modal is not allowed on a raster layer`);
+    else modal(d.modal, `${path}.modal`, problems);
+  }
+  if (d.themes !== undefined || d.defaultTheme !== undefined) {
+    if (raster) problems.push(`${path}.themes are not allowed on a raster layer`);
+    else {
+      themes(d.themes, d.defaultTheme, path, problems);
+      const ids = new Set(Array.isArray(d.layers) ? d.layers.map((l) => (isObject(l) ? l.id : undefined)) : []);
+      (Array.isArray(d.themes) ? d.themes : []).forEach((t, i) => {
+        if (!isObject(t) || !isObject(t.paint)) return;
+        for (const layerId of Object.keys(t.paint)) {
+          check(ids.has(layerId), `${path}.themes[${i}].paint.${layerId} is not a style layer of this layer`, problems);
+        }
+      });
+    }
   }
   return problems;
 }
@@ -279,6 +496,8 @@ function toDefinition(entry: unknown, index: number): LayerDefinition | string[]
     layers: display.layers,
     legend: display.legend,
     ...(display.popup ? { popup: display.popup } : {}),
+    ...(display.modal ? { modal: display.modal } : {}),
+    ...(display.themes ? { themes: display.themes, defaultTheme: display.defaultTheme } : {}),
   };
 }
 

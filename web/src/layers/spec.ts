@@ -83,12 +83,17 @@ export function styleLayerIds(def: LayerDefinition): string[] {
  *   ending in a slash, for example `http://localhost:5173/tiles/`.
  * @param visible whether the layers start shown; defaults to the
  *   definition's `defaultVisible`.
+ * @param themeId the colour theme to draw (ADR 0012), for a layer with
+ *   themes: its paint is laid over the style layers'. Defaults to the
+ *   layers as given, which are the default theme's.
  */
 export function toMapLibre(
   def: LayerDefinition,
   tilesBaseUrl: string,
   visible: boolean = def.defaultVisible,
+  themeId?: string,
 ): MapLibreLayer {
+  const theme = def.themes?.find((t) => t.id === themeId);
   const archiveUrl = new URL(def.file, tilesBaseUrl).href;
   const raster = def.type === 'raster';
   const archiveKind: ArchiveKind = raster && isCog(def.file) ? 'cog' : 'pmtiles';
@@ -111,6 +116,7 @@ export function toMapLibre(
           source: def.id,
           ...(raster ? {} : { 'source-layer': def.sourceLayer }),
           layout: { ...layer.layout, visibility: visibilityValue(visible) },
+          ...(theme?.paint[layer.id] ? { paint: { ...layer.paint, ...theme.paint[layer.id] } } : {}),
         }) as LayerSpecification,
     ),
   };

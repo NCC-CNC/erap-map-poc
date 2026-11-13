@@ -5,8 +5,21 @@
  * rerunning the pipeline, with no change here.
  */
 export type {
+  AttributesBlock,
+  ChartBlock,
+  ChartSeries,
   Color,
   Display,
+  Format,
+  FormatPreset,
+  ListBlock,
+  ModalBlock,
+  ModalDefinition,
+  ModalSection,
+  TableBlock,
+  Template,
+  TextBlock,
+  Theme,
   LayerDefinition,
   LayerType,
   Legend,
@@ -29,6 +42,7 @@ export {
   loadManifest,
   mapDefaults,
   BASEMAP_NAMES,
+  FORMAT_PRESETS,
   manifestUrl,
   parseManifest,
   type LoadOptions,
@@ -52,3 +66,10 @@ export {
   withVisibility,
   type VisibilityState,
 } from './visibility';
+export {
+  activeLegend,
+  activeTheme,
+  themePaintUpdates,
+  withTheme,
+  type ThemeState,
+} from './themes';

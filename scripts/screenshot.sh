@@ -21,6 +21,13 @@
 #                        erap-map-web:screenshot (cached after the first run).
 #   --size WxH           viewport in CSS pixels (default 1280x800).
 #   --wait SECONDS       settle time after the network goes quiet (default 3).
+#   -c, --click          click the map at the centre of each view (its lat/lon)
+#                        before the screenshot, to show the pop-up or modal of
+#                        the feature there. Files end in -click.png.
+#   --colour-by LAYER=THEME
+#                        pick a colour theme in a layer's "Colour by" list
+#                        before the screenshot (theme ids are in the layer's
+#                        manifest entry, display.themes). Repeatable.
 #   -h, --help           this help.
 #
 # Needs Docker and network access (the basemap tiles come from OpenFreeMap,
@@ -51,14 +58,15 @@ main() {
   root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 
   local basemap=all out="${root}/tmp/screenshots" prefix=map port=8090 image="" size=1280x800 wait=3
-  local views=()
+  local views=() click="" colour_by=()
   while (($# > 0)); do
     case $1 in
       -h | --help)
         usage
         return 0
         ;;
-      -b | --basemap | -o | --out | -n | --name | -p | --port | --image | --size | --wait)
+      -c | --click) click=1 ;;
+      -b | --basemap | -o | --out | -n | --name | -p | --port | --image | --size | --wait | --colour-by)
         if (($# < 2)); then
           log "$1 needs a value"
           return 2
@@ -71,6 +79,7 @@ main() {
           --image) image=$2 ;;
           --size) size=$2 ;;
           --wait) wait=$2 ;;
+          --colour-by) colour_by+=("$2") ;;
         esac
         shift
         ;;
@@ -108,6 +117,11 @@ main() {
   [[ $size =~ ^([0-9]+)x([0-9]+)$ ]] || { log "bad size: $size (WxH)"; return 2; }
   local width=${BASH_REMATCH[1]} height=${BASH_REMATCH[2]}
   [[ $wait =~ ^[0-9]+([.][0-9]+)?$ ]] || { log "bad wait: $wait"; return 2; }
+  local choice
+  for choice in "${colour_by[@]}"; do
+    [[ $choice =~ ^[a-z0-9][a-z0-9_-]*=[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] \
+      || { log "bad --colour-by: $choice (LAYER=THEME, for example ecoregions=wtw)"; return 2; }
+  done
 
   [[ -s ${root}/data/tiles/manifest.json ]] \
     || { log "no data/tiles/manifest.json: run the pipeline first"; return 1; }
@@ -160,6 +174,7 @@ main() {
     -v "$(host_path "$out"):/out" \
     -e SHOT_BASE=http://web:8080/ -e "SHOT_VIEWS=${views[*]}" -e "SHOT_THEMES=${themes}" \
     -e "SHOT_PREFIX=${prefix}" -e "SHOT_WIDTH=${width}" -e "SHOT_HEIGHT=${height}" \
+    -e "SHOT_CLICK=${click}" -e "SHOT_COLOUR_BY=${colour_by[*]}" \
     -e "SHOT_WAIT_MS=$(awk -v s="$wait" 'BEGIN { printf "%d", s * 1000 }')" \
     "$PLAYWRIGHT_IMAGE" sh -c "mkdir -p /tmp/shot && cd /tmp/shot \
       && npm install --no-save --no-audit --no-fund --loglevel=error playwright-core@${PLAYWRIGHT_VERSION} >/dev/null \

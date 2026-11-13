@@ -270,6 +270,58 @@ notes_of() {
   [ "$output" = '["step",["get","score_gap"],"#eeeeee",51.5,"#333333"]' ]
 }
 
+@test "colour themes and a click modal read calculated fields and rule attributes (ADR 0012)" {
+  with_rules 'score_gap=100 - score'
+  # Themes on the action count (stepped, with an explicit legend) and on a
+  # calculated field (a gradient over its range in the data), and a modal
+  # listing the recommended actions' reasons.
+  jq 'del(.popup) | .symbology = (.symbology | del(.color)) + {
+        themes: [
+          {id: "actions", label: "Review actions",
+           color: {type: "stepped", attribute: "actions_review_count",
+             stops: [{from: 0, color: "#eff3ff"}, {from: 1, color: "#6baed6"}, {from: 2, color: "#08519c"}],
+             max: 2, fallback: {color: "#999999", label: "No data"}},
+           legend: {items: [{color: "#eff3ff", label: "None"}, {color: "#6baed6", label: "1"},
+             {color: "#08519c", label: "2 or more"}]}},
+          {id: "gap", label: "Score gap",
+           color: {type: "interpolated", attribute: "score_gap",
+             colors: ["#eff3ff", "#08519c"], fallback: {color: "#999999"}}}],
+        defaultTheme: "actions"}
+      | .modal = {title: "{name}", sections: [
+          {heading: "Gap", blocks: [{type: "attributes", items: [
+            {label: "Score gap", value: {attribute: "score_gap"}, format: "count"}]}]},
+          {heading: "Recommended actions", blocks: [{type: "list", items: [
+            {text: "{action_low_score_reason}", when: "action_low_score"},
+            {text: "{action_mid_score_reason}", when: "action_mid_score"}],
+            empty: "No actions recommended."}]}]}' \
+    "${PIPELINE_LAYERS_DIR}/demo.style.json" >"${BATS_TEST_TMPDIR}/s.json"
+  mv "${BATS_TEST_TMPDIR}/s.json" "${PIPELINE_LAYERS_DIR}/demo.style.json"
+  run "$RUN" demo
+  [ "$status" -eq 0 ]
+
+  # The default theme colours by the count; the gradient spans score_gap's
+  # range in the data, 6 to 97.
+  run entry '.display.layers[0].paint["fill-color"][2]'
+  [ "$output" = '["step",["get","actions_review_count"],"#eff3ff",1,"#6baed6",2,"#08519c"]' ]
+  run entry '[.display.legend.items[].label]'
+  [ "$output" = '["None","1","2 or more"]' ]
+  run entry '.display.themes[1].paint.fill["fill-color"][2]'
+  [ "$output" = '["interpolate",["linear"],["get","score_gap"],6,"#eff3ff",97,"#08519c"]' ]
+  run entry '.display.modal.sections[1].blocks[0].items[0].when'
+  [ "$output" = '"action_low_score"' ]
+  # The attributes the modal names are in the tiles: id 3 has both reasons.
+  run feature 3
+  [ "$(jq -c '[.action_low_score, .action_mid_score, .actions_review_count, .score_gap]' <<<"$output")" = '[1,1,2,90]' ]
+  [ "$(jq -r '.action_mid_score_reason' <<<"$output")" = "Review - middling score: recommended because the score is under 50" ]
+
+  # --style-only reads the derived data for the gradient as built.
+  run "$RUN" --style-only demo
+  [ "$status" -eq 0 ]
+  [[ $output == *"reading the source data for breaks (no tiling)"* ]]
+  run entry '.display.themes[1].paint.fill["fill-color"][2][3]'
+  [ "$output" = '6' ]
+}
+
 @test "inspect.sh --config shows the calculated fields and rule counts before a build" {
   with_rules 'score_gap=100 - score'
   local json

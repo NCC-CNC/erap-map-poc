@@ -138,10 +138,10 @@ test case in `pipeline/tests/fixtures/`. `web/` never reads `data/raw/`.
 ## Adding or restyling a layer
 
 Use the project skills in `.claude/skills/`: `add-layer`, `restyle-layer`,
-`build-layers`, `layer-status`, `update-layer-data`, `remove-layer`,
-`inspect-data`, `run-map`, `run-checks` and `setup`. The README table
-(Using Claude Code) maps each to its plain command. Skills hold procedure
-only: they call documented commands (`pipeline/bin/run.sh` with `--status`
+`edit-popup`, `build-layers`, `layer-status`, `update-layer-data`,
+`remove-layer`, `inspect-data`, `run-map`, `run-checks` and `setup`. The
+README table (Using Claude Code) maps each to its plain command. Skills
+hold procedure only: they call documented commands (`pipeline/bin/run.sh` with `--status`
 and `--remove`, `pipeline/bin/inspect.sh`, `scripts/setup.sh` with
 `--check` and `--init`, `scripts/screenshot.sh` writing
 `tmp/screenshots/`, the `CONTRIBUTING.md` checks); new logic goes into the

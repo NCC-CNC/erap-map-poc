@@ -139,15 +139,70 @@ export function attributeValues(geojsonl, attribute) {
 }
 
 /**
- * The colour rule with `breaks` resolved into `stops` and `max`.
- * `valuesOf(attribute)` returns the attribute's numeric values from the data.
+ * Whether a colour rule is resolved from the layer's data: a stepped rule
+ * with `breaks`, or an interpolated one with `colors` and no `min` or `max`.
  */
-function resolveRule(rule, valuesOf) {
+export function ruleNeedsData(rule) {
+  if (rule.type === 'stepped') return Boolean(rule.breaks);
+  if (rule.type === 'interpolated') {
+    return !rule.stops && (rule.min === undefined || rule.max === undefined);
+  }
+  return false;
+}
+
+/** The colour rules of a symbology: its `color`, or each theme's. */
+export function symbologyRules(symbology) {
+  if (!symbology || symbology.geometry === 'raster') return [];
+  return symbology.themes ? symbology.themes.map((t) => t.color) : [symbology.color];
+}
+
+/**
+ * An interpolated rule with `colors` resolved into `stops`, spread evenly
+ * from `min` to `max`, each defaulting to the data's minimum or maximum.
+ */
+function resolveInterpolated(rule, valuesOf, where) {
+  if (rule.stops) {
+    for (let i = 1; i < rule.stops.length; i++) {
+      if (!(rule.stops[i].value > rule.stops[i - 1].value)) {
+        throw new DisplayError([`${where}: interpolated stops must have ascending values`]);
+      }
+    }
+    return rule;
+  }
+  let { min, max } = rule;
+  if (min === undefined || max === undefined) {
+    const values = valuesOf(rule.attribute).filter((v) => Number.isFinite(v));
+    if (values.length === 0) {
+      throw new DisplayError([`${where}: no numeric values of ${rule.attribute} in the data`]);
+    }
+    min ??= Math.min(...values);
+    max ??= Math.max(...values);
+  }
+  if (!(max > min)) {
+    throw new DisplayError([`${where}: interpolated max (${max}) must be above min (${min})`]);
+  }
+  const last = rule.colors.length - 1;
+  return {
+    type: 'interpolated',
+    attribute: rule.attribute,
+    stops: rule.colors.map((color, i) => ({ value: tidy(min + ((max - min) * i) / last), color })),
+    fallback: rule.fallback,
+  };
+}
+
+/**
+ * The colour rule with `breaks` resolved into `stops` and `max`, and an
+ * interpolated rule's `colors` into `stops`. `valuesOf(attribute)` returns
+ * the attribute's numeric values from the data; `where` names the rule in
+ * problems.
+ */
+function resolveRule(rule, valuesOf, where = 'symbology.color') {
+  if (rule.type === 'interpolated') return resolveInterpolated(rule, valuesOf, where);
   if (rule.type !== 'stepped' || !rule.breaks) return rule;
   const { method, classes } = rule.breaks;
   if (rule.colors.length !== classes) {
     throw new DisplayError([
-      `symbology.color: breaks.classes is ${classes} but there are ${rule.colors.length} colors`,
+      `${where}: breaks.classes is ${classes} but there are ${rule.colors.length} colors`,
     ]);
   }
   const { bounds, max } = computeBreaks(valuesOf(rule.attribute), method, classes);
@@ -180,6 +235,11 @@ export function colorValue(rule) {
       const value = ['get', rule.attribute];
       const step = ['step', value, first.color, ...rest.flatMap((s) => [s.from, s.color])];
       return ['case', ['==', ['typeof', value], 'number'], step, rule.fallback.color];
+    }
+    case 'interpolated': {
+      const value = ['get', rule.attribute];
+      const ramp = ['interpolate', ['linear'], value, ...rule.stops.flatMap((s) => [s.value, s.color])];
+      return ['case', ['==', ['typeof', value], 'number'], ramp, rule.fallback.color];
     }
   }
   throw new DisplayError([`unknown colour type ${rule.type}`]);
@@ -253,9 +313,16 @@ export function symbologyLayers(symbology) {
   ];
 }
 
-/** A number in a legend label, with thousands separators. */
-export function formatBound(value) {
-  return new Intl.NumberFormat('en-CA').format(value);
+/**
+ * A number in a legend label, with thousands separators. With `span`, the
+ * range of a gradient, rounded to suit it (0 decimals from 100 up, 1 from
+ * 10, 2 from 1, else 3).
+ */
+export function formatBound(value, span) {
+  if (span === undefined) return new Intl.NumberFormat('en-CA').format(value);
+  // A gradient: as many decimals as its range needs.
+  const decimals = span >= 100 ? 0 : span >= 10 ? 1 : span >= 1 ? 2 : 3;
+  return new Intl.NumberFormat('en-CA', { maximumFractionDigits: decimals }).format(value);
 }
 
 function fallbackItems(fallback) {
@@ -299,6 +366,20 @@ export function symbologyLegend(symbology, title) {
         ...fallbackItems(rule.fallback),
       ];
       break;
+    case 'interpolated': {
+      kind = 'gradient';
+      const first = rule.stops[0].value;
+      const span = rule.stops[rule.stops.length - 1].value - first;
+      items = [
+        ...rule.stops.map((stop) => ({
+          color: stop.color,
+          label: formatBound(stop.value, span),
+          position: tidy((stop.value - first) / span),
+        })),
+        ...fallbackItems(rule.fallback),
+      ];
+      break;
+    }
   }
   return {
     kind,
@@ -537,6 +618,9 @@ export function drawOrder(entries) {
  * @throws {DisplayError} listing every problem found.
  */
 export function resolveDisplay(layerName, config, valuesOf, type = configType(config)) {
+  if (config?.popup && config?.modal) {
+    throw new DisplayError(['a layer has a "popup" or a "modal" for click details, not both']);
+  }
   validateConfig(config);
   const raster = config.symbology?.geometry === 'raster';
   if (type === 'raster' && !raster) {
@@ -550,6 +634,15 @@ export function resolveDisplay(layerName, config, valuesOf, type = configType(co
   if (raster && config.popup) {
     throw new DisplayError(['popup: raster layers are display only and cannot have a pop-up']);
   }
+  if (raster && config.modal) {
+    throw new DisplayError(['modal: raster layers are display only and cannot have a modal']);
+  }
+  if (config.modal) {
+    const problems = modalProblems(config.modal);
+    if (problems.length) throw new DisplayError(problems);
+  }
+
+  if (config.symbology?.themes) return resolveThemed(layerName, config, valuesOf);
 
   let layers;
   let derived;
@@ -557,8 +650,9 @@ export function resolveDisplay(layerName, config, valuesOf, type = configType(co
     layers = symbologyLayers(config.symbology);
     derived = symbologyLegend(config.symbology, config.title);
   } else if (config.symbology) {
-    const needsData = config.symbology.color.type === 'stepped' && config.symbology.color.breaks;
-    if (needsData && !valuesOf) throw new DisplayError(['breaks need the layer data']);
+    if (ruleNeedsData(config.symbology.color) && !valuesOf) {
+      throw new DisplayError(['breaks need the layer data']);
+    }
     const symbology = { ...config.symbology, color: resolveRule(config.symbology.color, valuesOf) };
     layers = symbologyLayers(symbology);
     derived = symbologyLegend(symbology, config.title);
@@ -581,20 +675,160 @@ export function resolveDisplay(layerName, config, valuesOf, type = configType(co
     ]);
   }
 
-  const display = {
+  const display = { ...displayHead(config), layers, legend };
+  checkStyle(layerName, type, display);
+  validateDisplay(display);
+  return display;
+}
+
+/** The fields every resolved display starts with. */
+function displayHead(config) {
+  return {
     title: config.title,
     defaultVisible: config.defaultVisible,
     order: config.order ?? DEFAULT_ORDER,
     ...(config.popup ? { popup: config.popup } : {}),
-    layers,
-    legend,
+    ...(config.modal ? { modal: config.modal } : {}),
   };
+}
 
+/** Runs the MapLibre style validator on a resolved display; throws DisplayError. */
+function checkStyle(layerName, type, display, where = 'MapLibre style') {
   const file = type === 'raster' ? `${layerName}.cog.tif` : `${layerName}.pmtiles`;
   const style = buildStyle([{ name: layerName, file, type, display }]);
   // Validate as if glyphs were there: the web map's basemap provides them.
   const problems = styleProblems({ ...style, glyphs: GLYPHS_URL });
-  if (problems.length) throw new DisplayError(problems.map((p) => `MapLibre style: ${p}`));
+  if (problems.length) throw new DisplayError(problems.map((p) => `${where}: ${p}`));
+}
+
+/** The style layer and paint property that a shorthand's colour rule sets. */
+const COLOR_TARGET = { polygon: ['fill', 'fill-color'], point: ['circle', 'circle-color'] };
+
+/**
+ * Resolves a shorthand with colour `themes` (ADR 0012): each theme's rule
+ * resolved (breaks and gradients from the data) into the paint it sets and
+ * its legend. The display's `layers` and `legend` are the default theme's,
+ * so the standalone style.json and an app that knows no themes show it.
+ */
+function resolveThemed(layerName, config, valuesOf) {
+  const { symbology } = config;
+  const problems = [];
+  const ids = symbology.themes.map((t) => t.id);
+  const dupes = [...new Set(ids.filter((id, i) => ids.indexOf(id) !== i))];
+  if (dupes.length) problems.push(`symbology.themes: duplicate id ${dupes.join(', ')}`);
+  const defaultTheme = symbology.defaultTheme ?? ids[0];
+  if (!ids.includes(defaultTheme)) {
+    problems.push(`symbology.defaultTheme: no theme ${defaultTheme} (themes: ${ids.join(', ')})`);
+  }
+  if (config.legend) {
+    problems.push('legend: not used with symbology.themes; give each theme its own legend');
+  }
+  if (symbologyRules(symbology).some(ruleNeedsData) && !valuesOf) {
+    problems.push('breaks need the layer data');
+  }
+  if (problems.length) throw new DisplayError(problems);
+
+  const [target, property] = COLOR_TARGET[symbology.geometry];
+  const themes = symbology.themes.map((theme, i) => {
+    const where = `symbology.themes[${i}] (${theme.id})`;
+    const color = resolveRule(theme.color, valuesOf, `${where}.color`);
+    const resolved = { ...symbology, color };
+    const layers = symbologyLayers(resolved);
+    const derived = symbologyLegend(resolved, theme.label);
+    const legend = theme.legend ? explicitLegend(theme.legend, derived, layers) : derived;
+    checkStyle(layerName, 'vector', { ...displayHead(config), layers, legend }, `${where}: MapLibre style`);
+    return {
+      layers,
+      theme: {
+        id: theme.id,
+        label: theme.label,
+        paint: { [target]: { [property]: colorValue(color) } },
+        legend,
+      },
+    };
+  });
+  const first = themes.find((t) => t.theme.id === defaultTheme);
+  const display = {
+    ...displayHead(config),
+    layers: first.layers,
+    legend: first.theme.legend,
+    themes: themes.map((t) => t.theme),
+    defaultTheme,
+  };
   validateDisplay(display);
   return display;
+}
+
+// ---------------------------------------------------------------------------
+// Modal template checks (beyond the schema)
+
+/** Number format presets (schema `$defs/formatPreset`), as placeholders may use. */
+export const FORMAT_PRESETS = Object.freeze(['number', 'count', 'percent', 'hectares', 'km']);
+
+/** `{name}` or `{name:preset}` in a template. */
+const PLACEHOLDER = /\{([^{}:]*)(?::([^{}]*))?\}/g;
+
+/** Problems with the placeholders of one template text. */
+export function templateProblems(text, where) {
+  const problems = [];
+  for (const [whole, name, preset] of text.matchAll(PLACEHOLDER)) {
+    if (!/^(\$id|[A-Za-z0-9_][A-Za-z0-9_.-]*)$/.test(name)) {
+      problems.push(`${where}: ${whole} is not a valid placeholder (use {attribute}, {attribute:preset} or {$id})`);
+    } else if (preset !== undefined && !FORMAT_PRESETS.includes(preset)) {
+      problems.push(`${where}: ${whole}: unknown format preset ${preset} (${FORMAT_PRESETS.join(', ')})`);
+    }
+  }
+  const rest = text.replace(PLACEHOLDER, '');
+  if (/[{}]/.test(rest)) problems.push(`${where}: unmatched { or } in "${text}"`);
+  return problems;
+}
+
+/**
+ * Problems in a modal template the schema cannot express: table rows and
+ * chart series of the wrong length, a pie with more than one series, and
+ * placeholders that are not valid.
+ */
+export function modalProblems(modal) {
+  const problems = [];
+  const text = (value, where) => {
+    if (value !== undefined) problems.push(...templateProblems(value, where));
+  };
+  text(modal.title, 'modal.title');
+  text(modal.subtitle, 'modal.subtitle');
+  modal.sections.forEach((section, s) => {
+    const at = `modal.sections[${s}]`;
+    text(section.description, `${at}.description`);
+    (section.blocks ?? []).forEach((block, b) => {
+      const where = `${at}.blocks[${b}]`;
+      if (block.type === 'text') text(block.text, `${where}.text`);
+      if (block.type === 'list') block.items.forEach((item, i) => text(item.text, `${where}.items[${i}].text`));
+      if (block.type === 'table') {
+        block.rows.forEach((row, r) => {
+          if (row.values.length !== block.columns.length) {
+            problems.push(
+              `${where}.rows[${r}]: ${row.values.length} values for ${block.columns.length} columns`,
+            );
+          }
+        });
+      }
+      if (block.type === 'chart') {
+        block.series.forEach((series, i) => {
+          if (series.attributes.length !== block.categories.length) {
+            problems.push(
+              `${where}.series[${i}]: ${series.attributes.length} attributes for ${block.categories.length} categories`,
+            );
+          }
+        });
+        if (block.chart !== 'bar' && block.series.length !== 1) {
+          problems.push(`${where}: a ${block.chart} chart takes exactly one series`);
+        }
+        if (block.colors && block.colors.length !== block.categories.length) {
+          problems.push(
+            `${where}.colors: ${block.colors.length} colours for ${block.categories.length} categories`,
+          );
+        }
+      }
+    });
+  });
+  return problems;
 }

@@ -248,6 +248,33 @@ EOF
   [[ $output == *"breaks: no numeric values in the data"* ]]
 }
 
+@test "colour themes and a click modal are resolved into the display block (ADR 0012)" {
+  use_layer sample
+  cp "${PIPELINE_ROOT}/tests/fixtures/sample_modal.style.json" "${PIPELINE_LAYERS_DIR}/sample.style.json"
+  run "$RUN" sample
+  [ "$status" -eq 0 ]
+  local want="${PIPELINE_ROOT}/tests/fixtures/expected_modal_display.json"
+  run jq -e --slurpfile want "$want" '.layers[0].display == $want[0]' "$MANIFEST"
+  [ "$status" -eq 0 ]
+
+  # style.json draws the default theme.
+  run jq -e --slurpfile want "$want" '.layers[0].paint == $want[0].layers[0].paint' "$STYLE"
+  [ "$status" -eq 0 ]
+
+  # A pop-up and a modal together fail the layer.
+  jq '.popup = {title: {attribute: "name"}, stats: []}' \
+    "${PIPELINE_ROOT}/tests/fixtures/sample_modal.style.json" >"${PIPELINE_LAYERS_DIR}/sample.style.json"
+  run "$RUN" sample
+  [ "$status" -eq 1 ]
+  [[ $output == *"a layer has a \"popup\" or a \"modal\" for click details, not both"* ]]
+}
+
+@test "the ecoregions example config passes the pre-check" {
+  run node "$TOOL" check "${PIPELINE_ROOT}/tests/fixtures/ecoregions.example.style.json"
+  [ "$status" -eq 0 ]
+  [[ $output == *"ecoregions.example.style.json: ok"* ]]
+}
+
 @test "the pre-check reports a bad config without building" {
   write_style bad '{"title": "Bad", "defaultVisible": true}'
   run node "$TOOL" check "${PIPELINE_LAYERS_DIR}/bad.style.json"

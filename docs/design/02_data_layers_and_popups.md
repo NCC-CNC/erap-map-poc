@@ -60,19 +60,24 @@ in an editor. Fields:
   source, `{"attribute": "name"}` or `{"featureId": true}` (the vector tile
   feature id); a missing title falls back to the layer title. `stats` is a
   list of `{label, value, format}`, where the optional `format` makes the
-  value a number with `decimals` (default 0), `grouping` (thousands
-  separators, default true) and a `suffix` such as `ha`. `charts` (optional)
+  value a number (Number formats, below). `charts` (optional)
   is a list of `{type: "bar" | "line", title, valueLabel, points}`, each
   point a `{label, attribute}`. Missing values show as "Not available".
+- `modal` (optional, in place of `popup`): click details in a dialog,
+  from one template per layer (Click modal, below). A layer has a `popup`
+  or a `modal`, not both.
 - Exactly one of:
   - `symbology`: the shorthand. Polygons (`geometry: "polygon"`, a fill at
     `fillOpacity` with an `outline`) or points (`geometry: "point"`, circles
     of `radius` with a `stroke`), coloured by `color`: `single`,
-    `categorical` (MapLibre `match` on a text attribute, with a `fallback`)
-    or `stepped` (MapLibre `step` on a numeric attribute, guarded so
-    features without a number take the `fallback`). A stepped colour has
+    `categorical` (MapLibre `match` on a text attribute, with a `fallback`),
+    `stepped` (MapLibre `step` on a numeric attribute, guarded so
+    features without a number take the `fallback`) or `interpolated` (a
+    gradient, below). A stepped colour has
     either explicit `stops` (`from` ascending, the last class up to `max`,
-    which is for the legend only) or `breaks` plus `colors` (below). The
+    which is for the legend only) or `breaks` plus `colors` (below). In
+    place of `color`, `themes` gives several colour rules to switch between
+    in the map (Colour themes, below). The
     shorthand expands to style layers with ids `fill` and `outline`, or
     `circle`. A raster layer (`LAYER_TYPE=raster`) takes only the raster
     shorthand, `geometry: "raster"` with `color` (`#rrggbb`), `opacity` and
@@ -82,8 +87,9 @@ in an editor. Fields:
     Any vector layer type (`fill`, `line`, `symbol`, `circle`, `heatmap`,
     `fill-extrusion`), with expressions, zoom functions, filters, labels and
     so on. Ids must be unique within the file.
-- `legend` (optional): explicit legend `items` (`color`, `label`), with
-  optional `kind` (`single`, `categories`, `ramp`), `shape` (`square`,
+- `legend` (optional): explicit legend `items` (`color`, `label`, and for
+  a gradient a `position` from 0 to 1), with
+  optional `kind` (`single`, `categories`, `ramp`, `gradient`), `shape` (`square`,
   `circle`, `line`), `border` and `opacity`. Without it the legend is
   derived: from the shorthand exactly as before; from raw `layers`, from the
   colour of the first fill, circle or line layer when it is a constant, a
@@ -168,6 +174,146 @@ docker compose run --rm --entrypoint sh pipeline -c \
   'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.json'
 ```
 
+### Colour themes and gradients
+
+ADR 0012. The polygon or point shorthand can give `themes` in place of
+`color`: a list of `{id, label, color, legend}` (the `legend` optional,
+as the top-level one is for a single `color`, which themes do not use)
+and an optional `defaultTheme` (default: the first). The map opens on the
+default; when there is more than one theme, a "Colour by" list under the
+layer in the layer panel switches the colours and the legend in the
+browser, with no rebuild, and the choice survives a basemap switch. Raw
+`layers` have no themes.
+
+An `interpolated` colour rule is a continuous gradient on a number
+(MapLibre `interpolate`, linear, guarded like `stepped` so features
+without a number take the `fallback`): either `stops` (`{value, color}`,
+at least two, ascending) or `colors` (2 to 12) spread evenly from `min`
+to `max`, each of which defaults to the data's minimum or maximum (read
+from the data like `breaks`). Its legend is a `gradient`: a colour bar
+with each stop's value under it at its `position`, then the fallback if
+it has a label. For example (the ecoregion example's themes are in
+`pipeline/tests/fixtures/ecoregions.example.style.json`):
+
+```json
+"symbology": {
+  "geometry": "polygon",
+  "themes": [
+    {
+      "id": "protected",
+      "label": "Protected (%)",
+      "color": {
+        "type": "stepped",
+        "attribute": "protected_pcnt",
+        "stops": [
+          { "from": 0, "color": "#deebf7" },
+          { "from": 10, "color": "#9ecae1" },
+          { "from": 17, "color": "#4292c6" },
+          { "from": 30, "color": "#08519c" }
+        ],
+        "max": 100,
+        "fallback": { "color": "#bdbdbd", "label": "No data" }
+      }
+    },
+    {
+      "id": "intact",
+      "label": "Intact (%)",
+      "color": {
+        "type": "interpolated",
+        "attribute": "intact_pcnt",
+        "colors": ["#f7fbff", "#6baed6", "#08306b"],
+        "min": 0,
+        "max": 100,
+        "fallback": { "color": "#bdbdbd", "label": "No data" }
+      }
+    }
+  ],
+  "defaultTheme": "protected",
+  "fillOpacity": 0.45,
+  "outline": { "color": "#08306b", "width": 1 }
+}
+```
+
+In the manifest, `display.layers` and `display.legend` are the default
+theme's (so `style.json` draws it), `display.themes` lists each theme as
+`{id, label, paint, legend}`, where `paint` maps a style layer id to the
+paint properties the theme sets (`{"fill": {"fill-color": [...]}}`), and
+`display.defaultTheme` names the default.
+
+### Number formats
+
+A `format` (pop-up stats, modal items, table columns, charts) is a preset
+name or an object. Presets: `number` and `count` (0 decimals, thousands
+separators), `percent` (a value already 0 to 100: 1 decimal, then `%`),
+`hectares` (0 decimals, `ha`) and `km` (1 decimal, `km`). An object has an
+optional `preset` and any of `decimals` (default 0), `grouping` (thousands
+separators, default true) and `suffix`, which change it:
+`{"preset": "percent", "decimals": 2}`. A suffix follows the number after
+a space, except `%`, which follows directly. Numbers use the `en-CA`
+locale.
+
+### Click modal
+
+ADR 0012. A layer's `modal` opens a dialog on click instead of the small
+pop-up: one template, filled from the clicked feature's tile attributes.
+The app only shows attributes; derived values come from the pipeline
+(calculated fields, #60). Fields:
+
+- `title` and optional `subtitle`: text with placeholders. `{name}` is the
+  attribute `name` as it is, `{area_ha:hectares}` the attribute in a
+  format preset, `{$id}` the feature id.
+- `sections`: in order, each a `heading`, an optional `description`
+  (text with placeholders) and `blocks`:
+  - `{"type": "attributes", "items": [...]}`: labelled values, each item
+    a pop-up stat (`label`, `value`, `format`).
+  - `{"type": "table", "caption", "rowHeader", "columns": [{label,
+    format}], "rows": [{label, values}]}`: categories (rows) by attributes
+    (columns); each row's `values` gives one attribute per column, or
+    `null` for an empty cell.
+  - `{"type": "chart", "chart": "bar" | "pie" | "doughnut", "title",
+    "valueLabel", "format", "categories", "series": [{label, attributes,
+    color}], "colors"}`: `attributes` gives one attribute (or `null`) per
+    category. A bar chart with several series is a grouped bar chart with
+    a series legend; a pie or doughnut takes one series, with optional
+    slice `colors`. Default colours are the Okabe-Ito palette.
+  - `{"type": "text", "text": "..."}`: a paragraph with placeholders.
+  - `{"type": "list", "items": [{text, when}], "empty": "..."}`: a
+    bulleted list, for example recommended actions with their reasons. An
+    item shows when its `when` attribute (if given) is true (true, a
+    number other than 0, or text other than empty, `0`, `false` or `no`)
+    and its text has every placeholder value; `empty` is shown when none
+    does.
+
+What a feature lacks is hidden, not shown empty: a title with a missing
+value falls back to the layer title; a subtitle, description, text or
+list item with one is hidden; an attribute item without a value is left
+out, a table cell shows n/a and a row with no values is left out; a chart
+keeps gaps and is left out with no values; a list whose attributes are not
+in the tiles at all is left out (with them but none true, it shows
+`empty`); and a section whose blocks are all hidden (or, without blocks,
+whose description is) is left out. The pipeline checks the template
+beyond the schema: each table row has one value per column, each chart
+series one attribute per category, a pie or doughnut one series, slice
+colours one per category, and placeholders are well formed with known
+presets.
+
+The dialog is accessible: `role="dialog"` with `aria-modal`, labelled by
+the title and described by the subtitle; focus moves to the close button
+and stays in the dialog (Tab and Shift+Tab cycle) until it closes, then
+returns; Escape, the close button or a click outside closes it; the body
+scrolls, and on a narrow screen (600 px or less) the dialog fills it.
+Hiding the layer closes it. Tables have a caption and row and column
+headers; each chart has a text summary for screen readers.
+
+The ecoregion example, `pipeline/tests/fixtures/ecoregions.example.env`
+and `.style.json`, uses the attributes the play data has now: a Summary
+(ids, ecozone, area, protected, Where To Work, intact, modified), Habitat
+(a table and a grouped bar chart of forest, grassland, wetland and lakes
+by cover, protected and Where To Work, and a table of rivers and
+shoreline by length, protected and Where To Work) and Direct threats (the
+footprint of each threat). The display config tests check it; #58 turns
+it into the committed layer and adds the ERAP metrics.
+
 ### `sample`
 
 The synthetic test layer. Made-up features only, no real data. It exercises
@@ -214,6 +360,11 @@ PIPELINE_LAYERS_DIR=/opt/pipeline/tests/layers pipeline`.
   - Plots: bar chart "Value by year", x = 2020 to 2024, y = `v2020` to `v2024`, read
     from tile attributes (five integers is small enough not to need sidecar
     JSON).
+- Tests also use `pipeline/tests/fixtures/sample_modal.style.json`: the
+  same layer with three colour themes (score in classes, score as a
+  gradient, area as a gradient over the data's range) and a click modal
+  with every block type. The pipeline's resolved display for it is
+  `expected_modal_display.json`, which the web tests read too.
 
 ### `sample_points`
 

@@ -1,10 +1,12 @@
 import { Map as MapLibreMap } from 'maplibre-gl';
 import { PMTiles } from 'pmtiles';
 import {
+  themePaintUpdates,
   toMapLibre,
   visibilityUpdates,
   type LayerDefinition,
   type MapLibreLayer,
+  type Theme,
 } from '../layers';
 import { pmtilesProtocol } from './pmtiles';
 // Sets the MapLibre worker URL; must run before any map is created.
@@ -29,6 +31,12 @@ export interface CreateMapOptions {
    * Defaults to the definition's `defaultVisible`.
    */
   isVisible?: (def: LayerDefinition) => boolean;
+  /**
+   * The colour theme to draw a layer with (ADR 0012), read like
+   * `isVisible`, so a basemap switch keeps the user's choice. Defaults to
+   * the layer's default theme.
+   */
+  themeOf?: (def: LayerDefinition) => Theme | undefined;
   /** Called once with the ids of the layers whose archive could be read. */
   onLayersChecked?: (available: ReadonlySet<string>) => void;
 }
@@ -99,6 +107,7 @@ export function createMap(container: HTMLElement, options: CreateMapOptions): Ma
     tilesBaseUrl: baseUrl = tilesBaseUrl(),
     signal,
     isVisible = (def) => def.defaultVisible,
+    themeOf = () => undefined,
     onLayersChecked,
   } = options;
 
@@ -130,7 +139,7 @@ export function createMap(container: HTMLElement, options: CreateMapOptions): Ma
       if (signal?.aborted || map.style !== loadedStyle) return;
       addDataLayers(
         map,
-        ready.map((def) => toMapLibre(def, baseUrl, isVisible(def))),
+        ready.map((def) => toMapLibre(def, baseUrl, isVisible(def), themeOf(def)?.id)),
       );
     });
   });
@@ -151,6 +160,20 @@ export function setLayerVisibility(
 ): void {
   for (const [id, value] of visibilityUpdates(def, visible)) {
     if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', value);
+  }
+}
+
+/**
+ * Draws a layer in a colour theme (ADR 0012) by setting the paint
+ * properties the theme gives on its style layers. Style layers not in the
+ * map yet are skipped; they are added in the theme from `themeOf`.
+ */
+export function setLayerTheme(map: MapLibreMap, def: LayerDefinition, theme: Theme): void {
+  for (const [id, property, value] of themePaintUpdates(def, theme)) {
+    // The pipeline wrote these from the shorthand and checked them with the
+    // MapLibre style validator.
+    type Paint = Parameters<MapLibreMap['setPaintProperty']>;
+    if (map.getLayer(id)) map.setPaintProperty(id, property as Paint[1], value as Paint[2]);
   }
 }
 

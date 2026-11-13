@@ -229,13 +229,16 @@ heading to collapse it; it starts collapsed on narrow screens):
   visibility.
 - **Layers**: a checkbox per data layer, with its legend underneath, listed
   with the layer drawn on top first. Each starts on or off as its display
-  config says. If `manifest.json` is missing or not valid, the panel says
-  so.
+  config says. A layer with colour themes has a **Colour by** list above
+  its legend, which recolours the layer and its legend at once. If
+  `manifest.json` is missing or not valid, the panel says so.
 
 Click a feature of a visible layer to open its pop-up: a title, summary
 stats, and any charts. Where features overlap, the layer drawn on top wins
 (a sample point over a sample polygon). Missing values show as "Not
-available". Hiding a layer closes its pop-up.
+available". A layer with a modal opens a dialog instead, with sections of
+values, tables and charts; close it with Escape, its close button or a
+click outside. Hiding a layer closes its pop-up or dialog.
 
 ## Adding a layer
 
@@ -296,11 +299,17 @@ worked examples, and
 3. Write `pipeline/layers/<layer>.style.json`, starting with
    `"$schema": "../schema/layer-style.schema.json"` for completion and
    checking in an editor: `title`, `defaultVisible`, `order` (draw order),
-   either the `symbology` shorthand (single, categorical or stepped colours,
-   with stepped breaks fixed or computed from the data) or raw MapLibre
-   style-spec `layers`, an optional `legend` (derived when left out), and
-   an optional `popup` (title, stats, bar or line charts; without one the
-   layer is not clickable). A raster layer uses `"symbology": {"geometry":
+   either the `symbology` shorthand (single, categorical, stepped or
+   gradient colours, with stepped breaks fixed or computed from the data,
+   or several colour `themes` to switch between in the map) or raw
+   MapLibre style-spec `layers`, an optional `legend` (derived when left
+   out), and either an optional `popup` (title, stats, bar or line charts)
+   or a `modal` (a dialog of sections with values, tables, charts, text
+   and lists, from one template; see
+   `pipeline/tests/fixtures/ecoregions.example.style.json`); without
+   either the layer is not clickable. Number formats can be presets
+   (`percent`, `hectares`, `km`, `count`). Design note 02 (Display
+   config) has the details. A raster layer uses `"symbology": {"geometry":
    "raster", "color", "opacity", "label"}` (see `forest.style.json`) and
    has no pop-up. Check display configs (and rules tables) without
    building:
@@ -376,9 +385,11 @@ What the `.style.json` sets:
 - `title` (the layer list and legend), `order` (draw order: higher on
   top) and `defaultVisible` (on or off when the map opens), for every
   layer.
-- A vector layer's colours (single, by category, or stepped by a number,
-  with breaks fixed or computed from the data), outline, opacity, legend
-  and pop-up (title, stats and charts). See Adding a layer, step 3.
+- A vector layer's colours (single, by category, stepped by a number,
+  with breaks fixed or computed from the data, or a gradient), colour
+  themes to switch between, outline, opacity, legend, and its pop-up
+  (title, stats and charts) or modal (sections of values, tables, charts,
+  text and lists). See Adding a layer, step 3.
 - A raster layer's `color`, `opacity` and legend `label`. The COG holds
   only the share of each pixel covered (0 to 255), and the browser turns
   that into the colour as it draws: none is transparent, full cover is the
@@ -390,8 +401,9 @@ rewrites `style.json`; the tiles or COG are not touched. With no layer
 names it updates every built layer. A bad config fails with one line per
 problem and changes nothing. `--status` lists a layer whose `.style.json`
 changed since as `restyle`. A stepped colour with `breaks` computed from
-the data re-reads the source data (not the tiles), and fails if the source
-or `.env` changed since the build. A change that needs a field the tiles
+the data, or a gradient whose range comes from the data, re-reads the
+source data (not the tiles), and fails if the source or `.env` changed
+since the build. A change that needs a field the tiles
 do not have (`LAYER_FIELDS`) or any `.env` change still needs a full
 build.
 
@@ -488,7 +500,8 @@ prompt; removing a layer always asks first.
 | See what is built or stale | `docker compose run --rm pipeline --status` | "Which layers are out of date?" (`/layer-status`) |
 | Look at a dataset | `docker compose run --rm --entrypoint inspect.sh pipeline <path>` | "What is in data/raw/parcels.gpkg?" (`/inspect-data`) |
 | Add a layer | Adding a layer, above | "Add data/raw/parcels.gpkg as a layer", "Add wetlands.tif as a raster layer" (`/add-layer`) |
-| Restyle a layer or its pop-up | Styling a layer, above | "Colour parcels by habitat type", "Make forest dark green" (`/restyle-layer`) |
+| Restyle a layer (colours, themes, legend) | Styling a layer, above | "Colour parcels by habitat type", "Make forest dark green" (`/restyle-layer`) |
+| Change what a pop-up or modal shows | Styling a layer, above (`popup` or `modal` in the `.style.json`, then `--style-only`; a field not in the tiles needs `LAYER_FIELDS` and a rebuild) | "Add a threats table to the ecoregion modal", "Show area in hectares in the parcels pop-up" (`/edit-popup`) |
 | Build layers, explain failures | `docker compose run --rm pipeline [layer ...]` | "Rebuild the stale layers" (`/build-layers`) |
 | Refresh a layer's source data | Adding a layer, above (inspect, compare, build) | "The parcels data was updated, refresh it" (`/update-layer-data`) |
 | Remove a layer | Removing a layer, above | "Remove the parcels layer" (`/remove-layer`) |
@@ -496,7 +509,7 @@ prompt; removing a layer always asks first.
 | Change your own map only | Your map config, above | "Hide agriculture on my map", "Use my copy of the forest data" (`/restyle-layer`, `/build-layers`) |
 | Run the CI checks locally | `CONTRIBUTING.md` (Checks) | "Run the checks" (`/run-checks`) |
 
-Skills that change files (add, restyle, update, remove) work on a branch
+Skills that change files (add, restyle, edit pop-up, update, remove) work on a branch
 and open a draft pull request with the configs only; data never goes in
 git. Adding or changing a skill is described in `CONTRIBUTING.md`.
 

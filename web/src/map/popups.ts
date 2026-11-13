@@ -2,7 +2,7 @@ import { createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Popup, type Map as MapLibreMap, type MapMouseEvent } from 'maplibre-gl';
 import type { LayerDefinition } from '../layers';
-import { buildPopupContent, clickableLayers } from '../popup/content';
+import { buildPopupContent, clickableLayers, type PopupFeature } from '../popup/content';
 import { FeaturePopup } from '../popup/FeaturePopup';
 
 /** What `attachPopups` returns. */
@@ -15,7 +15,8 @@ export interface PopupHandlers {
 
 /**
  * Opens a pop-up when a feature of a visible layer with a `popup`
- * definition is clicked, and shows a pointer cursor over such features.
+ * definition is clicked, or hands a feature of a layer with a `modal`
+ * (ADR 0012) to `onModal`, and shows a pointer cursor over such features.
  * Clicking anywhere else closes the pop-up; only one is open at a time.
  * Where features overlap, the topmost layer wins.
  *
@@ -26,10 +27,13 @@ export interface PopupHandlers {
  *
  * @param layers the data layers, read at event time, as they are loaded
  *   from the manifest after the map is created.
+ * @param onModal called with the layer and a copy of the feature when a
+ *   feature of a layer with a modal is clicked.
  */
 export function attachPopups(
   map: MapLibreMap,
   layers: () => readonly LayerDefinition[],
+  onModal: (def: LayerDefinition, feature: PopupFeature) => void = () => {},
 ): PopupHandlers {
   // Rebuilt only when the layer list changes.
   let known: readonly LayerDefinition[] | undefined;
@@ -67,6 +71,11 @@ export function attachPopups(
     const feature = featuresAt(e)[0];
     const def = feature && currentTargets().get(feature.layer.id);
     if (!feature || !def) return;
+    if (def.modal) {
+      onModal(def, { id: feature.id, properties: { ...feature.properties } });
+      return;
+    }
+    if (!def.popup) return;
 
     const container = document.createElement('div');
     const root = createRoot(container);

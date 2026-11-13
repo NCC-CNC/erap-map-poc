@@ -255,6 +255,33 @@ assert_no_temp_files() {
   [ "$(sha256sum "$MANIFEST")" = "$before" ]
 }
 
+@test "--style-only applies colour themes and a click modal, re-reading the data for a gradient range" {
+  add_layer alpha
+  run "$RUN" alpha
+  [ "$status" -eq 0 ]
+  local tiles
+  tiles=$(sha256sum "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles")
+
+  # The sample modal fixture: three themes, one of them a gradient over the
+  # data's range of area_ha, so the source data is read (not the tiles).
+  cp "${PIPELINE_ROOT}/tests/fixtures/sample_modal.style.json" "${PIPELINE_LAYERS_DIR}/alpha.style.json"
+  run "$RUN" --style-only alpha
+  [ "$status" -eq 0 ]
+  [[ $output == *"reading the source data for breaks (no tiling)"* ]]
+  [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles")" = "$tiles" ]
+  run jq -e --slurpfile want "${PIPELINE_ROOT}/tests/fixtures/expected_modal_display.json" \
+    '.layers[0].display == $want[0]' "$MANIFEST"
+  [ "$status" -eq 0 ]
+
+  # Themes with fixed ranges only need no data.
+  restyle alpha 'del(.symbology.themes[2]) | .symbology.defaultTheme = "score_gradient"'
+  run "$RUN" --style-only alpha
+  [ "$status" -eq 0 ]
+  [[ $output != *"reading the source data"* ]]
+  run jq -r '.layers[0].display | [.defaultTheme, .legend.kind, (.themes | length)] | join(",")' "$MANIFEST"
+  [ "$output" = "score_gradient,gradient,2" ]
+}
+
 @test "--status: a changed .style.json needs --style-only, which makes it current" {
   add_layer alpha beta
   add_raster cover
