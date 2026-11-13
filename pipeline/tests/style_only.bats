@@ -204,7 +204,7 @@ assert_no_temp_files() {
   add_raster cover
   run "$RUN"
   [ "$status" -eq 0 ]
-  local archive="${PIPELINE_OUTPUT_DIR}/cover.pmtiles" before report
+  local archive="${PIPELINE_OUTPUT_DIR}/cover.cog.tif" before report
   before=$(sha256sum "$archive")
   report=$(entry_without cover display display_updated_at provenance)
 

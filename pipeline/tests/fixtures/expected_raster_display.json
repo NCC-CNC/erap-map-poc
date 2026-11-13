@@ -13,7 +13,7 @@
           ["elevation"],
           0,
           "rgba(27, 120, 55, 0)",
-          1,
+          255,
           "rgba(27, 120, 55, 1)"
         ],
         "color-relief-opacity": 0.7,

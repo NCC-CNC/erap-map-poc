@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck source-path=SCRIPTDIR/..
-# Pipeline entry point: build tiles (vector, or PNG for raster layers) for
-# every enabled layer, or only the layers named on the command line. Each
+# Pipeline entry point: build tiles (vector tiles in a .pmtiles archive, or
+# one COG for a raster layer, ADR 0010) for every enabled layer, or only the layers named on the command line. Each
 # layer is <layer>.env (processing; LAYER_TYPE picks vector or raster) plus
 # <layer>.style.json (display, ADR 0007; rasters, ADR 0008), committed in
 # pipeline/layers/. A local map config (ADR 0009; PIPELINE_MAP_CONFIG,
@@ -34,9 +34,9 @@
 #                enough), not built, source missing (a full build skips it),
 #                invalid (cannot be built as configured), disabled (left
 #                out by the map config) or orphan (built, config gone), plus
-#                build time, archive size, zooms, feature count (tile count
-#                for a raster layer) and largest tile. Read only. --list is
-#                the same.
+#                build time, archive size, zooms, feature count (size in
+#                pixels for a raster layer) and largest tile. Read only.
+#                --list is the same.
 #   --json       with --status: print JSON instead of a table.
 #   --remove     delete the named layers' archives and manifest entries
 #                and rewrite style.json. The configs are not touched: delete
@@ -45,7 +45,7 @@
 #
 # Environment (defaults match the docker-compose mounts):
 #   PIPELINE_INPUT_DIR   source data, read only        (default /data/raw)
-#   PIPELINE_OUTPUT_DIR  .pmtiles, manifest.json and style.json
+#   PIPELINE_OUTPUT_DIR  .pmtiles, .cog.tif, manifest.json and style.json
 #                                                      (default /data/tiles)
 #   PIPELINE_LAYERS_DIR  layer configs                 (default <pipeline>/layers)
 #   PIPELINE_MAP_CONFIG  local map config; none if unset or the file is
@@ -115,16 +115,31 @@ build_layer() {
   mkdir -p "$layer_scratch"
   local started=$SECONDS
   local display="${layer_scratch}/display.json" report="${layer_scratch}/report.json"
+  local header="${layer_scratch}/header.json" header_json=""
 
   if [[ $LAYER_TYPE == raster ]]; then
     build_raster_layer
+    header_json=$(jq -c '.' "$header")
   else
     build_vector_layer
   fi
 
   manifest_update "$PIPELINE_OUTPUT_DIR" "$name" "$LAYER_TYPE" "$display" \
     "$(jq -c '.' "$report")" "$((SECONDS - started))" \
-    "$(layer_provenance "$name" "$LAYER_INPUT")"
+    "$(layer_provenance "$name" "$LAYER_INPUT")" "$header_json"
+  remove_other_archives "$name" "$(layer_archive_file "$name" "$LAYER_TYPE")"
+}
+
+# remove_other_archives NAME KEEP: delete NAME's archives other than KEEP
+# (a file name in the output dir), such as a raster layer's .pmtiles from
+# before COGs (ADR 0010), once the manifest no longer names them.
+remove_other_archives() {
+  local name=$1 keep=$2 path
+  while IFS= read -r path; do
+    [[ -n $path && ${path##*/} != "$keep" ]] || continue
+    rm -f -- "$path"
+    log_info "removed the old archive ${path##*/}"
+  done < <(layer_archives "$PIPELINE_OUTPUT_DIR" "$name" || true)
 }
 
 # build_vector_layer: the vector steps of build_layer, whose locals (name,
@@ -182,7 +197,7 @@ build_raster_layer() {
 
   build_raster_tiles "$name" "$LAYER_INPUT" "$LAYER_SOURCE_SRS" "$LAYER_NODATA" \
     "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" "$PIPELINE_OUTPUT_DIR" "$layer_scratch" "$report" \
-    "${PIPELINE_WORK_DIR:+${PIPELINE_WORK_DIR}/raster}"
+    "$header" "${PIPELINE_WORK_DIR:+${PIPELINE_WORK_DIR}/raster}"
 }
 
 # restyle_layer NAME SCRATCH: the --style-only steps for one built layer, in
@@ -278,7 +293,7 @@ style_only_main() {
     while IFS= read -r name; do
       [[ -n $name ]] || continue
       style=$(layer_get "$name" style)
-      if [[ ! -f "${PIPELINE_OUTPUT_DIR}/${name}.pmtiles" ]]; then
+      if ! layer_archive "$PIPELINE_OUTPUT_DIR" "$name" >/dev/null; then
         log_warn "skipping $name: archive missing (rebuild it)"
       elif [[ -z $style || ! -f $style ]]; then
         log_warn "skipping $name: no ${name}.style.json in $PIPELINE_LAYERS_DIR"
@@ -299,7 +314,7 @@ style_only_main() {
       log_error "invalid layer name: $name"
       return 2
     fi
-    if [[ ! -f "${PIPELINE_OUTPUT_DIR}/${name}.pmtiles" ]] \
+    if ! layer_archive "$PIPELINE_OUTPUT_DIR" "$name" >/dev/null \
       || ! jq -e --arg n "$name" 'any(.layers[]?; .name == $n)' "$manifest" >/dev/null 2>&1; then
       log_error "layer '$name' is not built yet: build it first (run.sh $name)"
       return 2
@@ -353,7 +368,7 @@ status_main() {
       log_error "invalid layer name: $name"
       return 2
     fi
-    if ! layer_known "$name" && [[ ! -f "${PIPELINE_OUTPUT_DIR}/${name}.pmtiles" ]] \
+    if ! layer_known "$name" && ! layer_archives "$PIPELINE_OUTPUT_DIR" "$name" >/dev/null \
       && ! jq -e --arg n "$name" 'any(.layers[]?; .name == $n)' \
         "${PIPELINE_OUTPUT_DIR}/manifest.json" >/dev/null 2>&1; then
       log_error "no config or build for layer '$name'"
@@ -384,7 +399,7 @@ remove_main() {
       log_error "invalid layer name: $name"
       return 2
     fi
-    if [[ ! -f "${PIPELINE_OUTPUT_DIR}/${name}.pmtiles" ]] \
+    if ! layer_archives "$PIPELINE_OUTPUT_DIR" "$name" >/dev/null \
       && ! jq -e --arg n "$name" 'any(.layers[]; .name == $n)' "$manifest" >/dev/null 2>&1; then
       log_error "nothing built for layer '$name' in $PIPELINE_OUTPUT_DIR"
       return 2
@@ -394,7 +409,7 @@ remove_main() {
 
   for name in "$@"; do
     manifest_remove "$PIPELINE_OUTPUT_DIR" "$name"
-    rm -f "${PIPELINE_OUTPUT_DIR}/${name}.pmtiles"
+    remove_other_archives "$name" ""
     log_info "removed layer $name"
     if [[ $(layer_get "$name" origin) == committed ]]; then
       log_warn "${name}.env is still in ${PIPELINE_LAYERS_DIR}: delete its configs, or the next full build makes the layer again"
@@ -422,7 +437,7 @@ build_main() {
   local scratch=$1
   shift
   local layers=("$@") name all=0
-  require_tools gdal gdalwarp gdaldem gdalinfo ogr2ogr ogrinfo sqlite3 tippecanoe \
+  require_tools gdal gdalwarp gdaladdo gdalinfo ogr2ogr ogrinfo tippecanoe \
     tippecanoe-decode pmtiles
 
   if ((${#layers[@]} == 0)); then

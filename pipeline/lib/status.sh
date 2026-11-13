@@ -4,7 +4,8 @@
 #
 # Every layer in the layer set (lib/mapconfig.sh: the layers dir plus the
 # local map config, if any), with a manifest.json entry or with an archive
-# (<layer>.pmtiles) is listed, in one of these states:
+# (<layer>.pmtiles for a vector layer, <layer>.cog.tif for a raster one) is
+# listed, in one of these states:
 #
 #   current    built after its .env and source data last changed, and its
 #              display updated after its .style.json last changed.
@@ -39,13 +40,16 @@
 #       "input": "...",
 #       "built_at": "2026-01-01T00:00:00Z",
 #       "display_updated_at": "2026-01-01T00:00:00Z", "archive_bytes": 12345,
-#       "minzoom": 0, "maxzoom": 8, "feature_count": 15, "tile_count": null,
+#       "minzoom": 0, "maxzoom": 8, "feature_count": 15, "width": null,
+#       "height": null, "tile_count": null,
 #       "max_tile_bytes": 1234 }, ... ] }
 #
 # Fields from the manifest are null when the layer is not built. `type` is
 # the manifest's (vector when an older entry has none), or the config's
-# LAYER_TYPE when not built. A raster layer (ADR 0008) has `tile_count` and
-# no `feature_count`; a vector layer the other way round. A raster's
+# LAYER_TYPE when not built. A raster layer (ADR 0010) has `width` and
+# `height` (of its COG, in pixels) and no `feature_count`; a vector layer
+# the other way round. A raster built as PNG tiles before COGs has
+# `tile_count` instead and is stale. A raster's
 # LAYER_INPUT is relative to RAW_DIR (/data/raw) like any input, so its
 # source data is checked the same way. `origin` (committed, local or
 # config) and `enabled` are from the layer set, null when not configured.
@@ -132,16 +136,29 @@ _config_input() {
 # the manifest's layers array; the layer set is LAYERS_JSON.
 _layer_status() {
   local name=$1 out_dir=$2 entries=$3
-  local archive="${out_dir}/${name}.pmtiles"
+  local archive="" legacy=false
   local entry layer built_at=0 display_at=0 configured=false built=false state input="" type=""
   local notes=() restyle="" enabled=true
 
   entry=$(jq -c --arg n "$name" 'first(.[] | select(.name == $n)) // null' <<<"$entries")
   if [[ $entry != null ]]; then
     built=true
+    # The archive the entry names (an entry from before COGs names its
+    # .pmtiles); a raster built as PNG tiles needs a rebuild (ADR 0010).
+    archive=$(jq -r '.file // ""' <<<"$entry")
+    if [[ -n $archive ]]; then
+      archive="${out_dir}/${archive}"
+    else
+      archive=$(layer_archives "$out_dir" "$name" | head -n 1) || archive=""
+    fi
+    if jq -e '.type == "raster" and .format != "cog"' <<<"$entry" >/dev/null; then
+      legacy=true
+    fi
     # An entry from before display_updated_at: the display is the build's.
     read -r built_at display_at < <(jq -r '((.built_at | fromdateiso8601?) // 0) as $b
       | "\($b) \((.display_updated_at | fromdateiso8601?) // $b)"' <<<"$entry")
+  else
+    archive=$(layer_archives "$out_dir" "$name" | head -n 1) || archive=""
   fi
   layer=$(jq -c --arg n "$name" 'first(.layers[] | select(.name == $n)) // null' "$LAYERS_JSON")
   if [[ $layer != null ]]; then
@@ -194,12 +211,15 @@ _layer_status() {
       notes=("$missing")
     elif [[ $built == false ]]; then
       state="not built"
-      if [[ -f $archive ]]; then notes+=("archive with no manifest entry"); fi
+      if [[ -n $archive && -f $archive ]]; then notes+=("archive with no manifest entry"); fi
     else
       local recorded_env recorded_style
       read -r recorded_env recorded_style < <(jq -r \
         '"\(.provenance.env_sha256 // "-") \(.provenance.style_sha256 // "-")"' <<<"$entry")
       [[ -f $archive ]] || notes+=("archive missing")
+      if [[ $legacy == true ]]; then
+        notes+=("built as PNG tiles in ${name}.pmtiles: rebuild it as a COG (ADR 0010)")
+      fi
       local mtime
       mtime=$(_newest_mtime "$env_source")
       if ((${mtime:-0} > built_at)); then
@@ -228,7 +248,7 @@ _layer_status() {
   fi
 
   local bytes=""
-  if [[ -f $archive ]]; then bytes=$(stat -c %s "$archive"); fi
+  if [[ -n $archive && -f $archive ]]; then bytes=$(stat -c %s "$archive"); fi
   if [[ -n $input ]]; then input=${input#"${PIPELINE_INPUT_DIR}"/}; fi
 
   jq -n -c \
@@ -248,6 +268,7 @@ _layer_status() {
       archive_bytes: (if $bytes == "" then null else ($bytes | tonumber) end),
       minzoom: $entry.minzoom, maxzoom: $entry.maxzoom,
       feature_count: $entry.feature_count,
+      width: $entry.width, height: $entry.height,
       tile_count: $entry.tile_count,
       max_tile_bytes: $entry.max_tile_bytes}' \
     --args "${notes[@]}"
@@ -266,10 +287,11 @@ layer_status_json() {
   local names=("$@")
   if ((${#names[@]} == 0)); then
     local found=() f
-    for f in "$out_dir"/*.pmtiles; do
+    for f in "$out_dir"/*.pmtiles "$out_dir"/*.cog.tif; do
       [[ -e $f ]] || continue
       f=${f##*/}
-      found+=("${f%.*}")
+      f=${f%.pmtiles}
+      found+=("${f%.cog.tif}")
     done
     mapfile -t -O "${#found[@]}" found < <(jq -r '.[].name' <<<"$entries")
     mapfile -t -O "${#found[@]}" found < <(layer_names)
@@ -305,6 +327,7 @@ print_layer_status() {
     | [.name, .state, (.built_at // "-"), (.archive_bytes | size),
        (if .minzoom == null then "-" else "\(.minzoom)-\(.maxzoom)" end),
        (if .feature_count != null then (.feature_count | tostring)
+        elif .width != null then "\(.width)x\(.height) px"
         elif .tile_count != null then "\(.tile_count) tiles" else "-" end),
        (.max_tile_bytes | size),
        (.notes | join("\u001f"))]
