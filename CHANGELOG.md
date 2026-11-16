@@ -380,6 +380,10 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Licences, provenance, update frequency and stable feature ids of the
+  play data layers are deferred for the PoC (#13): `OBJECTID` stays the
+  feature id of `ecoregions` and `protected_areas`. Design note 02 moves
+  them from Open questions to a new Deferred section.
 - The synthetic `sample` and `sample_points` layers are test layers now
   (#17): their configs moved from `pipeline/layers/` to
   `pipeline/tests/layers/`, so a pipeline run with no layer names builds

@@ -2,8 +2,9 @@
 
 Status: first real layers in (#58). The four play data layers, their
 styling and the ecoregion modal follow the decisions in #14 (Decisions
-from #14, below); licences, provenance, update frequency and stable ids
-are still TBC (#13, Open questions). This note is the data contract
+from #14, below). Licences, provenance, update frequency and stable ids
+are deferred for the PoC (#13, Deferred, below): `OBJECTID` stays the
+feature id. This note is the data contract
 between the pipeline and the web app; fill it in per layer as each is
 confirmed, and change pipeline and web app together when it changes.
 
@@ -13,10 +14,10 @@ confirmed, and change pipeline and web app together when it changes.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `sample` | Synthetic test fixture (`pipeline/tests/fixtures/sample.geojson`) | GeoJSON | Polygon | 15 features, about 5 KB | `id` | Made up | Test layer (`pipeline/tests/layers/`), not built by default |
 | `sample_points` | Synthetic test fixture (`pipeline/tests/fixtures/sample_points.geojson`) | GeoJSON | Point | 30 features, about 5 KB | `id` | Made up | Test layer (`pipeline/tests/layers/`), not built by default |
-| `forest` | Play data, `Forest_AAFC_LUTS_2020_NFIS_2022_30m.tif` (via `RAW_DIR`) | GeoTIFF | Binary raster | 200,792 x 131,690 cells, 620 MB | None (raster) | TBC | Built locally: `forest.cog.tif`, 2.27 GB, about 10 min (ADR 0010) |
-| `agriculture` | Play data, `HM_CA_ag2022_r90_merged_prj_30_binary.tif` (via `RAW_DIR`) | GeoTIFF | Binary raster | 235,461 x 137,833 cells, 1.3 GB | None (raster) | TBC | Built locally: `agriculture.cog.tif`, 0.38 GB, about 9 min (ADR 0010) |
-| `protected_areas` | Play data, `protected_areas.gdb`, layer `cpcad_ncc_dslv_2025` (CPCAD 2025, dissolved; via `RAW_DIR`) | File geodatabase | MultiPolygon, no attributes | 112,050 features, 130 MB | `OBJECTID` (stable id TBC) | TBC | Built locally: `protected_areas.pmtiles`, 70 MB, about 23 min |
-| `ecoregions` | Play data, `ERAP_2026_ecoregions.gdb`, layer `ERAP_2026_ecoregions` (via `RAW_DIR`) | File geodatabase | MultiPolygon, a coverage | 149 features, 72 attributes, 43 MB | `OBJECTID` (`ECOREGION_ID` is text; stable id TBC) | TBC | Built locally: `ecoregions.pmtiles`, 21 MB, about 6 min |
+| `forest` | Play data, `Forest_AAFC_LUTS_2020_NFIS_2022_30m.tif` (via `RAW_DIR`) | GeoTIFF | Binary raster | 200,792 x 131,690 cells, 620 MB | None (raster) | Deferred | Built locally: `forest.cog.tif`, 2.27 GB, about 10 min (ADR 0010) |
+| `agriculture` | Play data, `HM_CA_ag2022_r90_merged_prj_30_binary.tif` (via `RAW_DIR`) | GeoTIFF | Binary raster | 235,461 x 137,833 cells, 1.3 GB | None (raster) | Deferred | Built locally: `agriculture.cog.tif`, 0.38 GB, about 9 min (ADR 0010) |
+| `protected_areas` | Play data, `protected_areas.gdb`, layer `cpcad_ncc_dslv_2025` (CPCAD 2025, dissolved; via `RAW_DIR`) | File geodatabase | MultiPolygon, no attributes | 112,050 features, 130 MB | `OBJECTID` | Deferred | Built locally: `protected_areas.pmtiles`, 70 MB, about 23 min |
+| `ecoregions` | Play data, `ERAP_2026_ecoregions.gdb`, layer `ERAP_2026_ecoregions` (via `RAW_DIR`) | File geodatabase | MultiPolygon, a coverage | 149 features, 72 attributes, 43 MB | `OBJECTID` (`ECOREGION_ID` is text) | Deferred | Built locally: `ecoregions.pmtiles`, 21 MB, about 6 min |
 
 ## Per-layer contract
 
@@ -440,7 +441,7 @@ not built by default (#17).
   `pipeline/layers/forest.env`.
 - Pipeline steps: the raster branch (Raster layers, below).
 - Tile settings: z2 to z12, one COG of the cover share (`forest.cog.tif`).
-- Licence, provenance and update frequency: TBC (#13).
+- Licence, provenance and update frequency: deferred (#13).
 - Display (`forest.style.json`, `order` 1, the bottom layer): dark
   green `#1b7837` at 70% opacity, legend "Forest (2020 to 2022)". Off by
   default (#14).
@@ -456,7 +457,7 @@ not built by default (#17).
 - Pipeline steps: the raster branch; 0 and nodata are both transparent.
 - Tile settings: z2 to z12, one COG of the cover share
   (`agriculture.cog.tif`).
-- Licence, provenance and update frequency: TBC (#13).
+- Licence, provenance and update frequency: deferred (#13).
 - Display (`agriculture.style.json`, `order` 2, above `forest`): orange
   `#d95f02` at 70% opacity, legend "Agricultural land (2022)". Off by
   default.
@@ -469,7 +470,7 @@ not built by default (#17).
   2025), dissolved by NCC into 112,050 MultiPolygons with no attributes
   (only `Shape_Length` and `Shape_Area`). Canada Albers (WGS 84), file
   geodatabase of about 130 MB. Via `RAW_DIR`. Licence, provenance (CPCAD
-  release, how and by whom it was dissolved) and update frequency: TBC
+  release, how and by whom it was dissolved) and update frequency: deferred
   (#13). Config: `pipeline/layers/protected_areas.env`.
 - Pipeline steps: reproject to EPSG:4326, make valid; no attributes kept.
 - Tile settings: z0 to z12, no profile (dissolved, so no overlaps, but not
@@ -484,7 +485,7 @@ not built by default (#17).
   largest tile 234 KB (z6); present at z0 1,284 of 112,050 (all 17
   required), at z12 110,440 (all 82,069 required).
 - Feature id: `OBJECTID` as `id`, the geodatabase's row id, kept only for
-  the drop guard; not stable across exports (Open questions).
+  the drop guard; not stable across exports (Deferred, below).
 - Attributes kept in tiles: none.
 - Display (`protected_areas.style.json`, `order` 30, above the rasters,
   under `ecoregions`): the shorthand, one semi-transparent green fill
@@ -501,7 +502,7 @@ not built by default (#17).
   contiguous coverage with about 90,000 polygon parts, mostly islands)
   with their ERAP metrics, 72 attributes. Canada Albers (WGS 84), file
   geodatabase of about 43 MB. Via `RAW_DIR`. Licence, provenance (which
-  ERAP run produced the metrics) and update frequency: TBC (#13).
+  ERAP run produced the metrics) and update frequency: deferred (#13).
   Config: `pipeline/layers/ecoregions.env`.
 - Pipeline steps: reproject to EPSG:4326, make valid, keep and rename the
   attributes below; calculated fields and action rules (Calculated fields
@@ -517,7 +518,7 @@ not built by default (#17).
   needs an integer id and `ECOREGION_ID` is text (for example `"100"`), so
   `ECOREGION_ID` is kept as the attribute `ecoregion_id` and shown in the
   modal. `OBJECTID` may change when the data is exported again; a stable
-  integer id is TBC (Open questions).
+  integer id is deferred (Deferred, below).
 - Attributes kept in tiles (English only; the French names are not
   tiled): `ecoregion_id`, `name` (`ECOREGION_NAME_EN`), `ecozone_id`,
   `ecozone` (`ECOZONE_NAME_EN`), `landscape_ha` (area), `protected_pcnt`,
@@ -1172,20 +1173,25 @@ Two options, chosen per layer:
 Default: scalar stats in attributes, plot series in sidecar JSON. Revisit
 once the real data is known, and record the choice as an ADR if it differs.
 
+## Deferred
+
+Decided in #13 (November 2026): not needed for the PoC. Revisit if it
+goes beyond the PoC or the data is shared outside the team.
+
+- Licence, provenance and update frequency of `forest`, `agriculture`,
+  `protected_areas` and `ecoregions`: who publishes each dataset, under
+  what licence, which version or run it is, and how often it changes.
+- Stable feature ids: `ecoregions` and `protected_areas` keep `OBJECTID`,
+  the file geodatabase's row id, which may change when the data is
+  exported again. Nothing depends on it staying the same today: the
+  modal reads tile attributes, not sidecar files keyed by id. If that
+  changes, the options are an integer copy of `ECOREGION_ID` in the
+  source, or a calculated field `CAST(ecoregion_id AS integer)` as the
+  feature id (not tried yet). The dissolved CPCAD has no id of its own,
+  which is fine while it has no pop-up.
+
 ## Open questions
 
-- All of the TBC fields above.
-- Licence, provenance and update frequency of `forest`, `agriculture`,
-  `protected_areas` and `ecoregions` (#13): who publishes each dataset,
-  under what licence, which version or run it is, and how often it
-  changes.
-- Stable feature ids (#13): `ecoregions` and `protected_areas` use
-  `OBJECTID`, the file geodatabase's row id, which may change when the
-  data is exported again. `ECOREGION_ID` is stable but text; tippecanoe
-  needs an integer. Options: an integer copy of `ECOREGION_ID` in the
-  source, or a calculated field `CAST(ecoregion_id AS integer)` as the
-  feature id (not tried yet). The dissolved CPCAD has no id of its
-  own, which is fine while it has no pop-up.
 - Ecoregion modal texts (#14): the section descriptions and the action
   recommendations introduction are placeholders.
 - Ecoregion colours (#14): the blue ramps, the Opportunities pie colours
