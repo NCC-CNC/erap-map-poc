@@ -27,7 +27,7 @@ The synthetic `sample` and `sample_points` layers go from raw file to
 clickable feature; a headless browser check passed (features drawn, pop-up
 with chart). They are test layers in `pipeline/tests/layers/`, not built by
 a default run (#17). Left: Dependabot for base images (#28) and a hands-on browser
-check. Next is M2, real data (#13): first play data arrived in November
+check. M2 is real data: first play data arrived in November
 2026 (two binary 30 m Canada-wide GeoTIFFs, forest and agriculture, plus
 ecoregion and protected-area polygons in file geodatabases). Raster layers
 are binary only and display only (no pop-ups): one Web Mercator COG per
@@ -36,8 +36,9 @@ Canada-wide 30 m raster, less once its source is cached in `data/work/`).
 Categorical, continuous and multiband rasters are not supported yet.
 All four are committed layers (`ecoregions` on top with colour themes and
 a click modal, `protected_areas`, `forest`, `agriculture`; #58), styled
-as decided in #14 (design note 02); licences, provenance and stable ids
-are still TBC (#13). Open GitHub issues are the live
+as decided in #14 (design note 02). Licences, provenance and stable ids
+are deferred for the PoC (#13); `OBJECTID` is the feature id of both
+vector layers. Open GitHub issues are the live
 task tracker; `docs/design/03_milestones.md` is the shape of the plan.
 
 ## Scope

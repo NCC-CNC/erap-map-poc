@@ -5,6 +5,13 @@ All notable changes to this project are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- Licences, provenance, update frequency and stable feature ids of the
+  play data layers are deferred for the PoC (#13): `OBJECTID` stays the
+  feature id of `ecoregions` and `protected_areas`. Design note 02 moves
+  them from Open questions to a new Deferred section.
+
 ### Added
 
 - The first real vector layers, from the November 2026 play data (#58):
