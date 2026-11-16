@@ -637,6 +637,11 @@ layer per band for multiband) and are left for later. In `<layer>.env`:
 - `LAYER_NODATA` (optional): the source's nodata value, when the file does
   not declare it (or declares the wrong one).
 - `LAYER_SOURCE_SRS` (optional): the source CRS, when the file has none.
+- `LAYER_GREY_LEVELS` (optional, 2 to 256, default 256): how many evenly
+  spaced grey levels from 0 to 255 the COG holds, at the max zoom and in
+  every overview: `round(k * 255 / (levels - 1))`, so 8 gives 0, 36, 73,
+  109, 146, 182, 219 and 255. Fewer levels make a smaller COG at the cost
+  of coarser shades of partial cover; see below.
 
 The source is expected to hold only 0, 1 and nodata; 1 is drawn, 0 and
 nodata are transparent. The pipeline (`lib/raster.sh`) first prepares the
@@ -659,6 +664,34 @@ zoom) before it is moved into place; a raster with no 1 cells fails the
 layer. nginx serves it with range requests, like a `.pmtiles` archive, and
 the map reads only the blocks of the current view, from the overview that
 matches the zoom.
+
+Averaged grey levels compress much worse than 0/255. With
+`LAYER_GREY_LEVELS` below 256, each level of the COG, the max zoom and
+every overview, is reduced to that many values as it is copied into the
+COG: each pixel takes the nearest level, except that any cover takes at
+least the first level above 0 (36 for 8 levels), so sparse cover never
+vanishes at low zooms; 0 stays 0 and 255 stays 255. The overviews are
+still averaged from the full shares first, and only the copy is reduced,
+so no level averages reduced values. It is one lookup table (a VRT
+`<LUT>` on the averaged raster, `raster_grey_vrt`) that skips the lookup
+for 0 pixels, so it adds little: 1.1 s on a sparse 32,768 x 32,768 test
+raster with its overviews (1.4 billion pixels), so roughly 10 to 20 s for
+a Canada-wide raster at z10 (8.9 billion pixels at the max zoom for
+agriculture, 12 billion with its overviews). The default, 256, skips it,
+and the COG is exactly as before. Measured on agriculture's z10
+full-resolution level (ZSTD level 9, predictor 2, #92):
+
+| Grey levels | Size |
+| --- | --- |
+| 256 | 94 MB |
+| 16 | 59 MB |
+| 8 | 49 MB |
+| 4 | 37 MB |
+| 2 (binary) | 21 MB |
+
+The GitHub Pages copy (ADR 0014) uses 8 for `forest` and `agriculture`.
+The manifest entry records it (`grey_levels`), and changing it makes the
+build `stale` like any other setting.
 
 The colour is not in the tiles. The display config's raster shorthand
 
@@ -699,7 +732,9 @@ COG's layout and its alignment with the tile grid, full cover at the max
 zoom and partial cover below, the manifest entry, `LAYER_NODATA`, an empty
 raster, the colour staying out of the COG, building a raster layer next to
 a vector one, replacing a build from before COGs, `--remove`, the prepare
-cache and the config checks.
+cache, the config checks and `LAYER_GREY_LEVELS` (only the reduced values
+in every level, each the nearest to the full share, cover never 0, and
+the default giving the same COG).
 
 ## Input options
 
@@ -1199,6 +1234,8 @@ A raster layer adds instead the COG's levels:
   zoom is coarser on the ground than the source). A raster built before
   this was recorded used `near`, and `--status` reports it `stale` if it
   would now average.
+- `grey_levels`: `LAYER_GREY_LEVELS`, the grey levels the COG holds (256,
+  the default, for the full share).
 - `zooms`: one entry per zoom from `maxzoom` down to `minzoom`,
   `{"zoom": 12, "width": 447240, "height": 290531}`.
 

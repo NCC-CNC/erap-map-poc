@@ -315,3 +315,21 @@ add_raster() {
   mv "${MANIFEST}.new" "$MANIFEST"
   [ "$(state_of cover)" = current ]
 }
+
+@test "--status: a raster is stale when LAYER_GREY_LEVELS changes in the map config" {
+  export PIPELINE_MAP_CONFIG="${BATS_TEST_TMPDIR}/map.config.json"
+  add_raster cover
+  echo '{"overrides": {"cover": {"env": {"LAYER_GREY_LEVELS": 8}}}}' >"$PIPELINE_MAP_CONFIG"
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [ "$(jq '.layers[0].grey_levels' "$MANIFEST")" -eq 8 ]
+  [ "$(state_of cover)" = current ]
+
+  echo '{"overrides": {"cover": {"env": {"LAYER_GREY_LEVELS": 16}}}}' >"$PIPELINE_MAP_CONFIG"
+  [ "$(state_of cover)" = stale ]
+  [[ "$(notes_of cover)" == *"settings changed since the build"* ]]
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [ "$(jq '.layers[0].grey_levels' "$MANIFEST")" -eq 16 ]
+  [ "$(state_of cover)" = current ]
+}

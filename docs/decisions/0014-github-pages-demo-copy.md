@@ -32,7 +32,11 @@ shape the copy:
   committed layers with the raster layers at `LAYER_MAX_ZOOM` 10 (about a
   sixteenth of z12; the warp averages, ADR 0010, so roads and field edges
   stay visible) and `protected_areas` from the public CPCAD source.
-  Vector layers keep their zooms while the total fits.
+  Vector layers keep their zooms while the total fits. At z10 with 256
+  grey levels forest was 757 MB and agriculture 143 MB, close to the
+  limit, so the raster layers also use `LAYER_GREY_LEVELS` 8 (ADR 0010,
+  #92), which about halves them (agriculture's z10 level: 94 MB to
+  49 MB).
 - **Its own output folder.** The compose service `pipeline-pages` is the
   pipeline with that config and `data/pages/` (git-ignored) mounted as its
   output: `docker compose run --rm pipeline-pages`. It never writes

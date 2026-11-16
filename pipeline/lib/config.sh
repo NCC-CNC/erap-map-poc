@@ -63,7 +63,20 @@
 #                           the wrong one). Used by the prepare step
 #                           (lib/raster.sh), which turns nodata into 0;
 #                           changing it prepares the source again.
-#   LAYER_PROFILE           optional, vector only. A named set of tippecanoe
+#   LAYER_GREY_LEVELS       optional, raster only, an integer from 2 to 256,
+#                           default 256. How many evenly spaced grey levels
+#                           from 0 to 255 the COG holds, at the max zoom and
+#                           in every overview: round(k * 255 / (levels - 1))
+#                           for k = 0 to levels - 1 (8: 0, 36, 73, ... 255).
+#                           Fewer levels compress better (a smaller COG, as
+#                           for the GitHub Pages copy) at the cost of
+#                           coarser shades. Each pixel takes the nearest
+#                           level, except that any cover takes at least the
+#                           first level above 0, so sparse cover never
+#                           vanishes; the overviews still average the full
+#                           shares first. 256 changes nothing
+#                           (lib/raster.sh, raster_grey_vrt).
+#   LAYER_PROFILE          optional, vector only. A named set of tippecanoe
 #                           flags; see layer_profile_flags. Empty for none.
 #   LAYER_TIPPECANOE_FLAGS  optional array, vector only. Extra tippecanoe
 #                           flags, added after the profile's.
@@ -112,6 +125,9 @@ LAYER_GENERALISE_SIMPLIFY_PX_DEFAULT=1
 # Highest max zoom for a raster layer: z14 is about 10 m at the equator,
 # already finer than any 30 m source, and each zoom up quadruples the tiles.
 RASTER_MAX_ZOOM_LIMIT=14
+
+# Default grey levels of a raster layer: all 256, the full share covered.
+LAYER_GREY_LEVELS_DEFAULT=256
 
 # layer_name_valid NAME: layer names become file names and URL paths, so keep
 # them to lower case letters, digits, `_` and `-`.
@@ -165,6 +181,7 @@ load_layer_config() {
   LAYER_MIN_ZOOM=""
   LAYER_MAX_ZOOM=""
   LAYER_NODATA=""
+  LAYER_GREY_LEVELS=$LAYER_GREY_LEVELS_DEFAULT
   LAYER_PROFILE=""
   LAYER_TIPPECANOE_FLAGS=()
   LAYER_SIMPLIFY_MAX_ZOOM=false
@@ -199,6 +216,10 @@ _check_raster_config() {
     || die "LAYER_MAX_ZOOM must be at most ${RASTER_MAX_ZOOM_LIMIT} for a raster in $file"
   [[ -z $LAYER_NODATA || $LAYER_NODATA =~ ^(-?[0-9]+([.][0-9]+)?|nan|NaN)$ ]] \
     || die "LAYER_NODATA must be a number or nan in $file"
+  if [[ ! $LAYER_GREY_LEVELS =~ ^[1-9][0-9]{0,2}$ ]] \
+    || ((LAYER_GREY_LEVELS < 2 || LAYER_GREY_LEVELS > 256)); then
+    die "LAYER_GREY_LEVELS must be an integer from 2 to 256 in $file"
+  fi
 }
 
 # _check_vector_config FILE: the vector-only settings.

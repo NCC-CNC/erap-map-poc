@@ -147,6 +147,25 @@ and is `stale` in `--status` if its max zoom would now average (the
 source's header is read to tell); a z12 build of 30 m data stays
 `current`.
 
+### Amendment: optional fewer grey levels (#92)
+
+Averaged shares compress much worse than 0/255: at z10 the forest COG was
+757 MB and agriculture 143 MB, close to the 1 GB Pages limit (ADR 0014).
+A raster setting, `LAYER_GREY_LEVELS` (2 to 256, default 256), reduces
+every level of the COG, the max zoom and each overview, to that many
+evenly spaced values, `round(k * 255 / (levels - 1))`. Each pixel takes
+the nearest level, but any cover takes at least the first level above 0,
+so sparse cover does not vanish at low zooms. The overviews are still
+averaged from the full shares; only the COG copy is reduced, through a
+VRT whose one ComplexSource has a `<LUT>` (bash and GDAL, no new
+language). Its `<NODATA>0` skips the lookup for 0 pixels, most of a
+sparse raster: the extra time was 1.1 s on a sparse 1.4 billion pixel
+test raster with overviews, against about 8 ns a pixel for a plain LUT
+(roughly 100 s at Canada z10) and about 200 s for the base level alone
+with `gdal raster calc`. With 8 levels agriculture's z10 level went from
+94 MB to 49 MB. 256 skips the step, so default builds are unchanged. The
+manifest entry records `grey_levels`.
+
 ## Results
 
 Full builds from the raw sources, both layers, with the prepared sources

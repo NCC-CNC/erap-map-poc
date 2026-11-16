@@ -68,6 +68,8 @@
 #   raster: "width": 447240, "height": 290531, "block_size": 256,
 #           "resampling": "near" (the warp's method: "average" when the
 #           max zoom is coarser than the source; lib/raster.sh),
+#           "grey_levels": 256 (LAYER_GREY_LEVELS: the grey levels the
+#           COG holds, 256 for the full share; lib/raster.sh),
 #           "overview_count": 10,
 #           "zooms": [ { "zoom": 12, "width": 447240, "height": 290531 }, ... ]
 #           (the COG's levels, max zoom first; lib/raster.sh). An older
