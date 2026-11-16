@@ -166,6 +166,41 @@ with `gdal raster calc`. With 8 levels agriculture's z10 level went from
 94 MB to 49 MB. 256 skips the step, so default builds are unchanged. The
 manifest entry records `grey_levels`.
 
+### Amendment: binary by majority at an averaged max zoom (#94)
+
+With the warp averaging (#83), the max zoom level held the share of each
+pixel covered. Zoomed in past the max zoom, where each pixel shows as a
+square, partial shares were semi-transparent squares, which looked wrong:
+at high zooms a pixel should be solid, on or off. Now, only when the warp
+averages, the max zoom level of the COG is binary by majority: 255 where
+the averaged share is at least half (128 of 255), else 0. This is stable
+and has none of the speckle of nearest neighbour; thin features such as
+roads are dropped at that level only. The overviews are unchanged: still
+averaged by `gdaladdo` from the full-precision averaged max zoom, not
+from the binary one, so roads and field edges stay as lighter lines when
+zoomed out, and `LAYER_GREY_LEVELS` still reduces them (the max zoom is
+binary anyway). A max zoom no coarser than the source (`-r near`) is
+unchanged, byte for byte.
+
+The COG copy reads a VRT: its base is a ComplexSource with a threshold
+`<LUT>` and `<NODATA>0` (as #92), and each overview is an explicit
+`<Overview>`, a VRT of the averaged raster opened at that overview level
+(`OVERVIEW_LEVEL`), with the grey-level `<LUT>` if any. No extra file
+and no extra pass: the COG copy reads each level once, as before. On a
+sparse 32,768 x 32,768 test raster with 7 overviews the copy took 1.6 s
+against 0.6 s without the VRT (the #92 VRT took 2.1 s); on a dense
+16,384 px one it was no slower (3.2 s against 4.0 s: the binary base
+compresses better). That suggests roughly 10 s extra at Canada z10
+(about 9e9 pixels at the max zoom). The cover check before the copy
+reads the averaged raster, so a layer whose cover is never half a max
+zoom pixel still builds, with an all-0 max zoom and its cover in the
+overviews.
+
+The manifest entry records `max_zoom_values`: `majority` with
+`resampling` `average`, `near` with `near`. A build with `resampling`
+`average` and no `max_zoom_values` (built between #83 and this) has grey
+levels at its max zoom and is `stale` in `--status`.
+
 ## Results
 
 Full builds from the raw sources, both layers, with the prepared sources

@@ -33,10 +33,13 @@
 #   orphan     built, but its config is gone. `run.sh --remove` removes it.
 #
 # `notes` says why. A change to the pipeline itself does not make a layer
-# stale, with one exception: a raster built before its manifest entry
-# recorded `resampling` was warped with -r near, and is stale if its max
-# zoom is coarser on the ground than its source pixel, which is now
-# averaged (lib/raster.sh; the source's header is read to tell). The JSON (layer_status_json) is:
+# stale, with two exceptions for rasters (ADR 0010, lib/raster.sh): one
+# built before its manifest entry recorded `resampling` was warped with -r
+# near, and is stale if its max zoom is coarser on the ground than its
+# source pixel, which is now averaged (the source's header is read to
+# tell); and one with `resampling` average but no `max_zoom_values` kept
+# the averaged grey levels at its max zoom, which is now binary by
+# majority, so it is stale. The JSON (layer_status_json) is:
 #
 #   { "layers": [ { "name": "sample", "state": "current", "notes": [],
 #       "configured": true, "enabled": true, "origin": "committed",
@@ -189,6 +192,15 @@ _raster_needs_average() {
   [[ -n $lat && $(raster_resampling "$pixel" "$lat" "$maxzoom") == average ]]
 }
 
+# _raster_needs_majority ENTRY: succeed if ENTRY is a raster whose max zoom
+# was averaged (`resampling` average) before `max_zoom_values` was
+# recorded: it holds grey levels where it is now binary by majority
+# (lib/raster.sh, raster_majority_vrt).
+_raster_needs_majority() {
+  jq -e '.type == "raster" and .format == "cog" and .resampling == "average"
+    and (has("max_zoom_values") | not)' <<<"$1" >/dev/null 2>&1
+}
+
 # _layer_status NAME OUT_DIR ENTRIES: one layer's status object. ENTRIES is
 # the manifest's layers array; the layer set is LAYERS_JSON.
 _layer_status() {
@@ -286,6 +298,8 @@ _layer_status() {
         notes+=("built as PNG tiles in ${name}.pmtiles: rebuild it as a COG (ADR 0010)")
       elif _raster_needs_average "$entry" "$input" "$(_config_source_srs "$env")"; then
         notes+=("warped with -r near, but its max zoom is coarser than the source: rebuild it to average (ADR 0010)")
+      elif _raster_needs_majority "$entry"; then
+        notes+=("grey levels at its max zoom: rebuild it for a binary max zoom by majority (ADR 0010)")
       fi
       local mtime
       mtime=$(_newest_mtime "$env_source")

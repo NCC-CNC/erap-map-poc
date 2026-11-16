@@ -316,6 +316,33 @@ add_raster() {
   [ "$(state_of cover)" = current ]
 }
 
+@test "--status: a raster averaged at its max zoom before the majority is stale" {
+  add_raster cover
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.layers[0] | "\(.resampling) \(.max_zoom_values)"' "$MANIFEST")" = "average majority" ]
+  [ "$(state_of cover)" = current ]
+
+  # An entry from before max_zoom_values was recorded, averaged at z6:
+  # grey levels at its max zoom, now binary by majority.
+  jq '.layers |= map(del(.max_zoom_values))' "$MANIFEST" >"${MANIFEST}.new"
+  mv "${MANIFEST}.new" "$MANIFEST"
+  [ "$(state_of cover)" = stale ]
+  [[ "$(notes_of cover)" == *"rebuild it for a binary max zoom by majority"* ]]
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [ "$(state_of cover)" = current ]
+
+  # Warped with near (z8, finer than the source): unchanged, so current.
+  sed -i 's/^LAYER_MAX_ZOOM=6$/LAYER_MAX_ZOOM=8/' "${PIPELINE_LAYERS_DIR}/cover.env"
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.layers[0].max_zoom_values' "$MANIFEST")" = near ]
+  jq '.layers |= map(del(.max_zoom_values))' "$MANIFEST" >"${MANIFEST}.new"
+  mv "${MANIFEST}.new" "$MANIFEST"
+  [ "$(state_of cover)" = current ]
+}
+
 @test "--status: a raster is stale when LAYER_GREY_LEVELS changes in the map config" {
   export PIPELINE_MAP_CONFIG="${BATS_TEST_TMPDIR}/map.config.json"
   add_raster cover

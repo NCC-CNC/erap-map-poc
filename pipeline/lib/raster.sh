@@ -31,7 +31,8 @@
 #      on the ground than the source's, so the max zoom stays 0/255 like
 #      the source; -r average when it is coarser: the share covered, as in
 #      the overviews, so thin lines (roads, field edges) stay lighter
-#      lines instead of breaking into dots (raster_resampling).
+#      lines in the overviews instead of breaking into dots
+#      (raster_resampling). The averaged max zoom is made binary in step 4.
 #   3. overviews: gdaladdo -r average, multithreaded, one per lower zoom,
 #      each averaging 2 x 2 pixels of the one above: the share covered, in
 #      256 grey levels.
@@ -43,6 +44,15 @@
 #      overview, to the nearest of that many (raster_grey_vrt): the
 #      overviews are averaged from the full shares first, and only the copy
 #      is reduced. 256 skips the VRT: the COG is as before.
+#      When the warp averaged (-r average), the max zoom is made binary by
+#      majority instead: 255 where the share is at least half (128), else
+#      0, so pixels shown past the max zoom are solid, on or off, not
+#      semi-transparent squares. Thin lines go at the max zoom only. The
+#      overviews are still the ones averaged from the full shares in step
+#      3, reduced by LAYER_GREY_LEVELS as above. The copy reads a VRT whose
+#      base has a threshold LUT and whose overviews are the raster's own
+#      levels, each through its own VRT (raster_majority_vrt): no extra
+#      file and no extra pass over the data.
 #
 # Averaging in overviews with no nodata keeps the share. Each overview
 # rounds to a whole grey level, so a low zoom can be a level or two off the
@@ -310,6 +320,44 @@ raster_grey_vrt() {
   [[ $(grep -c '<LUT>' "$out") -eq 1 ]] || die "cannot reduce the grey levels of $raster"
 }
 
+# The VRT <LUT> of the majority at the max zoom: 0 to 127 (less than half
+# covered) to 0, 128 to 255 to 255.
+RASTER_MAJORITY_LUT=0:0,127:0,128:255,255:255
+
+# raster_majority_vrt RASTER LEVELS GREY_LEVELS OUT: write OUT, a VRT of
+# RASTER (one Byte band, no nodata, averaged at full resolution, with LEVELS
+# overviews) for raster_cog to copy: its full resolution is binary by
+# majority (RASTER_MAJORITY_LUT); its overviews are RASTER's own, the
+# averaged full shares, reduced to GREY_LEVELS by raster_grey_lut (as is,
+# for 256). The base is a ComplexSource with the LUT and <NODATA>0 (the
+# lookup is skipped for 0 pixels; raster_grey_vrt). Each overview is an
+# explicit <Overview>: a VRT of RASTER opened at that overview level
+# (OVERVIEW_LEVEL), OUT.ov<N>.vrt, so it is never read from the binary base.
+raster_majority_vrt() {
+  local raster=$1 levels=$2 grey=$3 out=$4 lut="" i level overviews=""
+  ((grey == 256)) || lut=$(raster_grey_lut "$grey")
+  for ((i = 0; i < levels; i++)); do
+    level="${out%.vrt}.ov${i}.vrt"
+    gdal_translate -q -of VRT -oo "OVERVIEW_LEVEL=${i}" "$raster" "$level" >/dev/null \
+      || die "cannot read overview $((i + 1)) of $raster"
+    if [[ -n $lut ]]; then
+      sed -i -e 's|<SimpleSource>|<ComplexSource>|' \
+        -e "s|</SimpleSource>|<NODATA>0</NODATA><LUT>${lut}</LUT></ComplexSource>|" "$level" \
+        || die "cannot write $level"
+      [[ $(grep -c '<LUT>' "$level") -eq 1 ]] || die "cannot reduce the grey levels of $raster"
+    fi
+    overviews+="<Overview><SourceFilename relativeToVRT=\"0\">${level}</SourceFilename>"
+    overviews+="<SourceBand>1</SourceBand></Overview>"
+  done
+  gdalbuildvrt -q -srcnodata 0 -vrtnodata None "$out" "$raster" >/dev/null \
+    || die "cannot read $raster"
+  sed -i -e "s|</ComplexSource>|<LUT>${RASTER_MAJORITY_LUT}</LUT></ComplexSource>|" \
+    -e '/<OverviewList/d' -e "s|</VRTRasterBand>|${overviews}</VRTRasterBand>|" "$out" \
+    || die "cannot write $out"
+  [[ $(grep -c '<LUT>' "$out") -eq 1 && $(grep -o '<Overview>' "$out" | wc -l) -eq $levels ]] \
+    || die "cannot make the max zoom of $raster binary"
+}
+
 
 # raster_snap_zoom MIN_ZOOM MAX_ZOOM: the zoom whose pixel grid the warped
 # extent is snapped to: at most MIN_ZOOM, so every overview down to it is
@@ -351,7 +399,10 @@ raster_check_cog() {
 # raster_has_cover RASTER LEVELS PREPARED: succeed if there is any cover. The
 # smallest overview (LEVELS, of RASTER) answers it quickly; when that is all
 # 0, which a few covered cells can round to, the full-resolution PREPARED
-# source is read to be sure.
+# source is read to be sure. RASTER is the warped raster before the COG
+# copy, so an averaged max zoom is checked as shares: a layer whose cover
+# is only ever less than half a max zoom pixel builds, with an all-0 max
+# zoom (by majority) and its cover in the overviews.
 raster_has_cover() {
   local raster=$1 levels=$2 prepared=$3 info opts=()
   ((levels == 0)) || opts=(-oo "OVERVIEW_LEVEL=$((levels - 1))")
@@ -361,19 +412,28 @@ raster_has_cover() {
   jq -e '(.bands[0].computedMax // 0) > 0' <<<"$info" >/dev/null
 }
 
+# raster_max_zoom_values RESAMPLING: how the max zoom's values are made
+# from the warp's method: `majority` for average (binary by majority,
+# raster_majority_vrt), `near` for near (binary from the source as is).
+raster_max_zoom_values() {
+  if [[ $1 == average ]]; then echo majority; else echo near; fi
+}
+
 # raster_report COG MIN_ZOOM MAX_ZOOM RESAMPLING GREY_LEVELS: print the
 # raster build report as compact JSON: {width, height, block_size,
-# overview_count, resampling, grey_levels, zooms: [{zoom, width, height}]},
-# one zoom per level from the max zoom down. RESAMPLING is the warp's
-# method (near or average); GREY_LEVELS is LAYER_GREY_LEVELS.
+# overview_count, resampling, max_zoom_values, grey_levels, zooms: [{zoom,
+# width, height}]}, one zoom per level from the max zoom down. RESAMPLING
+# is the warp's method (near or average); max_zoom_values follows from it
+# (raster_max_zoom_values); GREY_LEVELS is LAYER_GREY_LEVELS.
 raster_report() {
   local cog=$1 minzoom=$2 maxzoom=$3 resampling=$4 grey=$5
   gdalinfo -json "$cog" | jq -c --argjson max "$maxzoom" --argjson min "$minzoom" \
-    --arg resampling "$resampling" --argjson grey "$grey" '
+    --arg resampling "$resampling" --arg values "$(raster_max_zoom_values "$resampling")" \
+    --argjson grey "$grey" '
     ([{size: .size}] + (.bands[0].overviews // [])) as $levels
     | {width: .size[0], height: .size[1], block_size: .bands[0].block[0],
        overview_count: (($levels | length) - 1), resampling: $resampling,
-       grey_levels: $grey,
+       max_zoom_values: $values, grey_levels: $grey,
        zooms: [range(0; $max - $min + 1) as $i
                | {zoom: ($max - $i), width: $levels[$i].size[0], height: $levels[$i].size[1]}]}' \
     || die "cannot read $cog"
@@ -402,8 +462,9 @@ raster_header() {
 # the build report (raster_report) to REPORT and the manifest's archive
 # fields (raster_header) to HEADER. GREY_LEVELS (2 to 256,
 # LAYER_GREY_LEVELS) is how many grey levels the COG holds
-# (raster_grey_vrt). CACHE_DIR holds prepared sources (raster_source);
-# empty or absent, nothing is cached.
+# (raster_grey_vrt), in the overviews only when the max zoom is binary by
+# majority (raster_majority_vrt). CACHE_DIR holds prepared sources
+# (raster_source); empty or absent, nothing is cached.
 build_raster_tiles() {
   local layer=$1 input=$2 src_srs=$3 nodata=$4 minzoom=$5 maxzoom=$6
   local out_dir=$7 tmp=$8 report=$9 header=${10} grey=${11} cache=${12:-}
@@ -437,8 +498,12 @@ build_raster_tiles() {
 
   step=$SECONDS
   local final="${out_dir}/${layer}.cog.tif" cog_source=$warped
-  if ((grey < 256)); then
-    log_info "reducing to ${grey} grey levels"
+  ((grey == 256)) || log_info "reducing to ${grey} grey levels"
+  if [[ $method == average ]]; then
+    log_info "max zoom: binary by majority (at least half covered)"
+    cog_source="${tmp}/${layer}.majority.vrt"
+    raster_majority_vrt "$warped" "$levels" "$grey" "$cog_source"
+  elif ((grey < 256)); then
     cog_source="${tmp}/${layer}.grey.vrt"
     raster_grey_vrt "$warped" "$grey" "$cog_source"
   fi
@@ -446,7 +511,7 @@ build_raster_tiles() {
   trap 'rm -f "${_BUILD_TILES_TMP:-}"' EXIT
   rm -f "$_BUILD_TILES_TMP"
   raster_cog "$cog_source" "$_BUILD_TILES_TMP"
-  rm -f "$warped" "${tmp}/${layer}.grey.vrt"
+  rm -f "$warped" "${tmp}/${layer}.grey.vrt" "${tmp}/${layer}.majority".*vrt
   raster_check_cog "$_BUILD_TILES_TMP" "$levels"
   raster_report "$_BUILD_TILES_TMP" "$minzoom" "$maxzoom" "$method" "$grey" >"$report"
   mv -f "$_BUILD_TILES_TMP" "$final"

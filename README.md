@@ -328,6 +328,10 @@ worked examples, and
    A raster layer needs only `LAYER_TYPE=raster`, `LAYER_INPUT`, the zooms
    (up to z14; z12 is about 30 m) and, if the GeoTIFF does not declare
    them, `LAYER_SOURCE_SRS` and `LAYER_NODATA`. `forest.env` is an example.
+   A max zoom coarser than the source (z11 or lower for 30 m data) is
+   averaged for the lower zooms, so roads stay lighter lines, and binary by
+   majority at the max zoom itself (on where at least half is covered), so
+   pixels zoomed in past it are solid.
    `LAYER_GREY_LEVELS` (2 to 256, default 256) reduces the shades of
    partial cover to that many evenly spaced grey levels, for a smaller COG
    (8 makes agriculture's z10 level about half the size); any cover keeps

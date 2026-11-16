@@ -31,7 +31,9 @@ shape the copy:
   map config, schema `pipeline/schema/map-config.schema.json`) builds the
   committed layers with the raster layers at `LAYER_MAX_ZOOM` 10 (about a
   sixteenth of z12; the warp averages, ADR 0010, so roads and field edges
-  stay visible) and `protected_areas` from the public CPCAD source.
+  stay visible in the lower zooms, and the z10 level itself is binary by
+  majority, #94, so pixels past z10 are solid) and `protected_areas` from
+  the public CPCAD source.
   Vector layers keep their zooms while the total fits. At z10 with 256
   grey levels forest was 757 MB and agriculture 143 MB, close to the
   limit, so the raster layers also use `LAYER_GREY_LEVELS` 8 (ADR 0010,

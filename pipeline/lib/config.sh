@@ -55,8 +55,12 @@
 #                           Nearest neighbour when its pixel is no coarser
 #                           on the ground than the source's (0/255 kept);
 #                           averaged when it is (the share covered, as the
-#                           overviews: lib/raster.sh, raster_resampling).
-#                           Changing a raster's zooms reuses its prepared
+#                           overviews: lib/raster.sh, raster_resampling),
+#                           and then the max zoom level is made binary by
+#                           majority (255 where at least half is covered,
+#                           so pixels past the max zoom are solid), while
+#                           the overviews average the full shares
+#                           (raster_majority_vrt). Changing a raster's zooms reuses its prepared
 #                           source (lib/raster.sh, PIPELINE_WORK_DIR).
 #   LAYER_NODATA            optional, raster only. Source nodata value, for
 #                           a raster that does not declare one (or declares
@@ -65,8 +69,9 @@
 #                           changing it prepares the source again.
 #   LAYER_GREY_LEVELS       optional, raster only, an integer from 2 to 256,
 #                           default 256. How many evenly spaced grey levels
-#                           from 0 to 255 the COG holds, at the max zoom and
-#                           in every overview: round(k * 255 / (levels - 1))
+#                           from 0 to 255 the COG holds, at the max zoom
+#                           (unless it is binary by majority) and in every
+#                           overview: round(k * 255 / (levels - 1))
 #                           for k = 0 to levels - 1 (8: 0, 36, 73, ... 255).
 #                           Fewer levels compress better (a smaller COG, as
 #                           for the GitHub Pages copy) at the cost of
