@@ -48,6 +48,7 @@
 # The rest is the build report:
 #
 #   vector: "feature_count": 15, "profile": null, "min_visible_px": 1,
+#           "simplify_max_zoom": false (LAYER_SIMPLIFY_MAX_ZOOM),
 #           "max_tile_bytes": 1234,
 #           "zooms": [ { "zoom": 0, "input": 15, "present": 15,
 #                        "required": 15, "required_present": 15,
@@ -194,19 +195,22 @@ manifest_update() {
   log_info "updated $manifest"
 }
 
-# vector_report FEATURE_COUNT STATS_FILE PROFILE MIN_PX: print a vector
-# layer's build report (see above) as compact JSON. STATS_FILE is the drop
-# guard's per-zoom JSON array.
+# vector_report FEATURE_COUNT STATS_FILE PROFILE MIN_PX [SIMPLIFY_MAX_ZOOM]:
+# print a vector layer's build report (see above) as compact JSON.
+# STATS_FILE is the drop guard's per-zoom JSON array; SIMPLIFY_MAX_ZOOM is
+# LAYER_SIMPLIFY_MAX_ZOOM, `true` or `false` (the default).
 vector_report() {
-  local count=$1 stats_file=$2 profile=$3 min_px=$4
+  local count=$1 stats_file=$2 profile=$3 min_px=$4 simplify_max=${5:-false}
   jq -c \
     --argjson count "$count" \
     --arg profile "$profile" \
     --arg min_px "$min_px" \
+    --arg simplify_max "$simplify_max" \
     '{
        feature_count: $count,
        profile: (if $profile == "" then null else $profile end),
        min_visible_px: (if $min_px == "" then null else ($min_px | tonumber) end),
+       simplify_max_zoom: ($simplify_max == "true"),
        max_tile_bytes: ([.[].max_tile_bytes] | max),
        zooms: .
      }' "$stats_file" || die "cannot read $stats_file"

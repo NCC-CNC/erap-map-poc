@@ -175,6 +175,23 @@ notes_of() {
   [ "$(state_of alpha)" = current ]
 }
 
+@test "an env override can be true or false: LAYER_SIMPLIFY_MAX_ZOOM" {
+  add_layer alpha
+  run "$RUN" alpha
+  [ "$status" -eq 0 ]
+  [ "$(entry alpha .simplify_max_zoom)" = false ]
+  [ "$(state_of alpha)" = current ]
+
+  config '{"overrides": {"alpha": {"env": {"LAYER_SIMPLIFY_MAX_ZOOM": true}}}}'
+  [ "$(state_of alpha)" = stale ]
+  run "$RUN" alpha
+  [ "$status" -eq 0 ]
+  [ "$(entry alpha .simplify_max_zoom)" = true ]
+  run bash -c "pmtiles show --metadata '${PIPELINE_OUTPUT_DIR}/alpha.pmtiles' | jq -r .generator_options"
+  [[ $output != *"--simplify-only-low-zooms"* ]]
+  [ "$(state_of alpha)" = current ]
+}
+
 @test "a bad map config stops every mode before anything changes" {
   add_layer alpha
   run "$RUN" alpha

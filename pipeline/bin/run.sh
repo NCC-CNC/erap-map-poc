@@ -197,7 +197,8 @@ build_vector_layer() {
     "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" "$LAYER_FEATURE_ID" "$layer_scratch" \
     check_layer_tiles "${LAYER_TIPPECANOE_FLAGS[@]}"
 
-  vector_report "$count" "$stats" "$LAYER_PROFILE" "$LAYER_MIN_VISIBLE_PX" >"$report"
+  vector_report "$count" "$stats" "$LAYER_PROFILE" "$LAYER_MIN_VISIBLE_PX" \
+    "$LAYER_SIMPLIFY_MAX_ZOOM" >"$report"
   if [[ -n $plan ]]; then
     local derive_json
     derive_json=$(derive_report "$normalised" "$plan")

@@ -507,13 +507,14 @@ not built by default (#17).
 - Pipeline steps: reproject to EPSG:4326, make valid, keep and rename the
   attributes below; calculated fields and action rules (Calculated fields
   and action rules, below); low-zoom generalisation to z7.
-- Tile settings: z0 to z10, `LAYER_PROFILE=coverage`,
+- Tile settings: z0 to z12 (z10 until #85), `LAYER_PROFILE=coverage`,
   `LAYER_GENERALISE_MAX_ZOOM=7` (parts under 4 px dropped, borders
-  simplified at 1 px; z8 to z10 full detail), default drop guard (1 px).
-  Build (November 2026): 21.4 MB, 358 s (36 s of it generalising),
-  largest tile 6 to 28 KB at z0 to z7 and 59 KB at z8 to z10; every
-  ecoregion at every zoom but one small one at z0 (all 112 required
-  there present).
+  simplified at 1 px; z8 up not generalised), z12 not simplified (Full
+  detail at the max zoom, below), default drop guard (1 px).
+  Build at z0 to z10, before #85 (November 2026): 21.4 MB, 358 s (36 s
+  of it generalising), largest tile 6 to 28 KB at z0 to z7 and 59 KB at
+  z8 to z10; every ecoregion at every zoom but one small one at z0 (all
+  112 required there present). Not yet measured at z12.
 - Feature id: `OBJECTID` as `id`, the geodatabase's row id. Tippecanoe
   needs an integer id and `ECOREGION_ID` is text (for example `"100"`), so
   `ECOREGION_ID` is kept as the attribute `ecoregion_id` and shown in the
@@ -853,6 +854,40 @@ and opens gaps.
 The `sample` layer does not use the profile: its polygons do not touch, so
 it is not a coverage.
 
+### Full detail at the max zoom
+
+Every vector layer is tiled with tippecanoe's `--simplify-only-low-zooms`
+(added before the profile's flags), so lines and polygons are simplified
+at the lower zooms only and the max zoom keeps the source geometry, to the
+precision of its tile grid (4096 units a tile). The map overzooms past the
+max zoom, so that is what shows when zoomed in. ADR 0013; issue #85.
+
+- `LAYER_SIMPLIFY_MAX_ZOOM` (default `false`): `true` leaves the flag out,
+  so the max zoom is simplified like the others, for smaller tiles. Vector
+  only; anything but `true` or `false` fails the layer. It can be set in
+  the `.env` or in the map config (`overrides.<layer>.env`, as `true` or
+  `"true"`); like any setting, changing it makes the build stale. The
+  build report records it as `simplify_max_zoom`.
+
+It works with the coverage profile (shared nodes are kept at every zoom,
+and the max zoom's borders are not simplified at all, so they still
+match) and with low-zoom generalisation (which only changes the input of
+the generalised zooms). The drop guard is unchanged: it checks presence,
+not shape.
+
+Measured on a clip of `ecoregions` around a small island in Georgian Bay
+(#85; 33 vertices in the source):
+
+| Max zoom | Simplified (`true`) | Full detail (default) |
+| --- | --- | --- |
+| z10 | 6 | 21 |
+| z12 | 18 | 30 |
+| z14 | 31 | n/a |
+
+At z10 the coordinates sit on a grid of about 10 m (Web Mercator; 5 to 7 m
+on the ground across Canada), so even full detail cannot keep the island's
+shape; hence `ecoregions` goes to z12, like `protected_areas`.
+
 ### Low-zoom generalisation
 
 A detailed coverage can carry thousands of small parts (islands, skerries)
@@ -936,7 +971,7 @@ keeps every rule in screen pixels per zoom and leaves high zooms alone.
 
 When to use it: a polygon layer with many small parts, set the max zoom a
 little below where those parts matter (for `ecoregions`, 7 with a max zoom
-of 10). Raise `LAYER_GENERALISE_MIN_PART_PX` for a cleaner map, lower it to
+of 10, now 12). Raise `LAYER_GENERALISE_MIN_PART_PX` for a cleaner map, lower it to
 keep more islands. Generalisation needs polygons; with
 `LAYER_GENERALISE_SIMPLIFY_PX` above 0 it also needs a valid coverage
 (check with `inspect.sh` or `gdal vector check-coverage`).
@@ -1143,6 +1178,8 @@ A vector layer adds the drop guard's report:
 - `feature_count`: features in the normalised input.
 - `profile`: the layer's `LAYER_PROFILE`, or `null` for none.
 - `min_visible_px`: the layer's `LAYER_MIN_VISIBLE_PX`.
+- `simplify_max_zoom`: the layer's `LAYER_SIMPLIFY_MAX_ZOOM`, `false`
+  (the default: full detail at the max zoom) or `true`.
 - `max_tile_bytes`: the largest stored (compressed) tile in the archive.
 - `zooms`: one entry per zoom from `minzoom` to `maxzoom` (only z0 is shown
   above): `input` features in the normalised input, features `present` in at
