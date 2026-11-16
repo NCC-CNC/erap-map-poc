@@ -620,6 +620,13 @@ layer per band for multiband) and are left for later. In `<layer>.env`:
 - `LAYER_MIN_ZOOM`, `LAYER_MAX_ZOOM`: the zoom range; the max zoom (at most
   14) is also the resolution the raster is resampled to. z12 is about 38 m
   at the equator and 19 to 27 m across Canada, close to a 30 m source.
+  Each zoom lower doubles the pixel size and cuts the COG to about a
+  quarter (the Canada-wide forest layer is about 2.3 GB at z12, so about
+  570 MB at z11 and 140 MB at z10), so lowering it is how to downsample a
+  raster, by a factor of 2, 4, 8 and so on. Only powers of 2 keep the COG
+  on the map's tile grid (ADR 0010). The map overzooms past the max zoom.
+  For a smaller build of your own, such as a web demo, set it in
+  `map.config.json` (`overrides.<layer>.env`) rather than in the `.env`.
 - `LAYER_NODATA` (optional): the source's nodata value, when the file does
   not declare it (or declares the wrong one).
 - `LAYER_SOURCE_SRS` (optional): the source CRS, when the file has none.

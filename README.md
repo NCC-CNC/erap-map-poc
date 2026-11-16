@@ -288,7 +288,9 @@ worked examples, and
      example `descriptio:description`. Everything else is dropped.
    - `LAYER_FEATURE_ID`: an integer attribute (after renames) used as the
      feature id.
-   - `LAYER_MIN_ZOOM`, `LAYER_MAX_ZOOM`: the zoom range of the tiles.
+   - `LAYER_MIN_ZOOM`, `LAYER_MAX_ZOOM`: the zoom range of the tiles. For
+     a raster the max zoom is also its resolution: one zoom lower doubles
+     the pixel size and makes the `.cog.tif` about four times smaller.
    - `LAYER_PROFILE=coverage` for a contiguous polygon coverage (shared
      borders, no overlaps), so no gaps open along borders when tiles are
      simplified; `LAYER_TIPPECANOE_FLAGS` adds tippecanoe flags after it.
