@@ -99,6 +99,24 @@ json_of() {
   [ "$output" = '[null,null]' ]
 }
 
+@test "a file geodatabase and a GeoPackage: extent and checks read their geometry column" {
+  # FileGDB names the geometry column SHAPE and GeoPackage geom, not
+  # geometry as in a shapefile; the SQL in the checks must use that name.
+  local gdb="${PIPELINE_INPUT_DIR}/coverage.gdb" gpkg="${PIPELINE_INPUT_DIR}/coverage.gpkg"
+  ogr2ogr -f OpenFileGDB "$gdb" "${PIPELINE_INPUT_DIR}/shp/coverage.shp" -nln coverage
+  ogr2ogr -f GPKG "$gpkg" "${PIPELINE_INPUT_DIR}/shp/coverage.shp" -nln coverage
+  local input
+  for input in "$gdb" "$gpkg"; do
+    json_of "$input"
+    run jq -e '.extent_wgs84 as $b | [-120, 50, -100, 60] as $want
+      | all(range(4); ($b[.] - $want[.]) | fabs < 0.001)' <<<"$JSON"
+    [ "$status" -eq 0 ]
+    run jq -c '[.checks.invalid_geometries, .checks.union_parts, .checks.union_holes,
+      .checks.overlap_pct, .checks.coverage_invalid_edges, .coverage_like]' <<<"$JSON"
+    [ "$output" = '[0,1,0,0,0,true]' ]
+  done
+}
+
 @test "a shapefile without .prj: no CRS, no WGS84 extent, a LAYER_SOURCE_SRS hint" {
   mkdir -p "${PIPELINE_INPUT_DIR}/noprj"
   ogr2ogr -f "ESRI Shapefile" -t_srs EPSG:3347 "${PIPELINE_INPUT_DIR}/noprj/sample.shp" \

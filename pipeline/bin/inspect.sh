@@ -115,21 +115,31 @@ field_values() {
     | jq -c '[.features[].properties]'
 }
 
-# wgs84_extent DATASET LAYER: [west, south, east, north] of every feature
-# reprojected to EPSG:4326 (exact, unlike a reprojected bounding box).
+# geometry_column INFO: the layer's geometry column, quoted for SQL. A
+# shapefile has no name for it (SQL calls it geometry); FileGDB calls it
+# SHAPE and GeoPackage geom, and SQL must use that name.
+geometry_column() {
+  ogr_quote "$(jq -r '.geometryFields[0].name // "" | if . == "" then "geometry" else . end' <<<"$1")"
+}
+
+# wgs84_extent DATASET LAYER GEOM: [west, south, east, north] of every
+# feature reprojected to EPSG:4326 (exact, unlike a reprojected bounding
+# box). GEOM is the quoted geometry column (geometry_column).
 wgs84_extent() {
+  local g=$3
   gdal vector pipeline read --layer "$2" "$1" \
     ! reproject --dst-crs EPSG:4326 \
-    ! sql --dialect SQLite "SELECT Min(MbrMinX(geometry)) AS w, Min(MbrMinY(geometry)) AS s,
-        Max(MbrMaxX(geometry)) AS e, Max(MbrMaxY(geometry)) AS n FROM $(ogr_quote "$2")" \
+    ! sql --dialect SQLite "SELECT Min(MbrMinX($g)) AS w, Min(MbrMinY($g)) AS s,
+        Max(MbrMaxX($g)) AS e, Max(MbrMaxY($g)) AS n FROM $(ogr_quote "$2")" \
     ! write -f GeoJSON /vsistdout/ \
     | jq -c '.features[0].properties | [.w, .s, .e, .n]'
 }
 
-# polygon_checks DATASET LAYER GAP_WIDTH: invalid geometries, the union of
-# every (made valid) polygon, and GDAL's coverage check, as one JSON object.
+# polygon_checks DATASET LAYER GAP_WIDTH GEOM: invalid geometries, the
+# union of every (made valid) polygon, and GDAL's coverage check, as one
+# JSON object. GEOM is the quoted geometry column (geometry_column).
 polygon_checks() {
-  local dataset=$1 layer=$2 gap=$3
+  local dataset=$1 layer=$2 gap=$3 g=$4
   local invalid union edges
   invalid=$(gdal vector pipeline read --layer "$layer" "$dataset" ! check-geometry \
     ! write -f GeoJSON /vsistdout/ | jq '.features | length')
@@ -137,7 +147,7 @@ polygon_checks() {
   # NumInteriorRings per part of the union, through a recursive CTE.
   union=$(ogr2ogr -f GeoJSON /vsistdout/ "$dataset" -dialect SQLite -sql "
     WITH RECURSIVE u AS (
-      SELECT ST_Union(MakeValid(geometry)) AS g, SUM(ST_Area(MakeValid(geometry))) AS total
+      SELECT ST_Union(MakeValid($g)) AS g, SUM(ST_Area(MakeValid($g))) AS total
       FROM $(ogr_quote "$layer")),
     n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n, u WHERE i < ST_NumGeometries(u.g))
     SELECT ST_NumGeometries(u.g) AS parts, SUM(NumInteriorRings(ST_GeometryN(u.g, n.i))) AS holes,
@@ -189,15 +199,16 @@ inspect() {
   done < <(jq -r --argjson max "$INSPECT_MAX_VALUES" \
     'to_entries[] | select(.value.distinct > 0 and .value.distinct <= $max) | .key' <<<"$stats")
 
-  local geom_type has_crs extent=null polygon=false checks_json=null
+  local geom_type has_crs geom extent=null polygon=false checks_json=null
   geom_type=$(jq -r '.geometryFields[0].type // "None"' <<<"$info")
   has_crs=$(jq -r '.geometryFields[0].coordinateSystem != null' <<<"$info")
+  geom=$(geometry_column "$info")
   if [[ $has_crs == true && $geom_type != None ]]; then
-    extent=$(wgs84_extent "$dataset" "$layer") || extent=null
+    extent=$(wgs84_extent "$dataset" "$layer" "$geom") || extent=null
   fi
   [[ $geom_type == *Polygon* ]] && polygon=true
   if [[ $checks == 1 && $polygon == true ]]; then
-    checks_json=$(polygon_checks "$dataset" "$layer" "$gap") || die "geometry checks failed for $input"
+    checks_json=$(polygon_checks "$dataset" "$layer" "$gap" "$geom") || die "geometry checks failed for $input"
   fi
 
   jq -n --arg input "$input" --arg driver "$driver" --argjson all "$all_layers" \
