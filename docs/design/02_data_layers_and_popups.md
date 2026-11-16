@@ -629,17 +629,21 @@ layer per band for multiband) and are left for later. In `<layer>.env`:
   raster, by a factor of 2, 4, 8 and so on. Only powers of 2 keep the COG
   on the map's tile grid (ADR 0010). The map overzooms past the max zoom.
   When the max zoom's pixel is coarser on the ground than the source's,
-  the warp averages, as the overviews do, so the max zoom holds the share
-  covered and thin features such as roads stay lighter lines; otherwise it
-  takes the nearest source cell and the max zoom stays 0/255 (see below).
+  the warp averages, as the overviews do, so the overviews are built from
+  the share covered and thin features such as roads stay lighter lines
+  when zoomed out, and the max zoom itself is made binary by majority (on
+  where at least half is covered), so pixels past the max zoom are solid;
+  otherwise it takes the nearest source cell and the max zoom stays 0/255
+  (see below).
   For a smaller build of your own, such as a web demo, set it in
   `map.config.json` (`overrides.<layer>.env`) rather than in the `.env`.
 - `LAYER_NODATA` (optional): the source's nodata value, when the file does
   not declare it (or declares the wrong one).
 - `LAYER_SOURCE_SRS` (optional): the source CRS, when the file has none.
 - `LAYER_GREY_LEVELS` (optional, 2 to 256, default 256): how many evenly
-  spaced grey levels from 0 to 255 the COG holds, at the max zoom and in
-  every overview: `round(k * 255 / (levels - 1))`, so 8 gives 0, 36, 73,
+  spaced grey levels from 0 to 255 the COG holds, at the max zoom (unless
+  it is binary by majority) and in every overview:
+  `round(k * 255 / (levels - 1))`, so 8 gives 0, 36, 73,
   109, 146, 182, 219 and 255. Fewer levels make a smaller COG at the cost
   of coarser shades of partial cover; see below.
 
@@ -661,14 +665,34 @@ below it), ZSTD compression and no empty blocks. A pixel's value is the
 share covered as a grey level, 0 (none) to 255 (all). The COG is checked
 (GDAL's `LAYOUT=COG`, EPSG:3857, one Byte band, one overview per lower
 zoom) before it is moved into place; a raster with no 1 cells fails the
-layer. nginx serves it with range requests, like a `.pmtiles` archive, and
+layer.
+
+When the warp averaged, the max zoom level of the COG is binary by
+majority instead: 255 where the averaged share is at least half (128),
+else 0 (the manifest entry's `max_zoom_values` is `majority`; `near` for
+a nearest-neighbour warp). Past the max zoom the map shows each pixel as
+a square, and partial shares there were semi-transparent squares; now
+they are solid, on or off, without nearest neighbour's speckle. Thin
+features such as roads are dropped at the max zoom only: the overviews
+are still averaged from the full-precision averaged max zoom, not from
+the binary one (ADR 0010, #94). The COG copy reads a VRT whose base has a
+threshold lookup table and whose overviews are the averaged raster's own
+levels (`raster_majority_vrt`), so there is no extra file or pass: about
+1 s extra on a sparse 32,768 x 32,768 test raster with its overviews,
+roughly 10 s for a Canada-wide raster at z10. The cover check reads the
+averaged raster, so a raster whose cover is never half a max zoom pixel
+builds with an all-0 max zoom and its cover in the overviews. A build
+from before this (`resampling` `average` with no `max_zoom_values`) is
+`stale` in `--status`.
+
+nginx serves it with range requests, like a `.pmtiles` archive, and
 the map reads only the blocks of the current view, from the overview that
 matches the zoom.
 
 Averaged grey levels compress much worse than 0/255. With
-`LAYER_GREY_LEVELS` below 256, each level of the COG, the max zoom and
-every overview, is reduced to that many values as it is copied into the
-COG: each pixel takes the nearest level, except that any cover takes at
+`LAYER_GREY_LEVELS` below 256, each level of the COG, the max zoom (when
+it is not binary by majority already) and every overview, is reduced to
+that many values as it is copied into the COG: each pixel takes the nearest level, except that any cover takes at
 least the first level above 0 (36 for 8 levels), so sparse cover never
 vanishes at low zooms; 0 stays 0 and 255 stays 255. The overviews are
 still averaged from the full shares first, and only the copy is reduced,
@@ -732,9 +756,12 @@ COG's layout and its alignment with the tile grid, full cover at the max
 zoom and partial cover below, the manifest entry, `LAYER_NODATA`, an empty
 raster, the colour staying out of the COG, building a raster layer next to
 a vector one, replacing a build from before COGs, `--remove`, the prepare
-cache, the config checks and `LAYER_GREY_LEVELS` (only the reduced values
-in every level, each the nearest to the full share, cover never 0, and
-the default giving the same COG).
+cache, the config checks, `LAYER_GREY_LEVELS` (only the reduced values
+in every overview, each the nearest to the full share, cover never 0, and
+the default giving the same COG) and the majority at an averaged max zoom
+(only 0 and 255, 255 exactly where the averaged share is at least 128,
+the overviews value for value the averaged ones; a nearest-neighbour
+build the warped raster as it is).
 
 ## Input options
 
@@ -1234,8 +1261,14 @@ A raster layer adds instead the COG's levels:
   zoom is coarser on the ground than the source). A raster built before
   this was recorded used `near`, and `--status` reports it `stale` if it
   would now average.
+- `max_zoom_values`: how the max zoom's 0/255 values are made: `near`
+  (from the source as it is, with `resampling` `near`) or `majority` (with
+  `resampling` `average`: 255 where at least half is covered). A raster
+  averaged before this was recorded has grey levels at its max zoom, and
+  `--status` reports it `stale`.
 - `grey_levels`: `LAYER_GREY_LEVELS`, the grey levels the COG holds (256,
-  the default, for the full share).
+  the default, for the full share), in the overviews only when
+  `max_zoom_values` is `majority`.
 - `zooms`: one entry per zoom from `maxzoom` down to `minzoom`,
   `{"zoom": 12, "width": 447240, "height": 290531}`.
 

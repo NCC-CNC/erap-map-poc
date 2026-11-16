@@ -145,6 +145,7 @@ assert_no_temp_files() {
       and .center[2] == 3
       and (.build_seconds | type == "number")
       and .bytes > 0 and .block_size == 256 and .overview_count == 5
+      and .resampling == "near" and .max_zoom_values == "near" and .grey_levels == 256
       and .width > 0 and .height > 0
       and ([.zooms[].zoom] == [8, 7, 6, 5, 4, 3])
       and .zooms[0].width == .width and .zooms[0].height == .height
@@ -523,30 +524,85 @@ raster_fn() {
   awk -v s="$size" -v l="$lat" 'BEGIN { exit !(s == 1000 && l > 45 && l < 60) }'
 }
 
-@test "a max zoom coarser than the source averages, like the overviews of a finer build" {
+@test "a max zoom coarser than the source averages, binary by majority, overviews like a finer build's" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output == *"resampling near"* ]]
-  [ "$(jq -r '.layers[0].resampling' "$MANIFEST")" = near ]
-  # z6 in the z8 build: two overviews down.
+  [[ $output != *"majority"* ]]
+  [ "$(jq -r '.layers[0] | "\(.resampling) \(.max_zoom_values)"' "$MANIFEST")" = "near near" ]
+  # z5 in the z8 build: three overviews down.
   local overview
-  overview=$(level_sum "$COG" 2)
+  overview=$(level_sum "$COG" 3)
 
   # z6 is about 1500 m on the ground, coarser than the 1 km source.
   sed -i 's/^LAYER_MAX_ZOOM=8$/LAYER_MAX_ZOOM=6/' "${PIPELINE_LAYERS_DIR}/cover.env"
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output == *"resampling average"* ]]
-  [ "$(jq -r '.layers[0].resampling' "$MANIFEST")" = average ]
-  # Grey levels at the max zoom, not only 0 and 255 ...
+  [[ $output == *"binary by majority"* ]]
+  [ "$(jq -r '.layers[0] | "\(.resampling) \(.max_zoom_values)"' "$MANIFEST")" = "average majority" ]
+  # Only 0 and 255 at the max zoom ...
   run level_values "$COG" 0
   [ "$status" -eq 0 ]
-  [ "$(sort -nu <<<"$output" | wc -l)" -gt 2 ]
-  # ... and the same share covered as the z8 build's z6 overview, within 2%.
-  local full
-  full=$(level_sum "$COG" 0)
-  awk -v a="$full" -v b="$overview" 'BEGIN { d = a - b; if (d < 0) d = -d; exit !(d <= b * 0.02) }'
+  [ "$(sort -nu <<<"$output" | paste -sd' ')" = "0 255" ]
+  # ... and the first overview has the same share covered as the z8
+  # build's z5 overview, within 2%.
+  local averaged
+  averaged=$(level_sum "$COG" 1)
+  awk -v a="$averaged" -v b="$overview" 'BEGIN { d = a - b; if (d < 0) d = -d; exit !(d <= b * 0.02) }'
+}
+
+# reference_warp MAX_ZOOM METHOD OUT: the cover layer's prepared source
+# (in the work dir) warped and given overviews down to z3 as the pipeline
+# does before the COG copy (raster_warp, raster_overviews).
+reference_warp() {
+  local prepared
+  prepared=$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')
+  [ "$(wc -l <<<"$prepared")" -eq 1 ]
+  raster_fn raster_warp "$prepared" "$(raster_fn raster_snap_zoom 3 "$1")" "$1" "$3" "$2"
+  raster_fn raster_overviews "$3" "$(($1 - 3))"
+}
+
+@test "majority: 255 where the averaged share is at least 128; the overviews are the full averaged shares" {
+  raster_layer cover byte 'LAYER_MAX_ZOOM=6'
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  run jq -e '.metadata.IMAGE_STRUCTURE.LAYOUT == "COG" and (.bands[0] | .type == "Byte"
+    and .block == [256, 256] and (has("noDataValue") | not) and (.overviews | length) == 3)' \
+    <<<"$(gdalinfo -json "$COG")"
+  [ "$status" -eq 0 ]
+  local ref="${BATS_TEST_TMPDIR}/ref.tif"
+  reference_warp 6 average "$ref"
+
+  # The max zoom: the averaged share, 0/255 by majority. Shares below and
+  # above half, not only 0 and 255, are in the averaged raster.
+  run paste <(level_values "$ref" 0) <(level_values "$COG" 0)
+  [ "$status" -eq 0 ]
+  run awk '$2 != ($1 >= 128 ? 255 : 0) { bad++ }
+    $1 > 0 && $1 < 128 { low++ } $1 >= 128 && $1 < 255 { high++ }
+    END { printf "%d %d %d %d\n", bad, low, high, NR }' <<<"$output"
+  read -r bad low high count <<<"$output"
+  ((bad == 0 && low > 0 && high > 0 && count > 1000))
+
+  # Every overview: the averaged one, value for value, with partial shares
+  # (so averaged from the full shares, not from the binary max zoom).
+  local level
+  for level in 1 2 3; do
+    cmp <(level_values "$ref" "$level") <(level_values "$COG" "$level")
+  done
+  [ "$(level_values "$COG" 3 | awk '$1 > 0 && $1 < 255' | wc -l)" -gt 0 ]
+  assert_no_temp_files
+}
+
+@test "near: the COG is the warped raster and its overviews as they are" {
+  raster_layer cover byte
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  local ref="${BATS_TEST_TMPDIR}/ref.tif"
+  reference_warp 8 near "$ref"
+  raster_fn raster_cog "$ref" "${BATS_TEST_TMPDIR}/ref.cog.tif"
+  [ "$(sha256sum <"${BATS_TEST_TMPDIR}/ref.cog.tif")" = "$(sha256sum <"$COG")" ]
 }
 
 # The 8 grey levels of LAYER_GREY_LEVELS=8: round(k * 255 / 7), k = 0 to 7.
@@ -579,8 +635,9 @@ GREY8="0 36 73 109 146 182 219 255"
   [ "$(sha256sum <"$COG")" = "$before" ]
 }
 
-@test "LAYER_GREY_LEVELS=8: every level holds only 8 values, from the full shares, and cover never becomes 0" {
-  # z6 averages at the max zoom too (coarser than the 1 km source).
+@test "LAYER_GREY_LEVELS=8: every overview holds only 8 values, from the full shares, and cover never becomes 0" {
+  # z6 averages at the max zoom (coarser than the 1 km source), so the max
+  # zoom is binary by majority and the 8 levels are in the overviews.
   raster_layer cover byte 'LAYER_MAX_ZOOM=6'
   run "$RUN" cover
   [ "$status" -eq 0 ]
@@ -597,9 +654,13 @@ GREY8="0 36 73 109 146 182 219 255"
     <<<"$(gdalinfo -json "$COG")"
   [ "$status" -eq 0 ]
 
+  # The max zoom: binary by majority, as with 256 levels.
+  cmp <(level_values "${BATS_TEST_TMPDIR}/full.cog.tif" 0) <(level_values "$COG" 0)
+  [ "$(level_values "$COG" 0 | sort -nu | paste -sd' ')" = "0 255" ]
+
   local level small=0
-  for level in 0 1 2 3; do
-    # Only the 8 values, at the max zoom and in every overview ...
+  for level in 1 2 3; do
+    # Only the 8 values in every overview ...
     run level_values "$COG" "$level"
     [ "$status" -eq 0 ]
     run comm -23 <(sort -u <<<"$output") <(tr ' ' '\n' <<<"$GREY8" | sort)
