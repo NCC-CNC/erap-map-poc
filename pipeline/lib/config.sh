@@ -52,6 +52,10 @@
 #   LAYER_MAX_ZOOM          required. Maximum tile zoom. For a raster, also
 #                           the resolution it is resampled to (z12 is about
 #                           38 m at the equator, 19 to 27 m across Canada).
+#                           Nearest neighbour when its pixel is no coarser
+#                           on the ground than the source's (0/255 kept);
+#                           averaged when it is (the share covered, as the
+#                           overviews: lib/raster.sh, raster_resampling).
 #                           Changing a raster's zooms reuses its prepared
 #                           source (lib/raster.sh, PIPELINE_WORK_DIR).
 #   LAYER_NODATA            optional, raster only. Source nodata value, for

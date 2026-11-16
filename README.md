@@ -291,6 +291,9 @@ worked examples, and
    - `LAYER_MIN_ZOOM`, `LAYER_MAX_ZOOM`: the zoom range of the tiles. For
      a raster the max zoom is also its resolution: one zoom lower doubles
      the pixel size and makes the `.cog.tif` about four times smaller.
+     A max zoom coarser than the source averages (the share covered, so
+     thin features stay as lighter lines); one at or finer than the
+     source keeps the source's 0/255 cells.
    - `LAYER_PROFILE=coverage` for a contiguous polygon coverage (shared
      borders, no overlaps), so no gaps open along borders when tiles are
      simplified; `LAYER_TIPPECANOE_FLAGS` adds tippecanoe flags after it.

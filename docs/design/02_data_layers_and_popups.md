@@ -625,6 +625,10 @@ layer per band for multiband) and are left for later. In `<layer>.env`:
   570 MB at z11 and 140 MB at z10), so lowering it is how to downsample a
   raster, by a factor of 2, 4, 8 and so on. Only powers of 2 keep the COG
   on the map's tile grid (ADR 0010). The map overzooms past the max zoom.
+  When the max zoom's pixel is coarser on the ground than the source's,
+  the warp averages, as the overviews do, so the max zoom holds the share
+  covered and thin features such as roads stay lighter lines; otherwise it
+  takes the nearest source cell and the max zoom stays 0/255 (see below).
   For a smaller build of your own, such as a web demo, set it in
   `map.config.json` (`overrides.<layer>.env`) rather than in the `.env`.
 - `LAYER_NODATA` (optional): the source's nodata value, when the file does
@@ -637,7 +641,12 @@ source once into a tiled Byte GeoTIFF (255 for 1, 0 for 0 and nodata),
 cached in `data/work/raster/` and reused until the source file,
 `LAYER_SOURCE_SRS` or `LAYER_NODATA` changes. It warps that to EPSG:3857
 at the max zoom's resolution, over an extent snapped to the tile grid,
-adds one overview per lower zoom that averages the share of each pixel
+with nearest neighbour resampling when the max zoom's pixel is no coarser
+on the ground than the source's (its EPSG:3857 size times the cosine of
+the latitude at the middle of the source's extent; z12 over 30 m Canada
+data, about 18 m, stays crisp and 0/255) and with averaging when it is
+coarser (z11 or lower over 30 m data: the share covered, like the
+overviews; the manifest entry's `resampling` says which), adds one overview per lower zoom that averages the share of each pixel
 covered by 1 cells, and copies the result into `<layer>.cog.tif`: a COG
 with 256 px blocks (each one a map tile at the max zoom and the 6 zooms
 below it), ZSTD compression and no empty blocks. A pixel's value is the
@@ -1147,6 +1156,10 @@ A raster layer adds instead the COG's levels:
   is padded to the tile grid, so it is mostly empty and costs nothing).
 - `block_size`: 256, the COG's block (one map tile).
 - `overview_count`: overviews, one per zoom below the max.
+- `resampling`: the warp's method, `near` or `average` (when the max
+  zoom is coarser on the ground than the source). A raster built before
+  this was recorded used `near`, and `--status` reports it `stale` if it
+  would now average.
 - `zooms`: one entry per zoom from `maxzoom` down to `minzoom`,
   `{"zoom": 12, "width": 447240, "height": 290531}`.
 

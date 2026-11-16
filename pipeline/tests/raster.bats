@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# shellcheck source-path=SCRIPTDIR/..
 # Raster layer tests (LAYER_TYPE=raster, lib/raster.sh, ADR 0008 and 0010)
 # on synthetic binary GeoTIFFs made at test time by fixtures/make_raster.sh
 # (no committed .tif). Run in the test image with the other bats files:
@@ -463,4 +464,87 @@ assert_no_temp_files() {
   run value_at "$COG" 4 150000 1330000
   [ "$status" -eq 0 ]
   ((output >= 90 && output <= 165))
+}
+
+# raster_fn FUNCTION ARG...: run a lib/raster.sh function in a subshell.
+raster_fn() {
+  (
+    # shellcheck source=lib/log.sh
+    source "${PIPELINE_ROOT}/lib/log.sh"
+    # shellcheck source=lib/raster.sh
+    source "${PIPELINE_ROOT}/lib/raster.sh"
+    "$@"
+  )
+}
+
+@test "resampling: average when the max zoom's pixel is coarser on the ground than the source's" {
+  # 30 m data at Canada's middle (62.4 N): z12 is 17.7 m on the ground, z11
+  # 35.4 m.
+  run raster_fn raster_resampling 30 62.4 12
+  [ "$status" -eq 0 ]
+  [ "$output" = near ]
+  run raster_fn raster_resampling 30 62.4 11
+  [ "$output" = average ]
+  # At the equator z12 is 38.2 m: coarser than 30 m, finer than 40 m.
+  run raster_fn raster_resampling 30 0 12
+  [ "$output" = average ]
+  run raster_fn raster_resampling 40 0 12
+  [ "$output" = near ]
+  # The 1 km fixture near 52 N: z6 is about 1500 m, z7 about 750 m.
+  run raster_fn raster_resampling 1000 52 6
+  [ "$output" = average ]
+  run raster_fn raster_resampling 1000 52 7
+  [ "$output" = near ]
+}
+
+@test "the source pixel's ground size and centre latitude, projected or geographic" {
+  "$MAKE" byte "${BATS_TEST_TMPDIR}/b.tif"
+  run raster_fn raster_ground_pixel "${BATS_TEST_TMPDIR}/b.tif"
+  [ "$status" -eq 0 ]
+  read -r size lat <<<"$output"
+  awk -v s="$size" -v l="$lat" 'BEGIN { exit !(s == 1000 && l > 45 && l < 60) }'
+
+  # Geographic, 0.01 degrees: about 1113 m north to south, the larger side.
+  gdalwarp -q -t_srs EPSG:4326 -tr 0.01 0.01 "${BATS_TEST_TMPDIR}/b.tif" "${BATS_TEST_TMPDIR}/g.tif"
+  run raster_fn raster_ground_pixel "${BATS_TEST_TMPDIR}/g.tif"
+  [ "$status" -eq 0 ]
+  read -r size lat <<<"$output"
+  awk -v s="$size" -v l="$lat" 'BEGIN { exit !(s > 1110 && s < 1115 && l > 45 && l < 60) }'
+
+  # No CRS in the file: the one given (LAYER_SOURCE_SRS) is used.
+  local crs
+  crs=$(gdalsrsinfo -o proj4 "${BATS_TEST_TMPDIR}/b.tif")
+  cp "${BATS_TEST_TMPDIR}/b.tif" "${BATS_TEST_TMPDIR}/n.tif"
+  gdal raster edit --crs none "${BATS_TEST_TMPDIR}/n.tif"
+  [ "$(gdalinfo -json "${BATS_TEST_TMPDIR}/n.tif" | jq -r '.coordinateSystem.wkt // ""')" = "" ]
+  run raster_fn raster_ground_pixel "${BATS_TEST_TMPDIR}/n.tif" "$crs"
+  [ "$status" -eq 0 ]
+  read -r size lat <<<"$output"
+  awk -v s="$size" -v l="$lat" 'BEGIN { exit !(s == 1000 && l > 45 && l < 60) }'
+}
+
+@test "a max zoom coarser than the source averages, like the overviews of a finer build" {
+  raster_layer cover byte
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [[ $output == *"resampling near"* ]]
+  [ "$(jq -r '.layers[0].resampling' "$MANIFEST")" = near ]
+  # z6 in the z8 build: two overviews down.
+  local overview
+  overview=$(level_sum "$COG" 2)
+
+  # z6 is about 1500 m on the ground, coarser than the 1 km source.
+  sed -i 's/^LAYER_MAX_ZOOM=8$/LAYER_MAX_ZOOM=6/' "${PIPELINE_LAYERS_DIR}/cover.env"
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [[ $output == *"resampling average"* ]]
+  [ "$(jq -r '.layers[0].resampling' "$MANIFEST")" = average ]
+  # Grey levels at the max zoom, not only 0 and 255 ...
+  run level_values "$COG" 0
+  [ "$status" -eq 0 ]
+  [ "$(sort -nu <<<"$output" | wc -l)" -gt 2 ]
+  # ... and the same share covered as the z8 build's z6 overview, within 2%.
+  local full
+  full=$(level_sum "$COG" 0)
+  awk -v a="$full" -v b="$overview" 'BEGIN { d = a - b; if (d < 0) d = -d; exit !(d <= b * 0.02) }'
 }

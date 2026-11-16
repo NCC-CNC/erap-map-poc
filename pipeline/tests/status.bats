@@ -293,3 +293,25 @@ add_raster() {
   run jq -r '[.sources | keys[]] | join(",")' "${PIPELINE_OUTPUT_DIR}/style.json"
   [ "$output" = alpha ]
 }
+
+@test "--status: a raster built before averaging is stale only if its max zoom is coarser than its source" {
+  add_raster cover
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [ "$(state_of cover)" = current ]
+
+  # An entry from before the resampling was recorded was warped with near;
+  # z6 (about 1500 m on the ground) over the 1 km source now averages.
+  jq '.layers |= map(del(.resampling))' "$MANIFEST" >"${MANIFEST}.new"
+  mv "${MANIFEST}.new" "$MANIFEST"
+  [ "$(state_of cover)" = stale ]
+  [[ "$(notes_of cover)" == *"rebuild it to average"* ]]
+
+  # z8 (about 375 m) is finer than the source: near either way.
+  sed -i 's/^LAYER_MAX_ZOOM=6$/LAYER_MAX_ZOOM=8/' "${PIPELINE_LAYERS_DIR}/cover.env"
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  jq '.layers |= map(del(.resampling))' "$MANIFEST" >"${MANIFEST}.new"
+  mv "${MANIFEST}.new" "$MANIFEST"
+  [ "$(state_of cover)" = current ]
+}
