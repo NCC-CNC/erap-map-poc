@@ -33,7 +33,10 @@
 #   orphan     built, but its config is gone. `run.sh --remove` removes it.
 #
 # `notes` says why. A change to the pipeline itself does not make a layer
-# stale. The JSON (layer_status_json) is:
+# stale, with one exception: a raster built before its manifest entry
+# recorded `resampling` was warped with -r near, and is stale if its max
+# zoom is coarser on the ground than its source pixel, which is now
+# averaged (lib/raster.sh; the source's header is read to tell). The JSON (layer_status_json) is:
 #
 #   { "layers": [ { "name": "sample", "state": "current", "notes": [],
 #       "configured": true, "enabled": true, "origin": "committed",
@@ -157,6 +160,35 @@ _config_rules() {
   ) || true
 }
 
+# _config_source_srs CONFIG: load CONFIG in a subshell and print its
+# LAYER_SOURCE_SRS; nothing for none or if CONFIG does not load.
+_config_source_srs() {
+  (
+    # Report nothing for a config error (_config_input reports it). Called
+    # by load_layer_config.
+    # shellcheck disable=SC2329
+    die() {
+      exit 0
+    }
+    load_layer_config "$1" 2>/dev/null
+    printf '%s\n' "$LAYER_SOURCE_SRS"
+  ) || true
+}
+
+# _raster_needs_average ENTRY INPUT SOURCE_SRS: succeed if ENTRY, a raster
+# built before the warp's resampling was recorded (so with -r near), would
+# now be warped with -r average: its max zoom is coarser on the ground than
+# the INPUT's pixel (lib/raster.sh, raster_resampling). Reads only INPUT's
+# header; fails for any other entry or if INPUT cannot be read.
+_raster_needs_average() {
+  local entry=$1 input=$2 src_srs=$3 maxzoom dataset pixel lat
+  maxzoom=$(jq -er 'select(.type == "raster" and .format == "cog"
+    and (has("resampling") | not)) | .maxzoom' <<<"$entry" 2>/dev/null) || return 1
+  dataset=$(gdal_input_path "$input" 2>/dev/null) || return 1
+  read -r pixel lat < <(raster_ground_pixel "$dataset" "$src_srs" 2>/dev/null) || return 1
+  [[ -n $lat && $(raster_resampling "$pixel" "$lat" "$maxzoom") == average ]]
+}
+
 # _layer_status NAME OUT_DIR ENTRIES: one layer's status object. ENTRIES is
 # the manifest's layers array; the layer set is LAYERS_JSON.
 _layer_status() {
@@ -252,6 +284,8 @@ _layer_status() {
       [[ -f $archive ]] || notes+=("archive missing")
       if [[ $legacy == true ]]; then
         notes+=("built as PNG tiles in ${name}.pmtiles: rebuild it as a COG (ADR 0010)")
+      elif _raster_needs_average "$entry" "$input" "$(_config_source_srs "$env")"; then
+        notes+=("warped with -r near, but its max zoom is coarser than the source: rebuild it to average (ADR 0010)")
       fi
       local mtime
       mtime=$(_newest_mtime "$env_source")

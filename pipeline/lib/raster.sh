@@ -27,6 +27,11 @@
 #      reads fast in any order), over an extent snapped to a coarse pixel
 #      grid (raster_snap_zoom), so each overview below is exactly one
 #      zoom's grid and the 256 px blocks of the top zooms are map tiles.
+#      Nearest neighbour (-r near) when the max zoom's pixel is no coarser
+#      on the ground than the source's, so the max zoom stays 0/255 like
+#      the source; -r average when it is coarser: the share covered, as in
+#      the overviews, so thin lines (roads, field edges) stay lighter
+#      lines instead of breaking into dots (raster_resampling).
 #   3. overviews: gdaladdo -r average, multithreaded, one per lower zoom,
 #      each averaging 2 x 2 pixels of the one above: the share covered, in
 #      256 grey levels.
@@ -59,6 +64,57 @@ RASTER_PREPARE_VERSION=1
 # raster_resolution ZOOM: EPSG:3857 metres per pixel of a 256 px tile at ZOOM.
 raster_resolution() {
   awk -v z="$1" -v w="$RASTER_WORLD_M" 'BEGIN { printf "%.10f\n", w / 256 / 2 ^ z }'
+}
+
+# raster_zoom_ground ZOOM LATITUDE: the ground size in metres, at LATITUDE,
+# of a pixel at ZOOM (its EPSG:3857 resolution x cos(LATITUDE)).
+raster_zoom_ground() {
+  awk -v z="$1" -v lat="$2" -v w="$RASTER_WORLD_M" \
+    'BEGIN { printf "%.3f\n", w / 256 / 2 ^ z * cos(lat * atan2(0, -1) / 180) }'
+}
+
+# raster_resampling SOURCE_PIXEL_M LATITUDE MAX_ZOOM: print the warp's
+# resampling method: `average` when MAX_ZOOM's pixel is coarser on the
+# ground at LATITUDE (raster_zoom_ground) than the source pixel,
+# SOURCE_PIXEL_M metres (raster_ground_pixel); `near` if not.
+raster_resampling() {
+  awk -v src="$1" -v ground="$(raster_zoom_ground "$3" "$2")" \
+    'BEGIN { print (ground > src ? "average" : "near") }'
+}
+
+# raster_ground_pixel DATASET [SOURCE_SRS]: print the ground size in metres
+# of DATASET's pixel (the larger side) and the latitude of its extent's
+# centre, as `METRES LATITUDE`. SOURCE_SRS, if given, is used instead of
+# the CRS the dataset declares (as LAYER_SOURCE_SRS). The pixel size is in
+# the CRS's units: a linear unit (metre, foot, ...) is converted to metres;
+# an angular one (a geographic CRS) on the WGS 84 equatorial radius, east
+# to west at the centre latitude (x cos(LATITUDE)) and north to south as
+# it is.
+raster_ground_pixel() {
+  local dataset=$1 src_srs=${2:-} vrt="" info="" srs="" ok=true
+  if [[ -n $src_srs ]]; then
+    vrt=$(mktemp --suffix .vrt) || return 1
+    gdal_translate -q -of VRT -a_srs "$src_srs" "$dataset" "$vrt" >/dev/null || ok=false
+    dataset=$vrt
+  fi
+  if [[ $ok == true ]]; then
+    info=$(gdalinfo -json "$dataset") && srs=$(gdalsrsinfo -o projjson "$dataset") || ok=false
+  fi
+  [[ -z $vrt ]] || rm -f "$vrt"
+  [[ $ok == true ]] || return 1
+  jq -nr --argjson info "$info" --argjson srs "$srs" '
+    (1 | atan * 4 / 180) as $rad
+    | ($srs | .source_crs // .components[0]? // .) as $crs
+    | $crs.coordinate_system.axis[0].unit as $u
+    | (if $u == "metre" then {linear: true, f: 1}
+       elif $u == "degree" then {linear: false, f: $rad}
+       elif ($u | type) == "object" then {linear: ($u.type == "LinearUnit"), f: $u.conversion_factor}
+       else error("unknown CRS unit") end) as $unit
+    | ($info.wgs84Extent.coordinates[0] | map(.[1]) | (min + max) / 2) as $lat
+    | ($info.geoTransform[1] | fabs) as $dx | ($info.geoTransform[5] | fabs) as $dy
+    | (if $unit.linear then [$dx, $dy] | map(. * $unit.f)
+       else [$dx * $unit.f * 6378137 * ($lat * $rad | cos), $dy * $unit.f * 6378137] end) as $sides
+    | "\($sides | max * 1000 | round / 1000) \($lat * 1e4 | round / 1e4)"'
 }
 
 # raster_source_file DATASET: the local file behind DATASET (the zip for a
@@ -153,14 +209,15 @@ raster_source() {
   printf '%s\n' "$final"
 }
 
-# raster_warp PREPARED SNAP_ZOOM MAX_ZOOM OUT: write OUT, PREPARED (0/255,
-# no nodata) in EPSG:3857 at MAX_ZOOM's resolution, Byte, no nodata. The
+# raster_warp PREPARED SNAP_ZOOM MAX_ZOOM OUT METHOD: write OUT, PREPARED
+# (0/255, no nodata) in EPSG:3857 at MAX_ZOOM's resolution, Byte, no
+# nodata, resampled with METHOD (near or average; raster_resampling). The
 # extent is snapped outwards to SNAP_ZOOM's pixel grid (on the tile grid;
 # raster_snap_zoom), so its width and height are multiples of
 # 2^(MAX_ZOOM - SNAP_ZOOM) and every overview raster_overviews builds down
 # to SNAP_ZOOM is exactly one zoom's pixel grid.
 raster_warp() {
-  local input=$1 snapzoom=$2 maxzoom=$3 out=$4
+  local input=$1 snapzoom=$2 maxzoom=$3 out=$4 method=$5
   local res coarse grid="${out%.*}.grid.vrt" te
   res=$(raster_resolution "$maxzoom")
   coarse=$(raster_resolution "$snapzoom")
@@ -174,14 +231,15 @@ raster_warp() {
     || die "cannot read the extent of $input"
   rm -f "$grid"
 
-  # -r near: no new values. Cells outside the source keep INIT_DEST=0, and
-  # -dstnodata None leaves 0 a value, which the overviews average. ZSTD
-  # level 1 and SPARSE_OK (empty blocks not written): the default level 9
-  # took four times as long as the warp itself.
-  log_info "warping to EPSG:3857 (z${maxzoom} resolution)"
+  # -r near: no new values; -r average: the share of the pixel covered, as
+  # in the overviews (no nodata, so 0 counts). Cells outside the source
+  # keep INIT_DEST=0, and -dstnodata None leaves 0 a value, which the
+  # overviews average. ZSTD level 1 and SPARSE_OK (empty blocks not
+  # written): the default level 9 took four times as long as the warp.
+  log_info "warping to EPSG:3857 (z${maxzoom} resolution, -r ${method})"
   # shellcheck disable=SC2086 # te is four numbers.
   gdalwarp -q -overwrite -srcnodata None -t_srs EPSG:3857 -te $te -tr "$res" "$res" \
-    -r near -ot Byte -dstnodata None -wo INIT_DEST=0 \
+    -r "$method" -ot Byte -dstnodata None -wo INIT_DEST=0 \
     -multi -wo NUM_THREADS=ALL_CPUS -wm 1024 \
     -co TILED=YES -co BLOCKXSIZE=256 -co BLOCKYSIZE=256 \
     -co COMPRESS=ZSTD -co ZSTD_LEVEL=1 -co SPARSE_OK=TRUE \
@@ -254,15 +312,17 @@ raster_has_cover() {
   jq -e '(.bands[0].computedMax // 0) > 0' <<<"$info" >/dev/null
 }
 
-# raster_report COG MIN_ZOOM MAX_ZOOM: print the raster build report as
-# compact JSON: {width, height, block_size, overview_count, zooms: [{zoom,
-# width, height}]}, one zoom per level from the max zoom down.
+# raster_report COG MIN_ZOOM MAX_ZOOM RESAMPLING: print the raster build
+# report as compact JSON: {width, height, block_size, overview_count,
+# resampling, zooms: [{zoom, width, height}]}, one zoom per level from the
+# max zoom down. RESAMPLING is the warp's method (near or average).
 raster_report() {
-  local cog=$1 minzoom=$2 maxzoom=$3
-  gdalinfo -json "$cog" | jq -c --argjson max "$maxzoom" --argjson min "$minzoom" '
+  local cog=$1 minzoom=$2 maxzoom=$3 resampling=$4
+  gdalinfo -json "$cog" | jq -c --argjson max "$maxzoom" --argjson min "$minzoom" \
+    --arg resampling "$resampling" '
     ([{size: .size}] + (.bands[0].overviews // [])) as $levels
     | {width: .size[0], height: .size[1], block_size: .bands[0].block[0],
-       overview_count: (($levels | length) - 1),
+       overview_count: (($levels | length) - 1), resampling: $resampling,
        zooms: [range(0; $max - $min + 1) as $i
                | {zoom: ($max - $i), width: $levels[$i].size[0], height: $levels[$i].size[1]}]}' \
     || die "cannot read $cog"
@@ -303,8 +363,15 @@ build_raster_tiles() {
   log_info "prepare: $((SECONDS - step)) s"
   raster_header "$source" "$minzoom" "$maxzoom" >"$header"
 
+  local pixel lat method
+  read -r pixel lat < <(raster_ground_pixel "$source") && [[ -n $lat ]] \
+    || die "cannot read the pixel size of $input"
+  method=$(raster_resampling "$pixel" "$lat" "$maxzoom")
+  log_info "resampling ${method}: a z${maxzoom} pixel is $(raster_zoom_ground "$maxzoom" "$lat") m" \
+    "on the ground at ${lat} N, a source pixel ${pixel} m"
+
   step=$SECONDS
-  raster_warp "$source" "$(raster_snap_zoom "$minzoom" "$maxzoom")" "$maxzoom" "$warped"
+  raster_warp "$source" "$(raster_snap_zoom "$minzoom" "$maxzoom")" "$maxzoom" "$warped" "$method"
   log_info "warp: $((SECONDS - step)) s"
 
   step=$SECONDS
@@ -323,7 +390,7 @@ build_raster_tiles() {
   raster_cog "$warped" "$_BUILD_TILES_TMP"
   rm -f "$warped"
   raster_check_cog "$_BUILD_TILES_TMP" "$levels"
-  raster_report "$_BUILD_TILES_TMP" "$minzoom" "$maxzoom" >"$report"
+  raster_report "$_BUILD_TILES_TMP" "$minzoom" "$maxzoom" "$method" >"$report"
   mv -f "$_BUILD_TILES_TMP" "$final"
   _BUILD_TILES_TMP=""
   log_info "cog: $((SECONDS - step)) s"

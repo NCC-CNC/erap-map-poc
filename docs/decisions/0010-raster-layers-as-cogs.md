@@ -94,7 +94,10 @@ Vector layers stay PMTiles. A raster layer is one COG,
    `min(LAYER_MIN_ZOOM, LAYER_MAX_ZOOM - 14)`: each overview is then
    exactly one zoom's grid, and the COG's 256 px blocks are the map's
    tiles at the max zoom and the 6 below it. The padding is empty and
-   costs nothing (empty blocks are not written).
+   costs nothing (empty blocks are not written). Amended (#83): the warp
+   uses `-r near` only when the max zoom's pixel is no coarser on the
+   ground than the source's, and `-r average` when it is (see Amendment
+   below).
 3. `gdaladdo -r average`, one overview per lower zoom.
 4. `gdal_translate -of COG` (256 px blocks, ZSTD level 9 with
    `PREDICTOR=2`, the existing overviews, `SPARSE_OK`), checked (GDAL's
@@ -117,6 +120,32 @@ as `image/tiff` with range requests. The manifest entry has `format`
 A raster built before this (`.pmtiles`, `format` `png`) still shows (its
 red channel read as the grey level), is `stale` in `--status`, and is
 replaced, `.pmtiles` deleted, by its next build. `--remove` deletes both.
+
+### Amendment: average when the max zoom is coarser than the source (#83)
+
+The warp first used `-r near` at every max zoom. Lowering a raster's max
+zoom to make a smaller COG (z10 for a web demo, say) then took one of
+about 10 to 16 source cells per pixel, and thin features such as roads
+and field edges broke into scattered dots, where the overviews of a z12
+build (`-r average`) keep them as lighter lines. Now the warp averages
+when the max zoom's pixel is coarser on the ground than the source's,
+and keeps `-r near` otherwise. The ground size of the max zoom's pixel is
+its EPSG:3857 resolution times the cosine of the latitude at the middle
+of the source's extent; the source's pixel is read in its own CRS's units
+(metres, or another linear unit converted; degrees for a geographic CRS
+are converted on the WGS 84 equatorial radius), the larger side. A z12
+build of 30 m Canada data (about 18 m on the ground) is unchanged: crisp
+and 0/255, comparable with the source. A z10 forest build with averaging
+matched the z10 overview of the z12 build near Ottawa and kept the
+forest share (19.21% against 19.14% at full resolution; `near` gave
+19.36%). Averaging at z12 instead would have added about 12% grey edge
+pixels, which is why the method depends on the zoom.
+
+The method is logged and recorded in the manifest entry (`resampling`).
+A raster built before that has no `resampling`, was warped with `near`,
+and is `stale` in `--status` if its max zoom would now average (the
+source's header is read to tell); a z12 build of 30 m data stays
+`current`.
 
 ## Results
 
