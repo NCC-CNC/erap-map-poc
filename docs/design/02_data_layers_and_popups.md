@@ -506,11 +506,13 @@ not built by default (#17).
   Config: `pipeline/layers/ecoregions.env`.
 - Pipeline steps: reproject to EPSG:4326, make valid, keep and rename the
   attributes below; calculated fields and action rules (Calculated fields
-  and action rules, below); low-zoom generalisation to z7.
+  and action rules, below); low-zoom generalisation to z11.
 - Tile settings: z0 to z12 (z10 until #85), `LAYER_PROFILE=coverage`,
-  `LAYER_GENERALISE_MAX_ZOOM=7` (parts under 4 px dropped, borders
-  simplified at 1 px; z8 up not generalised), z12 not simplified (Full
-  detail at the max zoom, below), default drop guard (1 px).
+  `LAYER_GENERALISE_MAX_ZOOM=11` with `LAYER_GENERALISE_MIN_PART_PX=2`
+  and `LAYER_GENERALISE_SIMPLIFY_PX=0.5` (z7 at 4 px and 1 px until #89:
+  z7 looked coarse and z8, not generalised, cluttered with islands), z12
+  not simplified (Full detail at the max zoom, below), default drop guard
+  (1 px).
   Build at z0 to z10, before #85 (November 2026): 21.4 MB, 358 s (36 s
   of it generalising), largest tile 6 to 28 KB at z0 to z7 and 59 KB at
   z8 to z10; every ecoregion at every zoom but one small one at z0 (all
