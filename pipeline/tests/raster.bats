@@ -548,3 +548,85 @@ raster_fn() {
   full=$(level_sum "$COG" 0)
   awk -v a="$full" -v b="$overview" 'BEGIN { d = a - b; if (d < 0) d = -d; exit !(d <= b * 0.02) }'
 }
+
+# The 8 grey levels of LAYER_GREY_LEVELS=8: round(k * 255 / 7), k = 0 to 7.
+GREY8="0 36 73 109 146 182 219 255"
+
+@test "LAYER_GREY_LEVELS must be an integer from 2 to 256" {
+  local bad
+  for bad in 1 257 abc 08 ''; do
+    raster_layer cover byte "LAYER_GREY_LEVELS=${bad}"
+    run "$RUN" cover
+    [ "$status" -eq 1 ]
+    [[ $output == *"LAYER_GREY_LEVELS must be an integer from 2 to 256"* ]]
+  done
+  [ ! -e "$COG" ]
+}
+
+@test "the default of 256 grey levels adds no step and gives the same COG" {
+  raster_layer cover byte 'LAYER_MAX_ZOOM=6'
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [[ $output != *"grey levels"* ]]
+  [ "$(jq '.layers[0].grey_levels' "$MANIFEST")" -eq 256 ]
+  local before
+  before=$(sha256sum <"$COG")
+
+  echo 'LAYER_GREY_LEVELS=256' >>"${PIPELINE_LAYERS_DIR}/cover.env"
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [[ $output != *"grey levels"* ]]
+  [ "$(sha256sum <"$COG")" = "$before" ]
+}
+
+@test "LAYER_GREY_LEVELS=8: every level holds only 8 values, from the full shares, and cover never becomes 0" {
+  # z6 averages at the max zoom too (coarser than the 1 km source).
+  raster_layer cover byte 'LAYER_MAX_ZOOM=6'
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  cp "$COG" "${BATS_TEST_TMPDIR}/full.cog.tif"
+
+  echo 'LAYER_GREY_LEVELS=8' >>"${PIPELINE_LAYERS_DIR}/cover.env"
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [[ $output == *"8 grey levels"* ]]
+  [ "$(jq '.layers[0].grey_levels' "$MANIFEST")" -eq 8 ]
+  # Still a valid COG: the same layout, block size and overviews.
+  run jq -e '.metadata.IMAGE_STRUCTURE.LAYOUT == "COG" and (.bands[0] | .type == "Byte"
+    and .block == [256, 256] and (has("noDataValue") | not) and (.overviews | length) == 3)' \
+    <<<"$(gdalinfo -json "$COG")"
+  [ "$status" -eq 0 ]
+
+  local level small=0
+  for level in 0 1 2 3; do
+    # Only the 8 values, at the max zoom and in every overview ...
+    run level_values "$COG" "$level"
+    [ "$status" -eq 0 ]
+    run comm -23 <(sort -u <<<"$output") <(tr ' ' '\n' <<<"$GREY8" | sort)
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+    # ... each the level nearest the full share of the 256-level build
+    # (within half a step, 18.2), so the overviews average the full shares;
+    # 0 only where that is 0, and any cover at least 36.
+    run paste <(level_values "${BATS_TEST_TMPDIR}/full.cog.tif" "$level") \
+      <(level_values "$COG" "$level")
+    [ "$status" -eq 0 ]
+    run awk '{ d = $2 - $1; if (d < 0) d = -d }
+      ($1 == 0) != ($2 == 0) || ($1 > 0 && $1 < 18 && $2 != 36) || ($1 >= 18 && d > 18.3) { bad++ }
+      $1 > 0 && $1 < 18 { small++ }
+      END { printf "%d %d\n", bad, small }' <<<"$output"
+    [ "${output% *}" -eq 0 ]
+    small=$((small + ${output#* }))
+  done
+  # Some cover was small enough to round to 0, and did not.
+  ((small > 0))
+  assert_no_temp_files
+}
+
+@test "raster_grey_lut: the nearest level, any cover at least the first level above 0" {
+  run raster_fn raster_grey_lut 8
+  [ "$status" -eq 0 ]
+  [ "$output" = "0:0,1:36,54:36,55:73,91:73,92:109,127:109,128:146,163:146,164:182,200:182,201:219,236:219,237:255,255:255" ]
+  run raster_fn raster_grey_lut 2
+  [ "$output" = "0:0,1:255,255:255" ]
+}

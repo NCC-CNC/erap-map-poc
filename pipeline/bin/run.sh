@@ -228,7 +228,7 @@ build_raster_layer() {
 
   build_raster_tiles "$name" "$LAYER_INPUT" "$LAYER_SOURCE_SRS" "$LAYER_NODATA" \
     "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" "$PIPELINE_OUTPUT_DIR" "$layer_scratch" "$report" \
-    "$header" "${PIPELINE_WORK_DIR:+${PIPELINE_WORK_DIR}/raster}"
+    "$header" "$LAYER_GREY_LEVELS" "${PIPELINE_WORK_DIR:+${PIPELINE_WORK_DIR}/raster}"
 }
 
 # restyle_layer NAME SCRATCH: the --style-only steps for one built layer, in

@@ -38,6 +38,11 @@
 #   4. COG: gdal_translate -of COG copies the raster and its overviews into
 #      the COG layout (256 px blocks, ZSTD with a predictor, empty blocks
 #      not written), checked (raster_check_cog), then moved into place.
+#      With fewer than 256 grey levels (LAYER_GREY_LEVELS), the copy reads
+#      the raster through a VRT that maps each level, the max zoom and every
+#      overview, to the nearest of that many (raster_grey_vrt): the
+#      overviews are averaged from the full shares first, and only the copy
+#      is reduced. 256 skips the VRT: the COG is as before.
 #
 # Averaging in overviews with no nodata keeps the share. Each overview
 # rounds to a whole grey level, so a low zoom can be a level or two off the
@@ -261,6 +266,50 @@ raster_overviews() {
     || die "cannot build the overviews of $raster"
 }
 
+# raster_grey_lut LEVELS: print the lookup table that maps a grey level (0
+# to 255) to the nearest of LEVELS evenly spaced ones, round(k * 255 /
+# (LEVELS - 1)), as a VRT <LUT>: `in:out` pairs. Any value above 0 maps to
+# at least the first level above 0, so cover never becomes 0; 0 stays 0 and
+# 255 stays 255. The VRT interpolates linearly between the pairs, so only
+# the first and last value of each run are listed (fewer pairs read
+# faster); a whole number between them gets the run's level exactly. No
+# value is ever halfway between two levels (255 is odd), so no ties.
+raster_grey_lut() {
+  awk -v levels="$1" 'BEGIN {
+    step = 255 / (levels - 1)
+    for (v = 0; v < 256; v++) {
+      k = int(v / step + 0.5)
+      if (v > 0 && k < 1) k = 1
+      q[v] = int(k * step + 0.5)
+    }
+    for (v = 0; v < 256; v++)
+      if (v == 0 || v == 255 || q[v] != q[v - 1] || q[v] != q[v + 1])
+        printf "%s%d:%d", (n++ ? "," : ""), v, q[v]
+    printf "\n"
+  }'
+}
+
+# raster_grey_vrt RASTER LEVELS OUT: write OUT, a VRT of RASTER (one Byte
+# band, no nodata, with overviews) reduced to LEVELS grey levels by
+# raster_grey_lut, for raster_cog to copy. Its one source is a
+# ComplexSource with the LUT, so the VRT's overviews are RASTER's own (the
+# averaged full shares) through the same LUT, one per level. The source's
+# <NODATA>0 skips the lookup for the 0 pixels, most of a sparse raster,
+# which the VRT band (no nodata) still reads as 0: a full LUT read about 8
+# ns a pixel, this about 1 ns for a 0 pixel (a Canada-wide z10 raster has
+# about 1.2e10 pixels in all its levels). gdalbuildvrt's <OverviewList>
+# (virtual overviews by resampling) is dropped, so the overviews are only
+# ever RASTER's own.
+raster_grey_vrt() {
+  local raster=$1 levels=$2 out=$3 lut
+  lut=$(raster_grey_lut "$levels")
+  gdalbuildvrt -q -srcnodata 0 -vrtnodata None "$out" "$raster" >/dev/null \
+    || die "cannot read $raster"
+  sed -i -e "s|</ComplexSource>|<LUT>${lut}</LUT></ComplexSource>|" \
+    -e '/<OverviewList/d' "$out" || die "cannot write $out"
+  [[ $(grep -c '<LUT>' "$out") -eq 1 ]] || die "cannot reduce the grey levels of $raster"
+}
+
 
 # raster_snap_zoom MIN_ZOOM MAX_ZOOM: the zoom whose pixel grid the warped
 # extent is snapped to: at most MIN_ZOOM, so every overview down to it is
@@ -312,17 +361,19 @@ raster_has_cover() {
   jq -e '(.bands[0].computedMax // 0) > 0' <<<"$info" >/dev/null
 }
 
-# raster_report COG MIN_ZOOM MAX_ZOOM RESAMPLING: print the raster build
-# report as compact JSON: {width, height, block_size, overview_count,
-# resampling, zooms: [{zoom, width, height}]}, one zoom per level from the
-# max zoom down. RESAMPLING is the warp's method (near or average).
+# raster_report COG MIN_ZOOM MAX_ZOOM RESAMPLING GREY_LEVELS: print the
+# raster build report as compact JSON: {width, height, block_size,
+# overview_count, resampling, grey_levels, zooms: [{zoom, width, height}]},
+# one zoom per level from the max zoom down. RESAMPLING is the warp's
+# method (near or average); GREY_LEVELS is LAYER_GREY_LEVELS.
 raster_report() {
-  local cog=$1 minzoom=$2 maxzoom=$3 resampling=$4
+  local cog=$1 minzoom=$2 maxzoom=$3 resampling=$4 grey=$5
   gdalinfo -json "$cog" | jq -c --argjson max "$maxzoom" --argjson min "$minzoom" \
-    --arg resampling "$resampling" '
+    --arg resampling "$resampling" --argjson grey "$grey" '
     ([{size: .size}] + (.bands[0].overviews // [])) as $levels
     | {width: .size[0], height: .size[1], block_size: .bands[0].block[0],
        overview_count: (($levels | length) - 1), resampling: $resampling,
+       grey_levels: $grey,
        zooms: [range(0; $max - $min + 1) as $i
                | {zoom: ($max - $i), width: $levels[$i].size[0], height: $levels[$i].size[1]}]}' \
     || die "cannot read $cog"
@@ -346,14 +397,16 @@ raster_header() {
     || die "cannot read the extent of $prepared"
 }
 
-# build_raster_tiles LAYER INPUT SOURCE_SRS NODATA MIN_ZOOM MAX_ZOOM OUT_DIR TMP_DIR REPORT HEADER [CACHE_DIR]
+# build_raster_tiles LAYER INPUT SOURCE_SRS NODATA MIN_ZOOM MAX_ZOOM OUT_DIR TMP_DIR REPORT HEADER GREY_LEVELS [CACHE_DIR]
 # Build OUT_DIR/LAYER.cog.tif from INPUT (see the top of this file), write
 # the build report (raster_report) to REPORT and the manifest's archive
-# fields (raster_header) to HEADER. CACHE_DIR holds prepared sources
-# (raster_source); empty or absent, nothing is cached.
+# fields (raster_header) to HEADER. GREY_LEVELS (2 to 256,
+# LAYER_GREY_LEVELS) is how many grey levels the COG holds
+# (raster_grey_vrt). CACHE_DIR holds prepared sources (raster_source);
+# empty or absent, nothing is cached.
 build_raster_tiles() {
   local layer=$1 input=$2 src_srs=$3 nodata=$4 minzoom=$5 maxzoom=$6
-  local out_dir=$7 tmp=$8 report=$9 header=${10} cache=${11:-}
+  local out_dir=$7 tmp=$8 report=$9 header=${10} grey=${11} cache=${12:-}
   local dataset step=$SECONDS
   dataset=$(gdal_input_path "$input") || exit 1
 
@@ -383,14 +436,19 @@ build_raster_tiles() {
   [[ -n $cache && $source == "${cache}"/* ]] || rm -f "$source"
 
   step=$SECONDS
-  local final="${out_dir}/${layer}.cog.tif"
+  local final="${out_dir}/${layer}.cog.tif" cog_source=$warped
+  if ((grey < 256)); then
+    log_info "reducing to ${grey} grey levels"
+    cog_source="${tmp}/${layer}.grey.vrt"
+    raster_grey_vrt "$warped" "$grey" "$cog_source"
+  fi
   _BUILD_TILES_TMP="${out_dir}/.${layer}.$$.tmp.cog.tif"
   trap 'rm -f "${_BUILD_TILES_TMP:-}"' EXIT
   rm -f "$_BUILD_TILES_TMP"
-  raster_cog "$warped" "$_BUILD_TILES_TMP"
-  rm -f "$warped"
+  raster_cog "$cog_source" "$_BUILD_TILES_TMP"
+  rm -f "$warped" "${tmp}/${layer}.grey.vrt"
   raster_check_cog "$_BUILD_TILES_TMP" "$levels"
-  raster_report "$_BUILD_TILES_TMP" "$minzoom" "$maxzoom" "$method" >"$report"
+  raster_report "$_BUILD_TILES_TMP" "$minzoom" "$maxzoom" "$method" "$grey" >"$report"
   mv -f "$_BUILD_TILES_TMP" "$final"
   _BUILD_TILES_TMP=""
   log_info "cog: $((SECONDS - step)) s"

@@ -328,6 +328,10 @@ worked examples, and
    A raster layer needs only `LAYER_TYPE=raster`, `LAYER_INPUT`, the zooms
    (up to z14; z12 is about 30 m) and, if the GeoTIFF does not declare
    them, `LAYER_SOURCE_SRS` and `LAYER_NODATA`. `forest.env` is an example.
+   `LAYER_GREY_LEVELS` (2 to 256, default 256) reduces the shades of
+   partial cover to that many evenly spaced grey levels, for a smaller COG
+   (8 makes agriculture's z10 level about half the size); any cover keeps
+   at least the first level above 0. See design note 02, Raster layers.
 3. Write `pipeline/layers/<layer>.style.json`, starting with
    `"$schema": "../schema/layer-style.schema.json"` for completion and
    checking in an editor: `title`, `defaultVisible`, `order` (draw order),
@@ -532,8 +536,9 @@ account that can write to the repo.
 
 The copy is built from the committed layers with `map.config.pages.json`:
 the raster layers at max zoom 10 instead of 12 (the forest COG goes from
-2.3 GB to roughly a sixteenth), and `protected_areas` from the public
-CPCAD source with confidential records removed,
+2.3 GB to roughly a sixteenth) with 8 grey levels instead of 256
+(`LAYER_GREY_LEVELS`, about half the size again), and `protected_areas`
+from the public CPCAD source with confidential records removed,
 `ProtectedConservedArea_2025.gdb`, instead of the local
 `protected_areas.gdb`. Put that file geodatabase in your `RAW_DIR` folder
 (the default is `data/raw/`) next to the other sources, or set `RAW_DIR` to

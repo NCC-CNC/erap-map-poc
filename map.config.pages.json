@@ -2,8 +2,8 @@
   "$schema": "./pipeline/schema/map-config.schema.json",
   "map": { "center": [-96, 60], "zoom": 3, "basemap": "light" },
   "overrides": {
-    "forest": { "env": { "LAYER_MAX_ZOOM": 10 } },
-    "agriculture": { "env": { "LAYER_MAX_ZOOM": 10 } },
+    "forest": { "env": { "LAYER_MAX_ZOOM": 10, "LAYER_GREY_LEVELS": 8 } },
+    "agriculture": { "env": { "LAYER_MAX_ZOOM": 10, "LAYER_GREY_LEVELS": 8 } },
     "ecoregions": {
       "env": { "LAYER_MAX_ZOOM": 10, "LAYER_GENERALISE_MAX_ZOOM": 9 }
     },
