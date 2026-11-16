@@ -129,8 +129,9 @@ touches only `docs/` and `*.md` runs just `repo-hygiene`.
   `npx --yes markdownlint-cli '**/*.md' --ignore node_modules --ignore LICENSE`.
 
 Ready PRs from branches in this repo merge themselves when `checks` passes
-(auto-merge via the NCC ConsTech Automation app), so open a draft until the
-change is ready.
+(auto-merge via the NCC ConsTech Automation app). Open PRs ready, not as
+drafts, so they merge on green; use a draft only when asked to hold one
+for review.
 
 ## Repo structure
 
