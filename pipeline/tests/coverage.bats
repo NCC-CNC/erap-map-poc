@@ -142,6 +142,7 @@ coverage_gaps() {
   [[ $output == *"--no-simplification-of-shared-nodes"* ]]
   [[ $output == *"--drop-smallest-as-needed"* ]]
   [[ $output == *"--read-parallel"* ]]
+  [[ $output == *"--simplify-only-low-zooms"* ]]
   [[ $output != *"--detect-shared-borders"* ]]
   [[ $output != *"--coalesce"* ]]
 

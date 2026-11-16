@@ -297,6 +297,10 @@ worked examples, and
    - `LAYER_PROFILE=coverage` for a contiguous polygon coverage (shared
      borders, no overlaps), so no gaps open along borders when tiles are
      simplified; `LAYER_TIPPECANOE_FLAGS` adds tippecanoe flags after it.
+   - `LAYER_SIMPLIFY_MAX_ZOOM` (default `false`): a vector layer's max
+     zoom keeps the full detail of the source and only the lower zooms are
+     simplified, so zooming in shows the real shapes; `true` simplifies
+     the max zoom too, for smaller tiles. ADR 0013.
    - `LAYER_MIN_VISIBLE_PX` (default 1): the drop guard threshold. The
      build fails if tippecanoe drops a polygon at a zoom where it would
      cover at least this many pixels.

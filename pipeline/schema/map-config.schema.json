@@ -75,13 +75,14 @@
       "pattern": "^[a-z0-9][a-z0-9_-]*$"
     },
     "settings": {
-      "description": "Layer processing settings, as in a <name>.env (see pipeline/lib/config.sh): a LAYER_* name and a text, number or (for an array setting such as LAYER_FIELDS) a list of texts.",
+      "description": "Layer processing settings, as in a <name>.env (see pipeline/lib/config.sh): a LAYER_* name and a text, number, true or false (for a true/false setting such as LAYER_SIMPLIFY_MAX_ZOOM) or (for an array setting such as LAYER_FIELDS) a list of texts.",
       "type": "object",
       "propertyNames": { "pattern": "^LAYER_[A-Z][A-Z0-9_]*$" },
       "additionalProperties": {
         "oneOf": [
           { "type": "string" },
           { "type": "number" },
+          { "type": "boolean" },
           { "type": "array", "items": { "type": "string" } }
         ]
       }

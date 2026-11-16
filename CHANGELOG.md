@@ -380,6 +380,14 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- Vector layers keep full detail at their max zoom (#85, ADR 0013): every
+  vector layer is tiled with tippecanoe's `--simplify-only-low-zooms`, so
+  only the lower zooms are simplified. The new setting
+  `LAYER_SIMPLIFY_MAX_ZOOM=true` (in a `.env` or a map config override,
+  where a setting can now be `true` or `false`) simplifies the max zoom
+  too; the build report records it as `simplify_max_zoom`. `ecoregions`
+  goes from z10 to z12, like `protected_areas`. Rebuild the vector layers
+  to apply it.
 - Licences, provenance, update frequency and stable feature ids of the
   play data layers are deferred for the PoC (#13): `OBJECTID` stays the
   feature id of `ecoregions` and `protected_areas`. Design note 02 moves

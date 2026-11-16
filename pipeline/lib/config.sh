@@ -67,6 +67,15 @@
 #                           flags; see layer_profile_flags. Empty for none.
 #   LAYER_TIPPECANOE_FLAGS  optional array, vector only. Extra tippecanoe
 #                           flags, added after the profile's.
+#   LAYER_SIMPLIFY_MAX_ZOOM optional, vector only, `false` (default) or
+#                           `true`. By default the max zoom keeps the full
+#                           detail of the source (tippecanoe's
+#                           --simplify-only-low-zooms, ADR 0013): lines and
+#                           polygons are simplified at the lower zooms only,
+#                           so zooming in past the max zoom shows the source
+#                           geometry, to the max zoom's tile precision.
+#                           `true` simplifies the max zoom too, for smaller
+#                           tiles.
 #   LAYER_MIN_VISIBLE_PX    optional, vector only, default 1. Drop guard
 #                           threshold: a polygon is required at a zoom once
 #                           its largest part covers at least this many screen
@@ -158,6 +167,7 @@ load_layer_config() {
   LAYER_NODATA=""
   LAYER_PROFILE=""
   LAYER_TIPPECANOE_FLAGS=()
+  LAYER_SIMPLIFY_MAX_ZOOM=false
   LAYER_MIN_VISIBLE_PX=$LAYER_MIN_VISIBLE_PX_DEFAULT
   LAYER_GENERALISE_MAX_ZOOM=""
   LAYER_GENERALISE_MIN_PART_PX=$LAYER_GENERALISE_MIN_PART_PX_DEFAULT
@@ -208,13 +218,17 @@ _check_vector_config() {
     || die "LAYER_GENERALISE_MIN_PART_PX must be a non-negative number in $file"
   [[ $LAYER_GENERALISE_SIMPLIFY_PX =~ ^[0-9]+([.][0-9]+)?$ ]] \
     || die "LAYER_GENERALISE_SIMPLIFY_PX must be a non-negative number in $file"
+  [[ $LAYER_SIMPLIFY_MAX_ZOOM == true || $LAYER_SIMPLIFY_MAX_ZOOM == false ]] \
+    || die "LAYER_SIMPLIFY_MAX_ZOOM must be true or false in $file"
 
   local flags
   flags=$(layer_profile_flags "$LAYER_PROFILE") \
     || die "unknown LAYER_PROFILE '$LAYER_PROFILE' in $file"
-  # The profile's flags first, so the layer's own flags can add to them.
+  # Full detail at the max zoom unless the layer opts out (ADR 0013), then
+  # the profile's flags, so the layer's own flags can add to them.
   local profile_flags=()
-  [[ -z $flags ]] || mapfile -t profile_flags <<<"$flags"
+  [[ $LAYER_SIMPLIFY_MAX_ZOOM == true ]] || profile_flags=(--simplify-only-low-zooms)
+  [[ -z $flags ]] || mapfile -t -O "${#profile_flags[@]}" profile_flags <<<"$flags"
   # shellcheck disable=SC2034
   LAYER_TIPPECANOE_FLAGS=("${profile_flags[@]}" "${LAYER_TIPPECANOE_FLAGS[@]}")
 

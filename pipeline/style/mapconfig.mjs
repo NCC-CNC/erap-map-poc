@@ -43,7 +43,7 @@ export function shellQuote(text) {
   return `'${String(text).replaceAll("'", "'\\''")}'`;
 }
 
-/** One bash assignment of a LAYER_* setting: text, number or list of texts. */
+/** One bash assignment of a LAYER_* setting: text, number, true/false or list of texts. */
 export function envAssignment(key, value) {
   if (!/^LAYER_[A-Z][A-Z0-9_]*$/.test(key)) throw new DisplayError([`invalid setting name ${key}`]);
   if (Array.isArray(value)) return `${key}=(${value.map(shellQuote).join(' ')})`;

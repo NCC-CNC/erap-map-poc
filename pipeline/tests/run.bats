@@ -103,6 +103,7 @@ assert_no_temp_files() {
          and (.built_at | type == "string") and .display_updated_at == .built_at
          and .bounds == [-125, 46, -66, 56]
          and .profile == null and .min_visible_px == 1
+         and .simplify_max_zoom == false
          and ([.zooms[].zoom] == [range(9)])
          and all(.zooms[]; .input == 15 and .present == 15
                  and .required == 15 and .required_present == 15)
