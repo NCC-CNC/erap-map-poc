@@ -190,6 +190,7 @@ function prefixed(where, fn) {
  * The `layers` command. Writes OUT_DIR/layers.json:
  *
  *   { "config": "/repo/map.config.json" or null, "map": {...} or null,
+ *     "requiredInputs": { "<layer>": "<input>" } (empty for none),
  *     "layers": [ { "name", "origin": "committed" | "local" | "config",
  *       "enabled", "env", "style", "envSource", "styleSource",
  *       "envSha256", "styleSha256", "overrides" } ] }
@@ -262,6 +263,7 @@ function layersCommand([configPath, layersDir, outDir]) {
   writeJson(join(outDir, 'layers.json'), {
     config: config ? configPath : null,
     map: resolved.map,
+    requiredInputs: resolved.requiredInputs,
     layers,
   });
   return 0;

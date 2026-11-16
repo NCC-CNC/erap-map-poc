@@ -126,6 +126,7 @@ describe('validateMapConfig', () => {
       layerDirs: ['pipeline/layers.local'],
       localLayers: { gamma: { env: { LAYER_INPUT: 'g.geojson', LAYER_FIELDS: ['id'] }, style: style() } },
       overrides: { alpha: { input: 'a2.geojson', env: { LAYER_MAX_ZOOM: 6 }, title: 'A', order: 2, defaultVisible: false, style: { symbology: null } } },
+      requiredInputs: { alpha: 'a2.geojson' },
     });
     validateMapConfig({});
     validateMapConfig({ overrides: { alpha: { calculated: { gap: 'a - b', old: null }, rules: 'x.rules.json' } } });
@@ -195,11 +196,15 @@ describe('resolveLayers', () => {
 
   it('names every unknown layer, with the layers there are', () => {
     const problems = problemsOf(() =>
-      resolveLayers({ enabled: ['a', 'x'], disabled: ['y'], overrides: { z: { title: 'Z' } } }, found('a', 'b')),
+      resolveLayers(
+        { enabled: ['a', 'x'], disabled: ['y'], requiredInputs: { w: 'w.gdb' }, overrides: { z: { title: 'Z' } } },
+        found('a', 'b'),
+      ),
     );
     assert.deepEqual(problems, [
       'enabled: no layer named x (layers: a, b)',
       'disabled: no layer named y (layers: a, b)',
+      'requiredInputs: no layer named w (layers: a, b)',
       'overrides: no layer named z (layers: a, b)',
     ]);
   });
