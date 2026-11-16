@@ -4,9 +4,15 @@
   "overrides": {
     "forest": { "env": { "LAYER_MAX_ZOOM": 10 } },
     "agriculture": { "env": { "LAYER_MAX_ZOOM": 10 } },
+    "ecoregions": {
+      "env": { "LAYER_MAX_ZOOM": 10, "LAYER_GENERALISE_MAX_ZOOM": 9 }
+    },
     "protected_areas": {
       "input": "ProtectedConservedArea_2025.gdb",
-      "env": { "LAYER_SOURCE_LAYER": "ProtectedConservedArea_2025" }
+      "env": {
+        "LAYER_SOURCE_LAYER": "ProtectedConservedArea_2025",
+        "LAYER_MAX_ZOOM": 10
+      }
     }
   },
   "requiredInputs": {
