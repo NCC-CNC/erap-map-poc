@@ -47,6 +47,8 @@ In scope: an on-demand pipeline that builds a `.pmtiles` per vector layer and
 a `.cog.tif` per raster layer, a read-only
 web map with pop-ups (stats and Chart.js charts), and a docker-compose setup to
 run both locally.
+Also a slimmed-down, public demo copy on GitHub Pages, published by hand
+(ADR 0014): `map.config.pages.json` into `data/pages/`, data in a release.
 
 Not in scope: production hosting, authentication, a tile server or database,
 in-browser editing, scheduled pipeline runs. Do not expand scope without a
@@ -107,6 +109,13 @@ block; keep it in step with this section.
 - Web map: `docker compose up -d --build web` (<http://localhost:8080>,
   `WEB_PORT`). Dev server: `docker compose --profile dev up web-dev` (Vite
   on :5173, `VITE_USE_POLLING`). Optional ports and UIDs come from `.env`.
+- GitHub Pages copy (ADR 0014): `docker compose run --rm pipeline-pages`
+  builds `data/pages/` with `map.config.pages.json` (never `data/tiles/`
+  or `map.config.json`; `requiredInputs` stops a build from the wrong
+  protected areas source), then `scripts/publish-pages.sh [--dry-run]`
+  (`gh` signed in) checks it, uploads it to the `pages-data` release and
+  runs `.github/workflows/pages.yml`. Run the real publish only when the
+  maintainer asks.
 
 Gates: every CI job below feeds the one required status `checks`; a PR that
 touches only `docs/` and `*.md` runs just `repo-hygiene`.

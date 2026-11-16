@@ -314,3 +314,44 @@ notes_of() {
   run jq -e 'has("center") | not' "$STYLE"
   [ "$status" -eq 0 ]
 }
+
+@test "requiredInputs: a layer that would read another source stops the build before anything is built" {
+  add_layer alpha beta
+  cp "${PIPELINE_INPUT_DIR}/sample.geojson" "${PIPELINE_INPUT_DIR}/public.geojson"
+
+  # The committed input is not the required one: nothing is built.
+  config '{"requiredInputs": {"alpha": "public.geojson"}}'
+  run "$RUN"
+  [ "$status" -eq 2 ]
+  [[ $output == *"requiredInputs: layer 'alpha' must be built from public.geojson, not sample.geojson"* ]]
+  [ ! -e "$MANIFEST" ]
+  run "$RUN" beta
+  [ "$status" -eq 2 ]
+  [ ! -e "$MANIFEST" ]
+
+  # A disabled required layer fails too.
+  config '{"disabled": ["alpha"], "requiredInputs": {"alpha": "public.geojson"}}'
+  run "$RUN"
+  [ "$status" -eq 2 ]
+  [[ $output == *"requiredInputs: layer 'alpha' must be enabled in the map config"* ]]
+
+  # An unknown layer is a map config problem.
+  config '{"requiredInputs": {"nope": "public.geojson"}}'
+  run "$RUN"
+  [ "$status" -eq 2 ]
+  [[ $output == *"requiredInputs: no layer named nope (layers: alpha, beta)"* ]]
+
+  # With the input override it builds, and provenance records the source.
+  config '{"overrides": {"alpha": {"input": "public.geojson"}}, "requiredInputs": {"alpha": "public.geojson"}}'
+  run "$RUN"
+  [ "$status" -eq 0 ]
+  [ "$(entry alpha .provenance.source.path)" = '"public.geojson"' ]
+
+  # A full build does not skip a required layer with no source data.
+  rm "$MANIFEST"
+  rm "${PIPELINE_INPUT_DIR}/public.geojson"
+  run "$RUN"
+  [ "$status" -eq 1 ]
+  [[ $output == *"alpha: source data not found: public.geojson, and the map config requires it (requiredInputs): nothing was built"* ]]
+  [ ! -e "$MANIFEST" ]
+}

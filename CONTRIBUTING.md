@@ -85,6 +85,17 @@ docker compose run --rm pipeline --remove mylayer
 scripts/screenshot.sh -n mylayer 4/55/-110 8/53.9/-114.2
 ```
 
+### Publishing the GitHub Pages copy
+
+For maintainers, after checking the data may be public (#13). README.md
+(GitHub Pages copy) has the one-off setup; ADR 0014 the design:
+
+```sh
+docker compose run --rm --build pipeline-pages   # data/pages/, map.config.pages.json
+scripts/publish-pages.sh --dry-run               # checks only, changes nothing
+scripts/publish-pages.sh                         # upload to pages-data, deploy
+```
+
 ### Adding or changing a Claude Code skill
 
 Claude Code is optional (`README.md`, Using Claude Code). Its project
@@ -121,12 +132,13 @@ same tools at the same versions as CI, all in Docker:
 export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
-# pipeline job: shellcheck, hadolint, bats (124 tests, including the display
-# tool's node:test unit tests; 41 more for scripts/setup.sh), runtime image
+# pipeline job: shellcheck, hadolint, bats (135 tests, including the display
+# tool's node:test unit tests; 60 more for scripts/: setup.sh, screenshot.sh
+# and publish-pages.sh, with stub docker and gh), runtime image
 docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
   pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \
   pipeline/tests/layers/*.env pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh \
-  scripts/check-tiles-cache.sh scripts/setup.sh scripts/tests/*.bats
+  scripts/check-tiles-cache.sh scripts/setup.sh scripts/publish-pages.sh scripts/tests/*.bats
 docker run --rm -v "$repo":/mnt -w /mnt hadolint/hadolint:v2.15.1 \
   hadolint --config .hadolint.yaml pipeline/Dockerfile web/Dockerfile
 docker build --target test -t erap-map-pipeline:test pipeline

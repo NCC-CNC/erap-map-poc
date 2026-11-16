@@ -106,3 +106,39 @@ layer_display_provenance() {
   jq -c --arg n "$1" 'first(.layers[] | select(.name == $n))
     | {overrides, style_sha256: .styleSha256}' "$LAYERS_JSON"
 }
+
+# required_input NAME: the source the map config's `requiredInputs` says
+# NAME must be built from; nothing (and return 1) for none.
+required_input() {
+  jq -er --arg n "$1" '.requiredInputs[$n] // empty' "$LAYERS_JSON" 2>/dev/null
+}
+
+# check_required_inputs: the map config's `requiredInputs` guard, run before
+# a build: every layer it names must be enabled and its LAYER_INPUT,
+# resolved (with the config's overrides) and relative to the input dir,
+# must be exactly the source given. For a copy that must not use some
+# sources, such as map.config.pages.json (ADR 0014). Uses _config_input
+# (lib/status.sh). Returns 2, after naming every problem, if one fails.
+check_required_inputs() {
+  local name want cfg input bad=0
+  while IFS=$'\t' read -r name want; do
+    if ! layer_enabled "$name"; then
+      log_error "requiredInputs: layer '$name' must be enabled in the map config"
+      bad=1
+      continue
+    fi
+    cfg=$(_config_input "$(layer_get "$name" env)")
+    if [[ ${cfg%%$'\t'*} != ok ]]; then
+      log_error "requiredInputs: layer '$name': ${cfg#*$'\t'}"
+      bad=1
+      continue
+    fi
+    input=${cfg##*$'\t'}
+    input=${input#"${PIPELINE_INPUT_DIR}"/}
+    if [[ $input != "$want" ]]; then
+      log_error "requiredInputs: layer '$name' must be built from ${want}, not ${input}"
+      bad=1
+    fi
+  done < <(jq -r '(.requiredInputs // {}) | to_entries[] | [.key, .value] | @tsv' "$LAYERS_JSON")
+  ((bad == 0)) || return 2
+}

@@ -66,6 +66,12 @@
       "type": "object",
       "propertyNames": { "$ref": "#/$defs/layerName" },
       "additionalProperties": { "$ref": "#/$defs/override" }
+    },
+    "requiredInputs": {
+      "description": "A guard, by layer name: the source each named layer must be built from, as its resolved LAYER_INPUT relative to RAW_DIR (for example ProtectedConservedArea_2025.gdb). A build fails before anything is built if a named layer is not enabled, resolves to another input, or (in a full build) has no source data. For a copy that must not use some sources, such as map.config.pages.json (ADR 0014).",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/layerName" },
+      "additionalProperties": { "type": "string", "minLength": 1 }
     }
   },
   "$defs": {

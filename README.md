@@ -162,6 +162,9 @@ reload the page.
   builds until the source file changes; delete the folder to reclaim the
   space. Other intermediates stay in the container and are removed. Also
   fine for manual trials.
+- `data/pages/`: the GitHub Pages copy, built by the `pipeline-pages`
+  service in the same layout as `data/tiles/` and published by
+  `scripts/publish-pages.sh` (GitHub Pages copy, below).
 
 These folders are git-ignored apart from `.gitkeep`, and so are raster and
 other source formats anywhere in the repo (`*.tif`, `*.tiff`, `*.vrt`,
@@ -493,6 +496,10 @@ relative to the repo root, so you can keep several and switch.
   needs its own name.
 - `map` sets where the map opens (`center` as `[longitude, latitude]`,
   `zoom`) and on which basemap. A view in the page URL wins.
+- `requiredInputs` is a guard: the source a layer must be built from,
+  relative to `RAW_DIR`. A build stops before it starts if that layer is
+  not enabled or would read anything else. `map.config.pages.json` uses
+  it (GitHub Pages copy, below).
 
 Apply a change with the commands you already use:
 
@@ -511,6 +518,54 @@ you do not have: a full build skips those with a warning, and fails only
 if it could build nothing. Each layer's `manifest.json` entry records
 its source file (size and date) and the overrides applied under
 `provenance`, so two maps can be compared.
+
+## GitHub Pages copy
+
+A slimmed-down copy of the map can go on GitHub Pages, for people who do
+not run Docker (ADR 0014). Everything published there is public. The data
+is not in git: it goes into a release, `pages-data`, and a workflow builds
+the site from the app and that release.
+
+One-off setup (repo admin): Settings, Pages, Source: **GitHub Actions**.
+You also need the GitHub CLI, `gh`, signed in (`gh auth login`) with an
+account that can write to the repo.
+
+The copy is built from the committed layers with `map.config.pages.json`:
+the raster layers at max zoom 10 instead of 12 (the forest COG goes from
+2.3 GB to roughly a sixteenth), and `protected_areas` from the public
+CPCAD source with confidential records removed,
+`ProtectedConservedArea_2025.gdb`, instead of the local
+`protected_areas.gdb`. Put that file geodatabase in your `RAW_DIR` folder
+(the default is `data/raw/`) next to the other sources, or set `RAW_DIR` to
+a folder that holds all of them. The build fails before it starts if
+`protected_areas` would read any other source (`requiredInputs` in the
+config), and the publish script refuses a build whose manifest does not
+record that source. CPCAD is not merged, so where protected areas overlap
+their translucent fills stack and draw darker than in the local map.
+
+```sh
+# 1. Build the Pages copy into data/pages/ (never data/tiles/; your
+#    map.config.json and MAP_CONFIG are not used). Rasters reuse the
+#    prepared sources in data/work/. --status works here too.
+docker compose run --rm --build pipeline-pages
+docker compose run --rm pipeline-pages --status
+
+# 2. Check it and see what would be uploaded, changing nothing.
+scripts/publish-pages.sh --dry-run
+
+# 3. Upload to the pages-data release (created if missing; files no
+#    longer built are removed) and start the Pages workflow.
+scripts/publish-pages.sh
+gh run watch $(gh run list --workflow pages.yml --limit 1 --json databaseId --jq '.[0].databaseId')
+```
+
+The site is at <https://ncc-cnc.github.io/erap-map-poc/> once the workflow
+finishes; Pages caches files for up to 10 minutes. The script fails if the
+files total over 1 GB, the Pages limit (it warns over 800 MB): lower a
+layer's `LAYER_MAX_ZOOM` in `map.config.pages.json` and rebuild. To
+redeploy the app with the same data, run `gh workflow run pages.yml --ref
+main` (or Actions, Pages, Run workflow). `scripts/publish-pages.sh --help`
+lists the options (`--no-deploy`, `--tag`, `--repo`).
 
 ## Using Claude Code (optional)
 

@@ -18,6 +18,10 @@
 #                names, a layer whose source data is not found is skipped
 #                with a warning (the run fails only if nothing could be
 #                built); a named layer with no source data fails.
+#                The map config's `requiredInputs`, if any, is checked
+#                first: a layer it names that would read another source
+#                (or, in a full build, has none) stops the run before
+#                anything is built (map.config.pages.json, ADR 0014).
 #   --style-only update the named layers' display from their .style.json
 #                (with the map config's display overrides), or every built
 #                and enabled layer's, without re-tiling: check each config,
@@ -511,6 +515,12 @@ build_main() {
     fi
   done
 
+  # The map config's requiredInputs guard (a Pages build, ADR 0014):
+  # nothing is built if a layer it names would read another source.
+  local guard=0
+  check_required_inputs || guard=$?
+  ((guard == 0)) || return "$guard"
+
   mkdir -p "$PIPELINE_OUTPUT_DIR" || die "cannot create $PIPELINE_OUTPUT_DIR"
   [[ -w $PIPELINE_OUTPUT_DIR ]] || die "output dir not writable: $PIPELINE_OUTPUT_DIR"
 
@@ -521,6 +531,10 @@ build_main() {
     local to_build=()
     for name in "${layers[@]}"; do
       if why=$(missing_source "$name"); then
+        if required_input "$name" >/dev/null; then
+          log_error "$name: $why, and the map config requires it (requiredInputs): nothing was built"
+          return 1
+        fi
         log_warn "skipping $name: $why"
         skipped+=("$name")
       else

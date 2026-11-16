@@ -28,12 +28,15 @@ tmp/
 .claude/settings.local.json
 .claude/worktrees/
 
-# Pipeline data (input and generated tiles are not committed; small sample
+# Pipeline data (input, generated tiles and the GitHub Pages copy in
+# data/pages/ are not committed; small sample
 # fixtures live under pipeline/tests/fixtures/ instead)
 data/raw/*
 data/tiles/*
+data/pages/*
 !data/raw/.gitkeep
 !data/tiles/.gitkeep
+!data/pages/.gitkeep
 *.pmtiles
 *.mbtiles
 
@@ -48,7 +51,9 @@ data/work/*
 !data/work/.gitkeep
 
 # Local map config and local-only layer configs (ADR 0009): yours, not
-# shared. map.config.example.json is the committed starting point.
+# shared. map.config.example.json is the committed starting point, and
+# map.config.pages.json the GitHub Pages copy's config (ADR 0014).
 /map.config*.json
 !/map.config.example.json
+!/map.config.pages.json
 pipeline/layers.local/

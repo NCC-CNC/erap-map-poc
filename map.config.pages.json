@@ -1,0 +1,15 @@
+{
+  "$schema": "./pipeline/schema/map-config.schema.json",
+  "map": { "center": [-96, 60], "zoom": 3, "basemap": "light" },
+  "overrides": {
+    "forest": { "env": { "LAYER_MAX_ZOOM": 10 } },
+    "agriculture": { "env": { "LAYER_MAX_ZOOM": 10 } },
+    "protected_areas": {
+      "input": "ProtectedConservedArea_2025.gdb",
+      "env": { "LAYER_SOURCE_LAYER": "ProtectedConservedArea_2025" }
+    }
+  },
+  "requiredInputs": {
+    "protected_areas": "ProtectedConservedArea_2025.gdb"
+  }
+}

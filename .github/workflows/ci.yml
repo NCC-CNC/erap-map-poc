@@ -106,7 +106,7 @@ jobs:
           shellcheck --version
           shellcheck -x pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \
             pipeline/tests/layers/*.env pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh \
-            scripts/check-tiles-cache.sh scripts/setup.sh scripts/tests/*.bats
+            scripts/check-tiles-cache.sh scripts/setup.sh scripts/publish-pages.sh scripts/tests/*.bats
 
       - name: hadolint
         run: hadolint --config .hadolint.yaml pipeline/Dockerfile

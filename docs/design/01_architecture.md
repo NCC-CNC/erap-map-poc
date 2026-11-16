@@ -167,6 +167,10 @@ optional.
   built and stale, `--remove <layer>` deletes a build). It runs as
   `${PIPELINE_UID:-10001}:${PIPELINE_GID:-10001}`; on Linux set both to the
   host user so the tiles are owned by them. Docker Desktop needs nothing.
+- `pipeline-pages` (profile `pipeline`): the `pipeline` service
+  (`extends`) with `./data/pages` in place of `./data/tiles` and the
+  committed `map.config.pages.json` as its map config, for the GitHub
+  Pages copy (ADR 0014). `docker compose run --rm pipeline-pages`.
 - `web-dev` (profile `dev`): the frontend dev workflow, decided in M1 as a
   compose service rather than `npm run dev` on the host, so only Docker is
   needed (ADR 0004). It runs Vite with hot reload in the same pinned Node
@@ -189,3 +193,8 @@ PMTiles needs. Set correct `Content-Type` for `.pmtiles`
 layer is picked up. If the app is ever hosted elsewhere, any static host or
 object store that supports range requests (and CORS, if on another origin)
 will do.
+
+The GitHub Pages copy (ADR 0014) is such a host: the app built with base
+`/erap-map-poc/`, so it reads `/erap-map-poc/tiles/`, and the files from
+`data/pages/`, uploaded to a release by `scripts/publish-pages.sh` and
+copied into the site by `.github/workflows/pages.yml`.

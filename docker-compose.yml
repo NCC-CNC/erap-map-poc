@@ -3,6 +3,7 @@
 #
 #   docker compose run --rm pipeline [layer ...]   build tiles into data/tiles/
 #   docker compose run --rm pipeline --status      what is built, what is stale
+#   docker compose run --rm pipeline-pages         the GitHub Pages copy, data/pages/
 #   docker compose up -d web                       map at http://localhost:8080
 #   docker compose --profile dev up web-dev        Vite dev server on :5173
 #
@@ -65,6 +66,22 @@ services:
       # MAP_CONFIG (in .env) picks another config file, relative to the
       # repo root. No file there means every committed layer, as they are.
       PIPELINE_MAP_CONFIG: /repo/${MAP_CONFIG:-map.config.json}
+
+  # The GitHub Pages copy (ADR 0014): the pipeline with the committed
+  # map.config.pages.json (smaller rasters, the public protected areas
+  # source and its requiredInputs guard) into data/pages/, never
+  # data/tiles/. MAP_CONFIG and your map.config.json are not read. The
+  # raster work dir is shared, so prepared sources are reused. Run on
+  # demand: `docker compose run --rm pipeline-pages [layer ...]`, then
+  # scripts/publish-pages.sh.
+  pipeline-pages:
+    extends:
+      service: pipeline
+    volumes:
+      # Replaces the data/tiles mount (volumes merge by container path).
+      - ./data/pages:/data/tiles
+    environment:
+      PIPELINE_MAP_CONFIG: /repo/map.config.pages.json
 
   # Frontend development: Vite with hot reload on http://localhost:5173,
   # serving data/tiles/ at /tiles/ like the web image.

@@ -111,7 +111,7 @@ function checkDisplay(name, style) {
  *   when it is not valid JSON, which the build reports).
  * @param {string} [configDir] the map config's folder, for the relative
  *   rules table paths in its overrides.
- * @returns {{map: object|null, layers: Array<object>}} each layer with
+ * @returns {{map: object|null, requiredInputs: object, layers: Array<object>}} each layer with
  *   `name`, `origin` (committed, local or config), `enabled`, `envSource`
  *   and `styleSource` (the files it comes from; null for a layer defined
  *   in the config), `envText` and `style` (the effective settings and
@@ -182,6 +182,9 @@ export function resolveLayers(config, found, configDir = '.') {
   for (const name of config.disabled ?? []) {
     if (!unknown('disabled', name)) layers.get(name).enabled = false;
   }
+  // The inputs themselves are checked by the build (lib/mapconfig.sh,
+  // check_required_inputs), which resolves each LAYER_INPUT.
+  for (const name of Object.keys(config.requiredInputs ?? {})) unknown('requiredInputs', name);
 
   for (const [name, override] of Object.entries(config.overrides ?? {})) {
     if (unknown('overrides', name)) continue;
@@ -227,6 +230,7 @@ export function resolveLayers(config, found, configDir = '.') {
     if (problems.length) throw new DisplayError(problems);
     return {
       map: config?.map ?? null,
+      requiredInputs: config?.requiredInputs ?? {},
       layers: [...layers.values()]
         .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
         .map(({ sourceStyle: _unused, ...layer }) => layer),
