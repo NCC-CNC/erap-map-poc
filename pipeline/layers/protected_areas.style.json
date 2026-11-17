@@ -5,8 +5,11 @@
   "order": 30,
   "symbology": {
     "geometry": "polygon",
-    "color": { "type": "single", "color": "#41ab5d", "label": "Protected and conserved areas" },
+    "color": { "type": "single", "color": "#c51b7d", "label": "Protected and conserved areas" },
     "fillOpacity": 0.6,
-    "outline": { "color": "#006d2c", "width": 0.5 }
+    "outline": {
+      "color": "#8e0152",
+      "width": { "byZoom": [{ "zoom": 0, "width": 0.2 }, { "zoom": 8, "width": 0.3 }, { "zoom": 14, "width": 0.5 }] }
+    }
   }
 }

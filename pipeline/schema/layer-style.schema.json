@@ -278,7 +278,32 @@
       "required": ["color", "width"],
       "properties": {
         "color": { "$ref": "#/$defs/color" },
-        "width": { "type": "number", "minimum": 0 }
+        "width": {
+          "description": "Line width in pixels: a number, or `byZoom`, widths at two or more zooms (ascending) that the map interpolates linearly between, holding the first below its zoom and the last above.",
+          "oneOf": [
+            { "type": "number", "minimum": 0 },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["byZoom"],
+              "properties": {
+                "byZoom": {
+                  "type": "array",
+                  "minItems": 2,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["zoom", "width"],
+                    "properties": {
+                      "zoom": { "type": "number", "minimum": 0, "maximum": 24 },
+                      "width": { "type": "number", "minimum": 0 }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
       }
     },
     "rasterSymbology": {
