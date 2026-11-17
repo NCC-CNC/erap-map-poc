@@ -1,19 +1,28 @@
 import type { CSSProperties } from 'react';
 import type { Legend, LegendItem } from '../layers';
-import { gradientCss } from './legend';
+import { BASEMAP_GROUND } from './basemap';
+import { gradientCss, swatchColor } from './legend';
 
 /**
  * A layer's inline legend, as the pipeline resolved it (derived from its
  * style, or given explicitly in its display config): one swatch and label
  * per item, or, for a `gradient` legend, a colour bar with the stop values
  * under it, then any items without a position (such as no data) as
- * swatches.
+ * swatches. A swatch shows its colour at the layer's opacity over `ground`
+ * (the basemap's land colour), as the map draws it, not over the panel.
  */
-export function LegendView({ legend, label }: { legend: Legend; label: string }) {
+export function LegendView({
+  legend,
+  label,
+  ground = BASEMAP_GROUND.light,
+}: {
+  legend: Legend;
+  label: string;
+  ground?: string;
+}) {
   const swatch = (item: LegendItem) => {
     const style: CSSProperties = {
-      backgroundColor: item.color,
-      opacity: legend.opacity,
+      backgroundColor: swatchColor(item.color, legend.opacity, ground),
       borderColor: legend.border,
     };
     return (
@@ -38,7 +47,7 @@ export function LegendView({ legend, label }: { legend: Legend; label: string })
             </span>
             <span
               className="layer-legend-bar"
-              style={{ backgroundImage: gradientCss(stops), opacity: legend.opacity, borderColor: legend.border }}
+              style={{ backgroundImage: gradientCss(stops, legend.opacity, ground), borderColor: legend.border }}
               aria-hidden="true"
             />
             <span className="layer-legend-ticks" aria-hidden="true">
