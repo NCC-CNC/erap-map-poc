@@ -163,7 +163,8 @@ reload the page.
   space. Other intermediates stay in the container and are removed. Also
   fine for manual trials.
 - `data/pages/`: the GitHub Pages copy, built by the `pipeline-pages`
-  service in the same layout as `data/tiles/` and published by
+  service in the same layout as `data/tiles/`, served locally by the
+  `web-pages` service (profile `pages`, port 8081) and published by
   `scripts/publish-pages.sh` (GitHub Pages copy, below).
 
 These folders are git-ignored apart from `.gitkeep`, and so are raster and
@@ -558,6 +559,10 @@ their translucent fills stack and draw darker than in the local map.
 #    prepared sources in data/work/. --status works here too.
 docker compose run --rm --build pipeline-pages
 docker compose run --rm pipeline-pages --status
+
+# Optional: look at it at http://localhost:8081 (WEB_PAGES_PORT), next
+# to the full local map on :8080. Same app as the site, served locally.
+docker compose --profile pages up -d --build web-pages
 
 # 2. Check it and see what would be uploaded, changing nothing.
 scripts/publish-pages.sh --dry-run

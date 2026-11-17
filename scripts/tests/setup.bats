@@ -331,6 +331,10 @@ load_setup() {
   [[ $(line .env) == FAIL*"WEB_PORT=80a"* ]]
   [[ $(line "Map port") == FAIL*"not a port number"* ]]
 
+  printf 'WEB_PAGES_PORT=x81\n' >"$REPO/.env"
+  run bash "$SETUP" --check
+  [[ $(line .env) == FAIL*"WEB_PAGES_PORT=x81"* ]]
+
   printf 'WEB_PORT=8081\r\n' >"$REPO/.env"
   run bash "$SETUP" --check
   [[ $(line .env) == warn*CRLF* ]]

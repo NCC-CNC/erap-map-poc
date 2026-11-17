@@ -52,7 +52,7 @@ MIN_WSL_VERSION=2.1.5
 DEFAULT_WEB_PORT=8080
 DEFAULT_DEV_PORT=5173
 # Settings in .env.example, plus the compose ones a user may add.
-KNOWN_ENV_KEYS=" WEB_PORT WEB_DEV_PORT PIPELINE_UID PIPELINE_GID VITE_USE_POLLING RAW_DIR MAP_CONFIG COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PROFILES "
+KNOWN_ENV_KEYS=" WEB_PORT WEB_DEV_PORT WEB_PAGES_PORT PIPELINE_UID PIPELINE_GID VITE_USE_POLLING RAW_DIR MAP_CONFIG COMPOSE_PROJECT_NAME COMPOSE_FILE COMPOSE_PROFILES "
 
 FAILS=0
 WARNS=0
@@ -481,7 +481,7 @@ check_env_file() {
       bad+=" ${n}"
     fi
   done <"$file"
-  for key in WEB_PORT WEB_DEV_PORT; do
+  for key in WEB_PORT WEB_DEV_PORT WEB_PAGES_PORT; do
     line=$(env_file_value "$key") || continue
     valid_port "$line" || ports+=" ${key}=${line}"
   done

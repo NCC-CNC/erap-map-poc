@@ -171,6 +171,11 @@ optional.
   (`extends`) with `./data/pages` in place of `./data/tiles` and the
   committed `map.config.pages.json` as its map config, for the GitHub
   Pages copy (ADR 0014). `docker compose run --rm pipeline-pages`.
+- `web-pages` (profile `pages`): the `web` service (a YAML merge, so its
+  ports and volumes are replaced, not added to) serving `./data/pages`
+  on `${WEB_PAGES_PORT:-8081}`, to look at the Pages copy before
+  publishing it, next to the full local map on `web`. One clone holds
+  both builds.
 - `web-dev` (profile `dev`): the frontend dev workflow, decided in M1 as a
   compose service rather than `npm run dev` on the host, so only Docker is
   needed (ADR 0004). It runs Vite with hot reload in the same pinned Node
