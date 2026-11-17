@@ -246,16 +246,40 @@ layers' `style.json` with the MapLibre style validator.
 
 ## Docs
 
-- README: what it is, quick start, links (about 150 lines).
-- One "how it works" page with a data flow diagram (layer file, pipeline,
-  `style.json`, app).
-- One layer file reference, generated from or next to the schema.
-- Decisions only in ADRs; history out of config comments.
-- CLAUDE.md: rules and commands only.
+Each file has one reader:
+
+| File | For | Contents |
+| --- | --- | --- |
+| `README.md` | everyone | what it is, quick start, everyday commands, links (about 150 lines) |
+| `docs/how-it-works.md` | anyone | data flow diagram (layer file, pipeline, tiles and `style.json`, app) and what each step and output is |
+| `docs/guide.md` | people running the map | each task as plain commands: add a layer, change its look, its pop-up or modal, update its data, remove it, personal layers, publish the Pages copy |
+| `docs/layer-file.md` | people writing layer files | every key of the layer file and map config, with examples |
+| `pipeline/README.md` | developers | what is in `pipeline/` and what each script in `bin/` and `lib/` does |
+| `scripts/README.md` | developers | what each script in `scripts/` does and how to run it |
+| `web/README.md` | developers | how the app is laid out in `src/` and how it reads `style.json` |
+| `CONTRIBUTING.md` | developers | dev setup, checks, pull requests, repo automation (about 120 lines) |
+| `CLAUDE.md` | Claude | rules and where the commands are (about 60 lines) |
+
+- Design notes: `00_project_brief.md` stays; `01_architecture.md` is
+  replaced by `how-it-works.md`; `02_data_layers_and_popups.md` is split
+  (reference into `layer-file.md`, decisions into ADRs, per-layer choices
+  from #14 into short comments in the layer files); `03_milestones.md` is
+  updated; this note stays until the refactor is done.
+- ADRs: new ADRs record the refactor and mark 0007, 0009, 0011 and 0012
+  superseded where they are; 0005 and 0008 are marked superseded too.
+- Comments in config and code say what and why, briefly; issue-by-issue
+  history stays in git and the issues.
+- `CHANGELOG.md` and `docs/handoffs/` go; git history and merged PRs are
+  the record.
 - Every task (add, restyle, build, check, remove a layer; run the map) is
-  documented as plain commands first. Each skill links to that section and
-  runs the same commands; a skill that needs more than that is a sign the
-  command is missing.
+  documented as plain commands first, in `guide.md`.
+
+Skills go from 11 to 9, each a thin wrapper of about 40 lines that links
+to its `guide.md` section and runs the same commands: `restyle-layer` and
+`edit-popup` merge into `edit-layer`, and `layer-status` folds into
+`build-layers`. `add-layer`, `update-layer-data`, `remove-layer`,
+`inspect-data`, `run-map`, `run-checks` and `setup` stay. A skill that
+needs more than the documented commands is a sign a command is missing.
 
 ## Order of work
 
@@ -272,7 +296,8 @@ practical:
 5. Calculated fields as SQLite and joins.
 6. Map config (`map.config.yaml`, `map.pages.yaml`) and `layers.local/`;
    Pages copy and `publish-pages.sh` on the new format.
-7. Docs, CLAUDE.md and skills.
+7. Docs (README, guide, layer file reference, READMEs in `pipeline/`,
+   `scripts/` and `web/`), ADRs, CLAUDE.md and skills.
 
 ## Open questions
 
