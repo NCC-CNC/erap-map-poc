@@ -65,17 +65,20 @@ with tests, and documented for people.
    attribute per action), with their titles and reasons in the modal
    config. There is no separate rules file.
 8. **Processing uses presets.** `processing.profile` (`default`,
-   `coverage`, `points`, `raster`) sets the tippecanoe or GDAL options;
-   a layer overrides only zooms and the few settings that need it.
+   `coverage`, `points`, `raster`) sets the tippecanoe or GDAL options.
+   Low-zoom generalisation and the drop guard live inside `coverage`; a
+   layer overrides only `minzoom`, `maxzoom`, `min_part_px` and
+   `simplify_px`.
 9. **Personal config is simpler.** The git-ignored `map.config.yaml` sets
    the opening view, the basemap and which layers are on. Personal
    layers go in a git-ignored `layers.local/` folder in the same format.
    Per-field overrides of committed layers go.
 10. **The GitHub Pages copy works as it does now** (ADR 0014): its own
     build into `data/pages/`, the `web-pages` service, `publish-pages.sh`
-    and the release. It needs a way to change a few processing settings
-    (lower max zooms, a different protected areas source) without
-    editing the layer files; see Open questions.
+    and the release. A committed `pages.yaml` lists its layers and may
+    change only `source` and `processing` values per layer (lower max
+    zooms, a different protected areas source); the display is the same
+    as the main map. Its `requiredInputs` guard stays.
 
 ## A layer file
 
@@ -134,14 +137,34 @@ as they are, apart from renaming where that makes them clearer.
 | `data/tiles/style.json` | app | MapLibre style of the data layers, `erap:` metadata |
 | `data/tiles/build.json` | `--status` only | per-layer build report (counts, sizes, drops, source hash) |
 
-## Pipeline commands
+## Pipeline
 
-`run.sh [layer ...]` builds layers, then writes `style.json`. Writing the
-style alone is quick, so a display change is applied by re-running the
-style step (`run.sh --style-only`), with no re-tiling. `--status` and
-`--remove` stay, reading `build.json`. Stale detection compares the hash
-of the layer file's `source`, `fields` and `processing` sections and the
-source file with the hashes in `build.json`.
+What stays, in bash as now: reading sources with `ogr2ogr`
+(`normalise.sh`), low-zoom generalisation, tippecanoe and `pmtiles`, the
+drop guard, the raster steps with their cache in `data/work/`, and
+`inspect.sh`, which also prints a starter layer file for a dataset.
+
+What goes: `pipeline/style/` (Node, its packages and tests),
+`lib/display.sh`, `lib/derive.sh`, `lib/mapconfig.sh`, most of
+`lib/manifest.sh`, the three schemas (replaced by `layer.schema.json` and a
+small `map-config.schema.json`) and class breaks computed from the data
+(written in the file instead; `inspect.sh` can suggest them). The image
+loses Node and gains `yq` and a schema validator.
+
+A build: read and check the layer file, read the source (with joins and
+calculated fields), tile or warp, record the build in `build.json`, then
+write `style.json` from every built layer's `display`.
+
+Commands stay: `run.sh [layer ...]`, `--style-only` (rewrites
+`style.json` only, no re-tiling), `--status` and `--remove`, reading
+`build.json`. Stale detection compares the hash of the layer file's
+`source`, `fields` and `processing` sections and the source file with the
+hashes in `build.json`; a change to `display` alone is `restyle`.
+
+Tests: bats covers every pipeline step and command, kept and adapted where
+the code stays, new for layer file reading and checking, joins, calculated
+fields, `style.json` assembly, `build.json`, `--status` and `pages.yaml`.
+Tests of deleted code go with it.
 
 ## Web app
 
@@ -184,6 +207,4 @@ practical:
 
 ## Open questions
 
-- How the Pages copy changes processing settings: a second, small file
-  of processing overrides per layer, or Pages-only layer files.
 - Which JSON Schema validator to pin in the pipeline image.
