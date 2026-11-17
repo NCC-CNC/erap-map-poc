@@ -7,6 +7,7 @@ import {
   type ThemeState,
   type VisibilityState,
 } from '../layers';
+import { BASEMAP_GROUND, DEFAULT_BASEMAP_THEME, type BasemapTheme } from './basemap';
 import { LegendView } from './LegendView';
 
 interface LayerListProps {
@@ -21,6 +22,8 @@ interface LayerListProps {
   /** The colour theme chosen per layer (ADR 0012). */
   themes?: ThemeState;
   onThemeChange?: (layerId: string, themeId: string) => void;
+  /** The basemap shown, whose land colour the legend swatches sit on. */
+  basemap?: BasemapTheme;
 }
 
 /**
@@ -39,6 +42,7 @@ export function LayerList({
   onChange,
   themes = {},
   onThemeChange = () => {},
+  basemap = DEFAULT_BASEMAP_THEME,
 }: LayerListProps) {
   return (
     <fieldset className="layer-list">
@@ -90,6 +94,7 @@ export function LayerList({
               )}
               <LegendView
                 legend={activeLegend(themes, def)}
+                ground={BASEMAP_GROUND[basemap]}
                 label={theme ? `${def.title} legend: ${theme.label}` : `${def.title} legend`}
               />
             </li>
