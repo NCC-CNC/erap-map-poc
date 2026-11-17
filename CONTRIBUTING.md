@@ -133,7 +133,7 @@ same tools at the same versions as CI, all in Docker:
 export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
-# pipeline job: shellcheck, hadolint, bats (159 tests, including the display
+# pipeline job: shellcheck, hadolint, bats (160 tests, including the display
 # tool's node:test unit tests; 60 more for scripts/: setup.sh, screenshot.sh
 # and publish-pages.sh, with stub docker and gh), the map configs against
 # their schema, runtime image

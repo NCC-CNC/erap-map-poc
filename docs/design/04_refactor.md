@@ -102,11 +102,11 @@ source:
   #     on: ECOREGION_ID
 
 fields:
-  keep:
-    ECOREGION_NAME_EN: name
-    protected_pcnt: protected_pcnt
-    intact_pcnt: intact_pcnt
-    protected_intact_pcnt: protected_intact_pcnt
+  keep:                      # a name as it is, or {source: output} to rename
+    - ECOREGION_NAME_EN: name
+    - protected_pcnt
+    - intact_pcnt
+    - protected_intact_pcnt
   calculated:
     unprotected_intact_pcnt: round(intact_pcnt - protected_intact_pcnt, 2)
     action_area_based_30x30: protected_pcnt < 30

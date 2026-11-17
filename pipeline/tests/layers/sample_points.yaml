@@ -14,9 +14,9 @@ source:
 
 fields:
   keep:
-    name: name
-    category: category
-    count: count
+    - name
+    - category
+    - count
 
 # Every point at every zoom.
 processing:

@@ -14,14 +14,14 @@ source:
 # `notes` in the fixture is dropped.
 fields:
   keep:
-    NAME_EN: name
-    area_ha: area_ha
-    score: score
-    v2020: v2020
-    v2021: v2021
-    v2022: v2022
-    v2023: v2023
-    v2024: v2024
+    - NAME_EN: name
+    - area_ha
+    - score
+    - v2020
+    - v2021
+    - v2022
+    - v2023
+    - v2024
 
 # These polygons do not touch, so not a coverage.
 processing:

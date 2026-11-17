@@ -87,7 +87,7 @@ map_config() {
 }
 
 @test "a raster layer has no fields, pop-up or vector settings" {
-  broken "$LAYER_SCHEMA" "$FOREST" '.fields.keep.a = "a"' "/fields"
+  broken "$LAYER_SCHEMA" "$FOREST" '.fields.keep = ["a"]' "/fields"
   broken "$LAYER_SCHEMA" "$FOREST" '.display.popup = {"title": {"attribute": "a"}, "stats": []}' "display/popup"
   broken "$LAYER_SCHEMA" "$FOREST" '.processing.min_visible_px = 4' "processing/min_visible_px"
   broken "$LAYER_SCHEMA" "$FOREST" '.processing.maxzoom = 15' "processing/maxzoom"
@@ -109,6 +109,19 @@ map_config() {
   broken "$LAYER_SCHEMA" "$ECOREGIONS" '.display.themes[0].paint = {"fill": {"fill-color": "red"}}' "display/themes/0"
   broken "$LAYER_SCHEMA" "$ECOREGIONS" 'del(.display.themes[1].paint)' "display/themes/1"
   broken "$LAYER_SCHEMA" "$ECOREGIONS" '.display.legend = .display.themes[0].legend' "display/legend"
+}
+
+@test "fields.keep lists names, or one-key maps that rename" {
+  local copy="${BATS_TEST_TMPDIR}/keep.yaml"
+  yq '.fields.keep = ["area_ha", {"NAME_EN": "name"}, {"Score": "score"}]' "$SAMPLE" >"$copy"
+  run jv "$LAYER_SCHEMA" "$copy"
+  echo "$output"
+  [ "$status" -eq 0 ]
+  # A two-key item, a bad output name, a bad plain name, the old map form.
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.fields.keep[0] = {"NAME_EN": "name", "score": "score"}' "maxProperties"
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.fields.keep[0] = {"NAME_EN": "Name"}' "'Name' does not match pattern"
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.fields.keep[0] = "NAME_EN"' "'NAME_EN' does not match pattern"
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.fields.keep = {"NAME_EN": "name"}' "want array"
 }
 
 @test "calculated field names are lower case" {
@@ -140,7 +153,7 @@ require: [protected_areas]')
   run jv "$MAP_SCHEMA" "$file"
   [ "$status" -ne 0 ]
   [[ $output == *"additional properties 'display' not allowed"* ]]
-  file=$(map_config 'overrides: { ecoregions: { fields: { keep: {} } } }')
+  file=$(map_config 'overrides: { ecoregions: { fields: { keep: [name] } } }')
   run jv "$MAP_SCHEMA" "$file"
   [ "$status" -ne 0 ]
 }

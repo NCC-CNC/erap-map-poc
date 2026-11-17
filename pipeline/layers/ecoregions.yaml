@@ -17,42 +17,42 @@ source:
 # Only what the themes and the modal use, English only.
 fields:
   keep:
-    ECOREGION_ID: ecoregion_id
-    ECOREGION_NAME_EN: name
-    ECOZONE_ID: ecozone_id
-    ECOZONE_NAME_EN: ecozone
-    landscape_ha: landscape_ha
-    protected_pcnt: protected_pcnt
-    wtw_percent: wtw_percent
-    wtw_area_ha: wtw_area_ha
-    intact_pcnt: intact_pcnt
-    modified_pcnt: modified_pcnt
-    protected_intact_pcnt: protected_intact_pcnt
-    protected_modified_pcnt: protected_modified_pcnt
-    pcnt_landscape_forest_cover: pcnt_landscape_forest_cover
-    pcnt_forest_protected: pcnt_forest_protected
-    pcnt_forest_wtw: pcnt_forest_wtw
-    pcnt_landscape_grassland_cover: pcnt_landscape_grassland_cover
-    pcnt_grassland_protected: pcnt_grassland_protected
-    pcnt_grassland_wtw: pcnt_grassland_wtw
-    pcnt_landscape_wetland_cover: pcnt_landscape_wetland_cover
-    pcnt_wetland_protected: pcnt_wetland_protected
-    pcnt_wetland_wtw: pcnt_wetland_wtw
-    pcnt_landscape_lakes_cover: pcnt_landscape_lakes_cover
-    pcnt_lakes_protected: pcnt_lakes_protected
-    pcnt_lakes_wtw: pcnt_lakes_wtw
-    rivers_km: rivers_km
-    pcnt_rivers_protected: pcnt_rivers_protected
-    pcnt_rivers_wtw: pcnt_rivers_wtw
-    coastline_km: coastline_km
-    pcnt_coastline_protected: pcnt_coastline_protected
-    pcnt_coastline_wtw: pcnt_coastline_wtw
-    forestry_pcnt: forestry_pcnt
-    agriculture_pcnt: agriculture_pcnt
-    transport_high_pcnt: transport_high_pcnt
-    transport_low_pcnt: transport_low_pcnt
-    energy_pcnt: energy_pcnt
-    builtup_pcnt: builtup_pcnt
+    - ECOREGION_ID: ecoregion_id
+    - ECOREGION_NAME_EN: name
+    - ECOZONE_ID: ecozone_id
+    - ECOZONE_NAME_EN: ecozone
+    - landscape_ha
+    - protected_pcnt
+    - wtw_percent
+    - wtw_area_ha
+    - intact_pcnt
+    - modified_pcnt
+    - protected_intact_pcnt
+    - protected_modified_pcnt
+    - pcnt_landscape_forest_cover
+    - pcnt_forest_protected
+    - pcnt_forest_wtw
+    - pcnt_landscape_grassland_cover
+    - pcnt_grassland_protected
+    - pcnt_grassland_wtw
+    - pcnt_landscape_wetland_cover
+    - pcnt_wetland_protected
+    - pcnt_wetland_wtw
+    - pcnt_landscape_lakes_cover
+    - pcnt_lakes_protected
+    - pcnt_lakes_wtw
+    - rivers_km
+    - pcnt_rivers_protected
+    - pcnt_rivers_wtw
+    - coastline_km
+    - pcnt_coastline_protected
+    - pcnt_coastline_wtw
+    - forestry_pcnt
+    - agriculture_pcnt
+    - transport_high_pcnt
+    - transport_low_pcnt
+    - energy_pcnt
+    - builtup_pcnt
   calculated:
     # The Opportunities pie: intact and modified land outside protected
     # areas, as % of the ecoregion.
