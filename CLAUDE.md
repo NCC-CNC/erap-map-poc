@@ -125,7 +125,7 @@ touches only `docs/` and `*.md` runs just `repo-hygiene`.
   then the `runtime` image. Locally the first build takes about 4 minutes
   (tippecanoe compile), then seconds from cache. CI: about 4 min cold, under
   1 min warm.
-- `web` (Node 26.13.0, in `web/`): `npm ci`, `npm run lint`,
+- `web` (Node 26.13.1, in `web/`): `npm ci`, `npm run lint`,
   `npm run typecheck`, `npm test`, `npm run build`,
   `npm audit --omit=dev --audit-level=high`, hadolint, then the image and a
   smoke test. Locally without Node:
