@@ -146,7 +146,7 @@ docker run --rm erap-map-pipeline:test
 docker run --rm -v "$repo":/repo:ro erap-map-pipeline:test /repo/scripts/tests
 docker compose build pipeline
 
-# web job: npm ci, lint, typecheck, test, build, audit (Node 26.13.0)
+# web job: npm ci, lint, typecheck, test, build, audit (Node 26.13.1)
 docker compose --profile dev run --rm --no-deps web-dev sh -c 'npm ci &&
   npm run lint && npm run typecheck && npm test && npm run build &&
   npm audit --omit=dev --audit-level=high'
@@ -158,7 +158,7 @@ docker compose --profile pipeline --profile dev config -q
 
 # repo-hygiene job: actionlint, markdownlint, no em dashes
 docker run --rm -v "$repo":/repo -w /repo rhysd/actionlint:1.7.7 -color
-docker run --rm -v "$repo":/repo -w /repo node:26.13.0-bookworm-slim \
+docker run --rm -v "$repo":/repo -w /repo node:26.13.1-bookworm-slim \
   npx --yes markdownlint-cli '**/*.md' --ignore node_modules --ignore LICENSE
 ! git grep -In $'\xe2\x80\x94' -- . ':!LICENSE'
 ```
