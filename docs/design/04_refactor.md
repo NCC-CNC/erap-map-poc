@@ -69,16 +69,19 @@ with tests, and documented for people.
    Low-zoom generalisation and the drop guard live inside `coverage`; a
    layer overrides only `minzoom`, `maxzoom`, `min_part_px` and
    `simplify_px`.
-9. **Personal config is simpler.** The git-ignored `map.config.yaml` sets
-   the opening view, the basemap and which layers are on. Personal
-   layers go in a git-ignored `layers.local/` folder in the same format.
-   Per-field overrides of committed layers go.
-10. **The GitHub Pages copy works as it does now** (ADR 0014): its own
-    build into `data/pages/`, the `web-pages` service, `publish-pages.sh`
-    and the release. A committed `pages.yaml` lists its layers and may
-    change only `source` and `processing` values per layer (lower max
-    zooms, a different protected areas source); the display is the same
-    as the main map. Its `requiredInputs` guard stays.
+9. **One map config format, two files.** Your git-ignored, optional
+   `map.config.yaml` and the committed `map.pages.yaml` share one schema
+   with five keys: `view`, `basemap`, `layers` (which layers to build;
+   default all), `overrides` (per layer, `source` and `processing` only)
+   and `require` (fail if a layer's source is missing). Display and field
+   overrides go, and so does provenance tracking. See Map config.
+10. **Personal layers** go in the fixed, git-ignored `layers.local/`
+    folder, in the same format, built like committed layers. A name that
+    repeats a committed layer is an error.
+11. **The GitHub Pages copy works as it does now** (ADR 0014): its own
+    build into `data/pages/` from `map.pages.yaml`, the `web-pages`
+    service, `publish-pages.sh` and the release. Its display is the same
+    as the main map.
 
 ## A layer file
 
@@ -163,8 +166,46 @@ hashes in `build.json`; a change to `display` alone is `restyle`.
 
 Tests: bats covers every pipeline step and command, kept and adapted where
 the code stays, new for layer file reading and checking, joins, calculated
-fields, `style.json` assembly, `build.json`, `--status` and `pages.yaml`.
+fields, `style.json` assembly, `build.json`, `--status` and the map
+config (overrides, `require`, `layers.local/`).
 Tests of deleted code go with it.
+
+## Map config
+
+```yaml
+# map.config.yaml: yours, git-ignored, optional
+view: { center: [-96, 60], zoom: 3 }
+basemap: light
+layers: [ecoregions, protected_areas, forest]   # omit for every layer
+```
+
+```yaml
+# map.pages.yaml: committed, read by pipeline-pages
+view: { center: [-96, 60], zoom: 3 }
+basemap: light
+overrides:
+  forest: { processing: { maxzoom: 10 } }
+  agriculture: { processing: { maxzoom: 10 } }
+  ecoregions: { processing: { maxzoom: 10 } }
+  protected_areas:
+    source:
+      path: ProtectedConservedArea_2025.gdb
+      layer: ProtectedConservedArea_2025
+    processing: { maxzoom: 10 }
+require: [protected_areas]
+```
+
+- The pipeline writes `view` and `basemap` into `style.json` (`center`,
+  `zoom`, `metadata["erap:basemap"]`); the app needs nothing else.
+- Compose keeps its services: `pipeline` reads `map.config.yaml` when it
+  exists (`MAP_CONFIG` in `.env` picks another file); `pipeline-pages`
+  reads `map.pages.yaml` and writes `data/pages/`; `web-pages` is
+  unchanged.
+- `publish-pages.sh` keeps its steps (check, dry run, upload to the
+  `pages-data` release, run the workflow) and reads its file list from
+  `build.json` and `style.json`.
+- Anyone with a `map.config.json` rewrites it by hand; the README says
+  how. There is no migration script.
 
 ## Web app
 
@@ -229,7 +270,8 @@ practical:
 4. App loads `style.json` and reads metadata; legends from expressions;
    generated types.
 5. Calculated fields as SQLite and joins.
-6. Personal config and `layers.local/`; Pages copy on the new format.
+6. Map config (`map.config.yaml`, `map.pages.yaml`) and `layers.local/`;
+   Pages copy and `publish-pages.sh` on the new format.
 7. Docs, CLAUDE.md and skills.
 
 ## Open questions
