@@ -73,7 +73,9 @@ in an editor. Fields:
 - Exactly one of:
   - `symbology`: the shorthand. Polygons (`geometry: "polygon"`, a fill at
     `fillOpacity` with an `outline`) or points (`geometry: "point"`, circles
-    of `radius` with a `stroke`), coloured by `color`: `single`,
+    of `radius` with a `stroke`; an outline or stroke `width` is a number
+    or `byZoom`, widths at ascending zooms interpolated linearly),
+    coloured by `color`: `single`,
     `categorical` (MapLibre `match` on a text attribute, with a `fallback`),
     `stepped` (MapLibre `step` on a numeric attribute, guarded so
     features without a number take the `fallback`) or `interpolated` (a
@@ -488,9 +490,10 @@ not built by default (#17).
   the drop guard; not stable across exports (Deferred, below).
 - Attributes kept in tiles: none.
 - Display (`protected_areas.style.json`, `order` 30, above the rasters,
-  under `ecoregions`): the shorthand, one semi-transparent green fill
-  `#41ab5d` at 60% opacity with a darker green outline `#006d2c` of
-  0.5 px, legend "Protected and conserved areas", title "Protected areas
+  under `ecoregions`): the shorthand, one semi-transparent pink fill
+  `#c51b7d` at 60% opacity (pink, not green, so it does not read as the
+  forest raster) with a darker outline `#8e0152`, thin when zoomed out
+  (0.2 px at z0, 0.3 px at z8, 0.5 px from z14), legend "Protected and conserved areas", title "Protected areas
   (CPCAD)". Shown by default.
 - Pop-up: none. CPCAD attributes in a pop-up (names, types, IUCN
   category) need the undissolved CPCAD and are deferred (#14).
@@ -541,9 +544,11 @@ not built by default (#17).
   `actions_landscape_conservation_count` (0 everywhere until its rules
   arrive). Peatlands, the hectare columns other than area and Where To
   Work area, and the river and coast km breakdowns stay out.
-- Display (`ecoregions.style.json`, `order` 40, on top): a light fill at
-  35% opacity and a clear dark blue outline (`#08306b`, 1 px), so the
-  layers underneath stay readable. Colour themes, blue sequential, in the
+- Display (`ecoregions.style.json`, `order` 40, on top): a fill at
+  60% opacity, so the theme colour holds as the basemap and layers
+  underneath change with zoom, and a dark blue outline (`#08306b`) that
+  is thin when zoomed out (0.3 px at z0, 0.6 px at z8, 1 px from z14), so
+  dense island outlines do not darken the fill. Colour themes, blue sequential, in the
   "Colour by" list:
   - Protected (%), the default: stepped, under 10 `#deebf7`, 10 to 17
     `#9ecae1`, 17 to 30 `#4292c6`, 30 and over `#08519c`.
@@ -603,7 +608,9 @@ template changes.
   unprotected intact and modified shares, and the action recommendations
   from the committed rules table.
 - Protected areas: single semi-transparent green fill, darker outline, no
-  pop-up, small drop guard threshold.
+  pop-up, small drop guard threshold. (Later made pink, as it read too
+  much like the forest raster, and the ecoregion fill raised to 60%
+  opacity with outlines thin when zoomed out: see the layers above.)
 - Deferred: Indigenous territories (needs a dataset), CPCAD attributes
   in a pop-up (needs the undissolved CPCAD), peatlands, French text.
 

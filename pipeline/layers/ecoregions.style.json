@@ -130,10 +130,16 @@
       }
     ],
     "defaultTheme": "protected",
-    "fillOpacity": 0.35,
+    "fillOpacity": 0.6,
     "outline": {
       "color": "#08306b",
-      "width": 1
+      "width": {
+        "byZoom": [
+          { "zoom": 0, "width": 0.3 },
+          { "zoom": 8, "width": 0.6 },
+          { "zoom": 14, "width": 1 }
+        ]
+      }
     }
   },
   "modal": {
