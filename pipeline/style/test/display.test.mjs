@@ -127,6 +127,30 @@ describe('symbologyLayers', () => {
     assert.deepEqual(layers[1].paint, { 'line-color': '#ffffff', 'line-width': 1 });
   });
 
+  it('ramps an outline width set by zoom', () => {
+    const layers = symbologyLayers({
+      ...polygon(stepped),
+      outline: {
+        color: '#ffffff',
+        width: {
+          byZoom: [
+            { zoom: 0, width: 0.25 },
+            { zoom: 14, width: 1 },
+          ],
+        },
+      },
+    });
+    assert.deepEqual(layers[1].paint['line-width'], ['interpolate', ['linear'], ['zoom'], 0, 0.25, 14, 1]);
+  });
+
+  it('ramps a point stroke width set by zoom', () => {
+    const layers = symbologyLayers({
+      ...point(categorical),
+      stroke: { color: '#000000', width: { byZoom: [{ zoom: 4, width: 1 }, { zoom: 10, width: 2 }] } },
+    });
+    assert.deepEqual(layers[0].paint['circle-stroke-width'], ['interpolate', ['linear'], ['zoom'], 4, 1, 10, 2]);
+  });
+
   it('draws points as circles with a stroke', () => {
     assert.deepEqual(symbologyLayers(point(categorical)), [
       {
@@ -434,6 +458,19 @@ describe('schema checks', () => {
   it('does not let a style layer set its own source', () => {
     const layers = [{ id: 'fill', type: 'fill', source: 'other', paint: { 'fill-color': '#000000' } }];
     assert.ok(problemsOf(() => resolveDisplay('test', config({ layers }))).includes('/layers/0/source is not allowed here'));
+  });
+
+  it('needs a width by zoom to have zooms in ascending order', () => {
+    const outline = (byZoom) => ({ ...polygon(stepped), outline: { color: '#ffffff', width: { byZoom } } });
+    const ok = [
+      { zoom: 0, width: 0.25 },
+      { zoom: 14, width: 1 },
+    ];
+    assert.doesNotThrow(() => resolveDisplay('test', config({ symbology: outline(ok) })));
+    const one = problemsOf(() => resolveDisplay('test', config({ symbology: outline([ok[0]]) })));
+    assert.ok(one.some((p) => /byZoom must NOT have fewer than 2 items/.test(p)), one.join('\n'));
+    const unordered = problemsOf(() => resolveDisplay('test', config({ symbology: outline([ok[1], ok[0]]) })));
+    assert.ok(unordered.some((p) => /line-width.*ascending order/.test(p)), unordered.join('\n'));
   });
 
   it('needs explicit stops or breaks with colours, not both', () => {
