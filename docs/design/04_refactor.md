@@ -168,13 +168,40 @@ Tests of deleted code go with it.
 
 ## Web app
 
-- Loads the basemap style, then `data/tiles/style.json`, and adds its
-  sources and layers. No layer is named in `web/`.
-- Reads `erap:` metadata for the layer list, legends, themes, pop-ups and
-  the modal. TypeScript types for the metadata are generated from the
-  layer file schema, so there is one definition.
-- Drops `manifest.ts` and its hand-written checks; MapLibre reports a bad
-  layer, and a layer whose metadata is missing still draws.
+What stays: React and MapLibre, the basemap toggle, the layer panel (on
+and off, "Colour by"), legends, pop-ups, the modal, charts and number
+formats, all looking and working as now. The basemap loads first and the
+data layers go on top; a basemap switch adds them again with their
+visibility and theme. The view stays in the URL hash.
+
+How it reads `style.json`:
+
+- A short loader checks it is a version 8 style. Each style layer carries
+  `metadata["erap:layer"]` (the map layer it belongs to, such as
+  `ecoregions`); the style's top-level `metadata["erap:layers"]` holds each
+  map layer's title, order, visibility, themes, legend, pop-up and modal.
+- Sources are written by the pipeline as relative `pmtiles://` and `cog://`
+  URLs; the app resolves them against the tiles URL, so the same file
+  works locally and on Pages.
+- The opening view is the style's own `center` and `zoom`, the basemap
+  `metadata["erap:basemap"]`.
+- Legends come from the colour expression (`step`, `match`,
+  `interpolate` or a single colour, per theme), unless the layer sets
+  `erap:legend`. They should match today's; where one does not, the layer
+  gets an explicit legend.
+- TypeScript types for the metadata are generated from
+  `layer.schema.json`.
+- A bad layer shows up through MapLibre's error events: the panel names
+  it and the other layers still draw.
+
+What goes: `manifest.ts` and its hand-written checks, `types.ts`,
+`schema.test.ts`, the check that each archive exists (the pipeline only
+writes built layers) and the raster PNG path (rasters are COG only, ADR
+0010).
+
+Tests: vitest covers the loader (valid, missing, bad), legends from each
+expression type, themes, and pop-up and modal content. CI checks the test
+layers' `style.json` with the MapLibre style validator.
 
 ## Docs
 
