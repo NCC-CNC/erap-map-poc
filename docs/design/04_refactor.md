@@ -20,6 +20,14 @@ format.
 Adding a layer, or a different kind of source, means adding one file.
 Nothing about a layer is hard-coded in the pipeline or the app.
 
+A person can configure and run everything with only the repo and Docker:
+edit a layer file, run a documented `docker compose` command, open the
+map. Claude Code skills are an alternative way to do the same thing, never
+the only way: each skill runs those same documented commands with the
+right arguments and holds no logic of its own. Anything a skill needs that
+the commands cannot do yet is added to the pipeline or `scripts/` first,
+with tests, and documented for people.
+
 ## Decisions
 
 1. **One file per layer**, `pipeline/layers/<layer>.yaml`, with four
@@ -152,7 +160,11 @@ source file with the hashes in `build.json`.
   `style.json`, app).
 - One layer file reference, generated from or next to the schema.
 - Decisions only in ADRs; history out of config comments.
-- CLAUDE.md: rules and commands only. Skills updated to the new commands.
+- CLAUDE.md: rules and commands only.
+- Every task (add, restyle, build, check, remove a layer; run the map) is
+  documented as plain commands first. Each skill links to that section and
+  runs the same commands; a skill that needs more than that is a sign the
+  command is missing.
 
 ## Order of work
 
