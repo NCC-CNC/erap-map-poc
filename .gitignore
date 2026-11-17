@@ -56,4 +56,6 @@ data/work/*
 /map.config*.json
 !/map.config.example.json
 !/map.config.pages.json
+/map.config*.yaml
+!/map.config.example.yaml
 pipeline/layers.local/

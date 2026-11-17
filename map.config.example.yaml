@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=./pipeline/schema/map.schema.json
+#
+# Your map config: copy to map.config.yaml (git-ignored). Every key is
+# optional.
+
+# Where the map opens, and on which basemap (light or dark).
+view: { center: [-96, 60], zoom: 3 }
+basemap: light
+
+# The layers to build; leave out for every layer.
+# layers: [ecoregions, protected_areas, forest]
+
+# Per layer, a different source or processing, for example a quicker build.
+# overrides:
+#   forest: { processing: { maxzoom: 10 } }
+
+# Layers whose source must exist: fail rather than skip them.
+# require: [ecoregions]

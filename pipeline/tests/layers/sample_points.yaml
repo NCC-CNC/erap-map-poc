@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=../../schema/layer.schema.json
+#
+# The second synthetic test layer: made-up points, for the layer panel,
+# draw order and overlapping pop-ups. The fixture ships in the pipeline
+# image.
+
+title: Sample points
+visible: true
+order: 20
+
+source:
+  path: /opt/pipeline/tests/fixtures/sample_points.geojson
+  id: id
+
+fields:
+  keep:
+    name: name
+    category: category
+    count: count
+
+# Every point at every zoom.
+processing:
+  profile: points
+  minzoom: 0
+  maxzoom: 10
+
+display:
+  layers:
+    - id: circle
+      type: circle
+      paint:
+        circle-color:
+          [match, [to-string, [get, category]],
+           alpha, "#e69f00", beta, "#cc79a7", gamma, "#d55e00",
+           "#9e9e9e"]
+        circle-radius: 6
+        circle-stroke-color: "#ffffff"
+        circle-stroke-width: 1.5
+  legend:
+    kind: categories
+    shape: circle
+    border: "#ffffff"
+    opacity: 1
+    items:
+      - { color: "#e69f00", label: Alpha }
+      - { color: "#cc79a7", label: Beta }
+      - { color: "#d55e00", label: Gamma }
+      - { color: "#9e9e9e", label: Other }
+  popup:
+    title: { attribute: name }
+    stats:
+      - { label: ID, value: { featureId: true } }
+      - { label: Category, value: { attribute: category } }
+      - { label: Count, value: { attribute: count }, format: {} }

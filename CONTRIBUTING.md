@@ -133,9 +133,10 @@ same tools at the same versions as CI, all in Docker:
 export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
-# pipeline job: shellcheck, hadolint, bats (143 tests, including the display
+# pipeline job: shellcheck, hadolint, bats (159 tests, including the display
 # tool's node:test unit tests; 60 more for scripts/: setup.sh, screenshot.sh
-# and publish-pages.sh, with stub docker and gh), runtime image
+# and publish-pages.sh, with stub docker and gh), the map configs against
+# their schema, runtime image
 docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
   pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \
   pipeline/tests/layers/*.env pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh \
@@ -144,6 +145,8 @@ docker run --rm -v "$repo":/mnt -w /mnt hadolint/hadolint:v2.15.1 \
   hadolint --config .hadolint.yaml pipeline/Dockerfile web/Dockerfile
 docker build --target test -t erap-map-pipeline:test pipeline
 docker run --rm erap-map-pipeline:test
+docker run --rm -v "$repo":/repo:ro --entrypoint jv erap-map-pipeline:test \
+  /opt/pipeline/schema/map.schema.json /repo/map.pages.yaml /repo/map.config.example.yaml
 docker run --rm -v "$repo":/repo:ro erap-map-pipeline:test /repo/scripts/tests
 docker compose build pipeline
 

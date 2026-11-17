@@ -126,6 +126,12 @@ jobs:
       - name: bats
         run: docker run --rm erap-map-pipeline:test
 
+      # The repo's map configs against their schema, with jv from the image.
+      - name: Map configs
+        run: |
+          docker run --rm -v "$PWD":/repo:ro --entrypoint jv erap-map-pipeline:test \
+            /opt/pipeline/schema/map.schema.json /repo/map.pages.yaml /repo/map.config.example.yaml
+
       # scripts/setup.sh, with stub docker, wsl.exe and friends (no Windows
       # needed), in the same image for its bats.
       - name: bats (scripts)
