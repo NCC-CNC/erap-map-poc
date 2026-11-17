@@ -6,7 +6,7 @@
 #
 # No simplification here: ogr2ogr -simplify works per feature, so it would
 # open gaps between neighbours. Shared borders are simplified by tippecanoe
-# (see the coverage profile in lib/config.sh).
+# (see the coverage profile in lib/layerfile.sh).
 
 # ogr_quote NAME: quote an identifier for OGR SQL.
 ogr_quote() {

@@ -10,11 +10,14 @@
  * - `expectedRasterDisplay`: the same for the synthetic raster layer of the
  *   pipeline's raster tests (`pipeline/tests/raster.bats`).
  * - `expectedModalDisplay`: the `sample` layer with colour themes and a
- *   click modal (`pipeline/tests/fixtures/sample_modal.style.json`, ADR
- *   0012), as the pipeline resolves it.
- * - `layerStyleSchema`: the shared JSON Schema.
- * - `mapConfigSchema` and `mapConfigExample`: the local map config's schema
- *   and the committed example (ADR 0009).
+ *   click modal (`pipeline/tests/fixtures/sample_modal.yaml`, ADR 0012),
+ *   as the pipeline writes it.
+ * - `ecoregionsExample`: the display block the pipeline writes for the
+ *   committed `ecoregions` layer (`pipeline/tests/style.bats` checks it).
+ * - `layerStyleSchema`: the display block's JSON Schema, kept here (not in
+ *   the pipeline, which no longer reads it) until the app reads style.json
+ *   instead of manifest.json (design note 04, step 4).
+ * - `mapConfigSchema`: the map config's schema, for the basemap names.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -28,19 +31,15 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const repoFile = (path: string) => resolve(repoRoot, path);
 const readJson = (path: string): unknown => JSON.parse(readFileSync(repoFile(path), 'utf8'));
 
-export const layerStyleSchema = readJson('pipeline/schema/layer-style.schema.json') as {
+export const layerStyleSchema = readJson('web/src/test/layer-style.schema.json') as {
   $id: string;
   $defs: Record<string, { properties?: Record<string, unknown> }>;
 };
 
-/** The local map config's JSON Schema (ADR 0009). */
-export const mapConfigSchema = readJson('pipeline/schema/map-config.schema.json') as {
-  $id: string;
-  properties: { map: { properties: { basemap: { enum: string[] } } } };
+/** The map config's JSON Schema (design note 04). */
+export const mapConfigSchema = readJson('pipeline/schema/map.schema.json') as {
+  properties: { basemap: { enum: string[] } };
 };
-
-/** The committed example map config, `map.config.example.json`. */
-export const mapConfigExample = readJson('map.config.example.json');
 
 export const expectedDisplay = readJson('pipeline/tests/fixtures/expected_display.json') as {
   sample: Display;
@@ -97,12 +96,12 @@ export const sampleModal = parseManifest({
 }).layers[0] as LayerDefinition;
 
 /**
- * The committed ecoregion display config
- * (`pipeline/layers/ecoregions.style.json`): its modal and themes read
- * calculated fields and rule attributes (ADR 0011, ADR 0012). The pipeline
- * copies a modal into the manifest as it is.
+ * The display block of the committed ecoregion layer
+ * (`pipeline/layers/ecoregions.yaml`), as the pipeline writes it: its
+ * modal and themes read calculated fields, such as the action
+ * recommendations (ADR 0012, design note 04).
  */
-export const ecoregionsExample = readJson('pipeline/layers/ecoregions.style.json') as {
+export const ecoregionsExample = readJson('pipeline/tests/fixtures/ecoregions_display.json') as {
   modal: ModalDefinition;
-  symbology: { themes: { id: string; color: { attribute: string } }[] };
+  themes: { id: string; paint: Record<string, Record<string, unknown>> }[];
 };

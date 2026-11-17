@@ -5,6 +5,17 @@ description: Change how an existing map layer looks (colours, classes, gradients
 
 # Restyle a layer
 
+> **Layer files changed (design note 04, #115).** A layer is now one file,
+> `pipeline/layers/<layer>.yaml` (schema `pipeline/schema/layer.schema.json`),
+> and your map config is `map.config.yaml`. Where this skill says
+> `<layer>.env`, read the layer file's `source`, `fields` and `processing`
+> (a `profile` preset: `default`, `coverage`, `points` or `raster`);
+> `.style.json`, its `title`, `visible`, `order` and `display` (plain
+> MapLibre style layers, `themes`, `legend`, `popup`, `modal`);
+> `LAYER_CALCULATED` and `.rules.json`, `fields.calculated` (SQLite
+> expressions). `docker compose run --rm pipeline --status` lists any
+> problem in a layer file. This skill is rewritten in #120.
+
 Edit only `pipeline/layers/<name>.style.json`. If the change needs a field
 that is not in the tiles, it is not a restyle: add the field to
 `LAYER_FIELDS` in `<name>.env`, do a full build in step 3, and say so in

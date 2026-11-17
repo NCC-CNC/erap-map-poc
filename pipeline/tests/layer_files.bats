@@ -42,20 +42,11 @@ map_config() {
   [ "$status" -eq 0 ]
 }
 
-@test "every committed and test layer file is valid" {
-  run jv "$LAYER_SCHEMA" "${PIPELINE_ROOT}"/layers/*.yaml "${PIPELINE_ROOT}"/tests/layers/*.yaml
+@test "every committed and test layer file, and the fixtures, are valid" {
+  run jv "$LAYER_SCHEMA" "${PIPELINE_ROOT}"/layers/*.yaml "${PIPELINE_ROOT}"/tests/layers/*.yaml \
+    "${PIPELINE_ROOT}"/tests/fixtures/*.yaml
   echo "$output"
   [ "$status" -eq 0 ]
-}
-
-@test "every committed layer has a layer file" {
-  local env
-  for env in "${PIPELINE_ROOT}"/layers/*.env "${PIPELINE_ROOT}"/tests/layers/*.env; do
-    [ -f "${env%.env}.yaml" ] || {
-      echo "no layer file for $env" >&2
-      return 1
-    }
-  done
 }
 
 @test "a layer file needs a title, a source, processing and display" {

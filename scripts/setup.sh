@@ -238,12 +238,12 @@ check_git() {
   fi
 }
 
-# crlf_files: shell scripts and layer configs with CRLF line endings.
+# crlf_files: shell scripts and layer files with CRLF line endings.
 crlf_files() {
   local dir
   for dir in pipeline/bin pipeline/lib pipeline/layers pipeline/tests scripts; do
     [[ -d ${ROOT}/${dir} ]] || continue
-    find "${ROOT}/${dir}" -type f \( -name '*.sh' -o -name '*.bats' -o -name '*.env' \) \
+    find "${ROOT}/${dir}" -type f \( -name '*.sh' -o -name '*.bats' -o -name '*.bash' -o -name '*.yaml' \) \
       -exec grep -l $'\r' {} + 2>/dev/null || true
   done
 }
@@ -754,7 +754,7 @@ build_layers() {
     say "'docker compose run --rm pipeline --status' says why for each. Fix it, then rerun scripts/setup.sh --init."
   fi
   if ((${#disabled[@]} > 0)); then
-    say "Left out by your map config (map.config.json): $(join_names "${disabled[@]}")."
+    say "Left out by your map config (map.config.yaml): $(join_names "${disabled[@]}")."
   fi
   if ((${#todo[@]} == 0)); then
     return 0

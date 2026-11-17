@@ -62,8 +62,9 @@ fields:
     # Its title and reason are in the modal's Actions list.
     action_area_based_30x30: coalesce(protected_pcnt < 30, 0)
     # How many area-based conservation actions are recommended, for the
-    # "Colour by" theme: the sum of their conditions.
-    actions_area_based_conservation_count: coalesce(protected_pcnt < 30, 0)
+    # "Colour by" theme: the sum of the actions above (a field can use
+    # the ones before it).
+    actions_area_based_conservation_count: action_area_based_30x30
 
 processing:
   profile: coverage

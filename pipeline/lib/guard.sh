@@ -107,6 +107,6 @@ drop_guard() {
 
   printf '%s\n' "${lines[@]}" | jq -s '.' >"$out" || die "cannot write $out"
   ((failed == 0)) \
-    || die "drop guard: required features missing (LAYER_MIN_VISIBLE_PX=${min_px}); keeping the previous archive"
+    || die "drop guard: required features missing (processing.min_visible_px ${min_px}); keeping the previous archive"
   log_info "drop guard passed for z${minzoom}-z${maxzoom}"
 }

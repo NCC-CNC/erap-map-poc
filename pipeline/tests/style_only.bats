@@ -6,6 +6,8 @@
 #   docker build --target test -t erap-pipeline-test pipeline
 #   docker run --rm erap-pipeline-test
 
+load helpers
+
 setup() {
   PIPELINE_ROOT=$(cd "${BATS_TEST_DIRNAME}/.." && pwd)
   RUN="${PIPELINE_ROOT}/bin/run.sh"
@@ -23,24 +25,23 @@ setup() {
 add_layer() {
   local name
   for name in "$@"; do
-    sed 's|^LAYER_INPUT=.*|LAYER_INPUT=sample.geojson|' \
-      "${PIPELINE_ROOT}/tests/layers/sample.env" >"${PIPELINE_LAYERS_DIR}/${name}.env"
-    cp "${PIPELINE_ROOT}/tests/layers/sample.style.json" "${PIPELINE_LAYERS_DIR}/${name}.style.json"
+    cp "${PIPELINE_ROOT}/tests/layers/sample.yaml" "${PIPELINE_LAYERS_DIR}/${name}.yaml"
+    set_layer "${PIPELINE_LAYERS_DIR}/${name}.yaml" '.source.path = "sample.geojson"'
   done
 }
 
 # add_raster NAME: a raster layer on a synthetic binary GeoTIFF, z3 to z6.
 add_raster() {
   "${PIPELINE_ROOT}/tests/fixtures/make_raster.sh" byte "${PIPELINE_INPUT_DIR}/$1.tif" 2>/dev/null
-  printf '%s\n' 'LAYER_TYPE=raster' "LAYER_INPUT=$1.tif" 'LAYER_MIN_ZOOM=3' 'LAYER_MAX_ZOOM=6' \
-    >"${PIPELINE_LAYERS_DIR}/$1.env"
-  cp "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" "${PIPELINE_LAYERS_DIR}/$1.style.json"
+  cp "${PIPELINE_ROOT}/tests/fixtures/raster.yaml" "${PIPELINE_LAYERS_DIR}/$1.yaml"
+  set_layer "${PIPELINE_LAYERS_DIR}/$1.yaml" ".source.path = \"$1.tif\"" '.processing.maxzoom = 6'
 }
 
-# restyle NAME JQ: edit the layer's .style.json with a jq filter.
+# restyle NAME EXPR...: edit the layer file with yq.
 restyle() {
-  local file="${PIPELINE_LAYERS_DIR}/$1.style.json"
-  jq "$2" "$file" >"${file}.new" && mv "${file}.new" "$file"
+  local name=$1
+  shift
+  set_layer "${PIPELINE_LAYERS_DIR}/${name}.yaml" "$@"
 }
 
 # entry_without NAME FIELD...: the layer's manifest entry minus FIELDs.
@@ -59,32 +60,6 @@ notes_of() {
   "$RUN" --status --json | jq -r --arg n "$1" '.layers[] | select(.name == $n) | .notes | join(";")'
 }
 
-# age_build NAME...: move the layers' build into the past (built_at and
-# display_updated_at 5 minutes ago) and their configs and source data
-# further back, so a test can then change a file between the build and now.
-age_build() {
-  local past name
-  past=$(date -u -d "@$(($(date +%s) - 300))" +%Y-%m-%dT%H:%M:%SZ)
-  for name in "$@"; do
-    jq --arg n "$name" --arg t "$past" \
-      '.layers |= map(if .name == $n then .built_at = $t | .display_updated_at = $t else . end)' \
-      "$MANIFEST" >"${MANIFEST}.new" && mv "${MANIFEST}.new" "$MANIFEST"
-    touch -d "@$(($(date +%s) - 600))" "${PIPELINE_LAYERS_DIR}/${name}".*
-  done
-  touch -d "@$(($(date +%s) - 600))" "$PIPELINE_INPUT_DIR"/*
-}
-
-# touch_between FILE...: a modification time after the aged build, before now.
-touch_between() {
-  touch -d "@$(($(date +%s) - 100))" "$@"
-}
-
-assert_no_temp_files() {
-  run find "$PIPELINE_OUTPUT_DIR" -name '*.tmp*'
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
-
 @test "--style-only replaces the display only: tiles, build report and other layers kept" {
   add_layer alpha beta
   run "$RUN"
@@ -93,11 +68,11 @@ assert_no_temp_files() {
   tiles=$(sha256sum "${PIPELINE_OUTPUT_DIR}"/*.pmtiles)
   beta_entry=$(entry_without beta)
   alpha_report=$(entry_without alpha display display_updated_at provenance)
-  built_from=$(entry_without alpha | jq -c ".provenance | del(.style_sha256)")
+  built_from=$(entry_without alpha | jq -c ".provenance | del(.display_sha256)")
 
-  restyle alpha '.title = "Alpha restyled"
-    | .symbology.color.stops[0].color = "#ff0000"
-    | .popup.stats |= .[:1]'
+  restyle alpha '.title = "Alpha restyled"' \
+    '.display.layers[0].paint["fill-color"][2][2] = "#ff0000"' \
+    '.display.popup.stats |= .[:1]'
   run "$RUN" --style-only alpha
   [ "$status" -eq 0 ]
   [[ $output == *"display updated for 1 layer(s), no tiles rebuilt"* ]]
@@ -108,7 +83,7 @@ assert_no_temp_files() {
   [ "$(entry_without alpha display display_updated_at provenance)" = "$alpha_report" ]
   # The provenance keeps what the tiles were built from; only the display
   # hash moves.
-  [ "$(entry_without alpha | jq -c ".provenance | del(.style_sha256)")" = "$built_from" ]
+  [ "$(entry_without alpha | jq -c ".provenance | del(.display_sha256)")" = "$built_from" ]
   run jq -e '.layers[] | select(.name == "alpha")
     | .display.title == "Alpha restyled"
       and (.display.popup.stats | length) == 1
@@ -140,22 +115,23 @@ assert_no_temp_files() {
   [ ! -e "${PIPELINE_OUTPUT_DIR}/gamma.pmtiles" ]
 }
 
-@test "--style-only rejects an invalid style without changing the manifest" {
+@test "--style-only rejects an invalid layer file without changing the manifest" {
   add_layer alpha beta
   run "$RUN"
   [ "$status" -eq 0 ]
   local before
   before=$(sha256sum "$MANIFEST")
 
-  restyle alpha '.defaultVisible = "yes"'
+  restyle alpha '.visible = "yes"'
   run "$RUN" --style-only alpha
   [ "$status" -eq 1 ]
-  [[ $output == *"invalid display config"* ]]
+  [[ $output == *"alpha.yaml: at '/visible'"* ]]
+  [[ $output == *"alpha.yaml has problems (above); keeping the previous build"* ]]
   [ "$(sha256sum "$MANIFEST")" = "$before" ]
   assert_no_temp_files
 
-  # Not JSON at all: the same.
-  printf '{ not json\n' >"${PIPELINE_LAYERS_DIR}/alpha.style.json"
+  # Not YAML at all: the same.
+  printf 'title: [unclosed\n' >"${PIPELINE_LAYERS_DIR}/alpha.yaml"
   run "$RUN" --style-only alpha
   [ "$status" -eq 1 ]
   [ "$(sha256sum "$MANIFEST")" = "$before" ]
@@ -208,98 +184,66 @@ assert_no_temp_files() {
   before=$(sha256sum "$archive")
   report=$(entry_without cover display display_updated_at provenance)
 
-  restyle cover '.symbology.color = "#ff0000" | .symbology.opacity = 0.4'
+  restyle cover '.display.layers[0].paint["color-relief-color"][6] = "rgba(255, 0, 0, 1)"' \
+    '.display.layers[0].paint["color-relief-opacity"] = 0.4'
   run "$RUN" --style-only cover
   [ "$status" -eq 0 ]
-  [[ $output != *"reading the source data"* ]]
   [ "$(sha256sum "$archive")" = "$before" ]
   [ "$(entry_without cover display display_updated_at provenance)" = "$report" ]
   run jq -r '.layers[] | select(.source == "cover") | .paint["color-relief-color"][6]' "$STYLE"
   [ "$output" = "rgba(255, 0, 0, 1)" ]
   run jq -r '.layers[] | select(.name == "cover") | .type' "$MANIFEST"
   [ "$output" = raster ]
-
-  # The raster shorthand on the vector layer is still refused.
-  cp "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" "${PIPELINE_LAYERS_DIR}/alpha.style.json"
-  run "$RUN" --style-only alpha
-  [ "$status" -eq 1 ]
-  [[ $output == *'"geometry": "raster" is for raster layers only'* ]]
 }
 
-@test "--style-only resolves breaks from the source data, unless it changed since the build" {
+@test "--style-only applies colour themes and a click modal (ADR 0012)" {
   add_layer alpha
   run "$RUN" alpha
   [ "$status" -eq 0 ]
   local tiles
   tiles=$(sha256sum "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles")
 
-  # As in display.bats: quantile breaks on score, 4 classes.
-  restyle alpha '.symbology.color = {type: "stepped", attribute: "score",
-    breaks: {method: "quantile", classes: 4},
-    colors: ["#111111", "#222222", "#333333", "#444444"],
-    fallback: {color: "#999999"}}'
+  # The sample modal fixture: three themes and a modal, the same source,
+  # fields and processing.
+  cp "${PIPELINE_ROOT}/tests/fixtures/sample_modal.yaml" "${PIPELINE_LAYERS_DIR}/alpha.yaml"
+  restyle alpha '.source.path = "sample.geojson"'
+  [ "$(state_of alpha)" = restyle ]
   run "$RUN" --style-only alpha
   [ "$status" -eq 0 ]
-  [[ $output == *"reading the source data for breaks (no tiling)"* ]]
-  [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles")" = "$tiles" ]
-  run jq -c '.layers[0].display.layers[0].paint["fill-color"][2]' "$MANIFEST"
-  [ "$output" = '["step",["get","score"],"#111111",20,"#222222",47,"#333333",74,"#444444"]' ]
-
-  # Breaks from data the tiles were not built from would not match them.
-  touch -d "@$(($(date +%s) + 120))" "${PIPELINE_INPUT_DIR}/sample.geojson"
-  local before
-  before=$(sha256sum "$MANIFEST")
-  run "$RUN" --style-only alpha
-  [ "$status" -eq 1 ]
-  [[ $output == *"changed since the build: rebuild the layer"* ]]
-  [ "$(sha256sum "$MANIFEST")" = "$before" ]
-}
-
-@test "--style-only applies colour themes and a click modal, re-reading the data for a gradient range" {
-  add_layer alpha
-  run "$RUN" alpha
-  [ "$status" -eq 0 ]
-  local tiles
-  tiles=$(sha256sum "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles")
-
-  # The sample modal fixture: three themes, one of them a gradient over the
-  # data's range of area_ha, so the source data is read (not the tiles).
-  cp "${PIPELINE_ROOT}/tests/fixtures/sample_modal.style.json" "${PIPELINE_LAYERS_DIR}/alpha.style.json"
-  run "$RUN" --style-only alpha
-  [ "$status" -eq 0 ]
-  [[ $output == *"reading the source data for breaks (no tiling)"* ]]
   [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles")" = "$tiles" ]
   run jq -e --slurpfile want "${PIPELINE_ROOT}/tests/fixtures/expected_modal_display.json" \
     '.layers[0].display == $want[0]' "$MANIFEST"
   [ "$status" -eq 0 ]
 
-  # Themes with fixed ranges only need no data.
-  restyle alpha 'del(.symbology.themes[2]) | .symbology.defaultTheme = "score_gradient"'
+  # The first theme is the default, and its legend the layer's.
+  restyle alpha 'del(.display.themes[0])' \
+    '.display.layers[0].paint["fill-color"] = .display.themes[0].paint.fill["fill-color"]' \
+    'del(.display.themes[0].paint)'
   run "$RUN" --style-only alpha
   [ "$status" -eq 0 ]
-  [[ $output != *"reading the source data"* ]]
   run jq -r '.layers[0].display | [.defaultTheme, .legend.kind, (.themes | length)] | join(",")' "$MANIFEST"
   [ "$output" = "score_gradient,gradient,2" ]
 }
 
-@test "--status: a changed .style.json needs --style-only, which makes it current" {
+@test "--status: a changed display needs --style-only, which makes it current" {
   add_layer alpha beta
   add_raster cover
   run "$RUN"
   [ "$status" -eq 0 ]
-  age_build alpha beta cover
   [ "$(state_of alpha)" = current ]
 
-  touch_between "${PIPELINE_LAYERS_DIR}/alpha.style.json" "${PIPELINE_LAYERS_DIR}/cover.style.json"
+  restyle alpha '.order = 11'
+  restyle cover '.display.layers[0].paint["color-relief-opacity"] = 0.5'
   [ "$(state_of alpha)" = restyle ]
-  [ "$(notes_of alpha)" = "alpha.style.json changed since the display was last updated (--style-only updates it)" ]
+  [ "$(notes_of alpha)" = "display changed since it was last updated (alpha.yaml; --style-only updates it)" ]
   [ "$(state_of cover)" = restyle ]
   run "$RUN" --status alpha
   [[ ${lines[1]} == "alpha "*restyle* ]]
-  [[ ${lines[2]} == "  - alpha.style.json changed since the display was last updated"* ]]
+  [[ ${lines[2]} == "  - display changed since it was last updated"* ]]
 
   local built_at
   built_at=$(jq -r '.layers[] | select(.name == "alpha") | .built_at' "$MANIFEST")
+  sleep 1
   run "$RUN" --style-only alpha cover
   [ "$status" -eq 0 ]
   [ "$(state_of alpha)" = current ]
@@ -315,35 +259,32 @@ assert_no_temp_files() {
   add_layer alpha beta
   run "$RUN"
   [ "$status" -eq 0 ]
-  age_build alpha beta
 
-  # .env changed: stale, and still stale after --style-only.
-  touch_between "${PIPELINE_LAYERS_DIR}/alpha.env"
+  # Processing changed: stale, and still stale after --style-only.
+  restyle alpha '.processing.maxzoom = 6'
   run "$RUN" --style-only alpha
   [ "$status" -eq 0 ]
   [ "$(state_of alpha)" = stale ]
-  [ "$(notes_of alpha)" = "alpha.env changed since the build" ]
+  [ "$(notes_of alpha)" = "source, fields or processing changed since the build (alpha.yaml or the map config's overrides)" ]
 
-  # Source data and .style.json changed: stale (a rebuild covers both),
-  # with both notes.
-  touch_between "${PIPELINE_INPUT_DIR}/sample.geojson" "${PIPELINE_LAYERS_DIR}/beta.style.json"
+  # Source data and display changed: stale (a rebuild covers both), with
+  # both notes.
+  touch -d "@$(($(date +%s) + 120))" "${PIPELINE_INPUT_DIR}/sample.geojson"
+  restyle beta '.title = "B2"'
   [ "$(state_of beta)" = stale ]
-  [ "$(notes_of beta)" = "source data changed since the build;beta.style.json changed since the display was last updated (--style-only updates it)" ]
+  [ "$(notes_of beta)" = "source data changed since the build;display changed since it was last updated (beta.yaml; --style-only updates it)" ]
 }
 
 @test "--status reads an entry without display_updated_at by its built_at" {
   add_layer alpha
   run "$RUN" alpha
   [ "$status" -eq 0 ]
-  age_build alpha
   jq '.layers[0] |= del(.display_updated_at)' "$MANIFEST" >"${MANIFEST}.new"
   mv "${MANIFEST}.new" "$MANIFEST"
   [ "$(state_of alpha)" = current ]
   run "$RUN" --status --json
   run jq -e '.layers[0] | .display_updated_at == .built_at' <<<"$output"
   [ "$status" -eq 0 ]
-  touch_between "${PIPELINE_LAYERS_DIR}/alpha.style.json"
-  [ "$(state_of alpha)" = restyle ]
 }
 
 @test "--style-only cannot be combined with another mode" {

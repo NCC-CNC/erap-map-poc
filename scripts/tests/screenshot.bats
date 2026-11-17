@@ -93,6 +93,8 @@ playwright_run() {
 }
 
 @test "screenshot.cjs is valid JavaScript" {
+  # The pipeline image has no Node; CI's web job runs this check too.
+  command -v node >/dev/null || skip "no node here"
   run node --check "$REPO/scripts/screenshot.cjs"
   [ "$status" -eq 0 ]
 }

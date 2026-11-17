@@ -45,7 +45,7 @@ export const MESSAGES = {
   invalid:
     'Data layers are not available: the layer list (manifest.json) is not valid. Rebuild the tiles with the pipeline, then reload.',
   empty: 'No data layers have been built yet.',
-  allDisabled: 'Every built data layer is turned off in your map config (map.config.json).',
+  allDisabled: 'Every built data layer is turned off in your map config (map.config.yaml).',
   skipped: (n: number) =>
     n === 1
       ? '1 layer in manifest.json could not be read and is not shown.'
@@ -555,7 +555,7 @@ export function parseManifest(json: unknown): ManifestLayers {
   return { layers: drawOrder(defs), problem, map: mapDefaults(json.map) };
 }
 
-/** The basemaps the map config may name (`map.config.schema.json`). */
+/** The basemaps the map config may name (`pipeline/schema/map.schema.json`). */
 export const BASEMAP_NAMES: readonly BasemapName[] = ['light', 'dark'];
 
 const inRange = (v: unknown, min: number, max: number): v is number =>

@@ -2,7 +2,7 @@ import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec';
 
 /**
  * The shapes here mirror the shared JSON Schema,
- * `pipeline/schema/layer-style.schema.json` (`$defs`); `schema.test.ts`
+ * `web/src/test/layer-style.schema.json` (`$defs`); `schema.test.ts`
  * checks they stay in step. The pipeline resolves each layer's
  * `<layer>.style.json` into the `display` block of its `manifest.json`
  * entry, which `./manifest.ts` reads into a `LayerDefinition`.

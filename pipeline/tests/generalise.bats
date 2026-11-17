@@ -1,8 +1,10 @@
 #!/usr/bin/env bats
 # shellcheck source-path=SCRIPTDIR/..
-# Low-zoom generalisation tests (LAYER_GENERALISE_*, lib/generalise.sh), on
+# Low-zoom generalisation tests (the coverage profile, lib/generalise.sh), on
 # the synthetic island coverage from fixtures/make_islands.sh (generated
 # here, not committed). Run in the test image with the other bats files.
+
+load helpers
 
 setup_file() {
   PIPELINE_ROOT=$(cd "${BATS_TEST_DIRNAME}/.." && pwd)
@@ -21,13 +23,11 @@ setup() {
   ARCHIVE="${PIPELINE_OUTPUT_DIR}/islands.pmtiles"
 }
 
-# write_config [LINE...]: the islands layer, z0 to z6 with the coverage
-# profile, plus any extra lines, and a minimal display config.
+# write_config [EXPR...]: the islands layer, z0 to z6 with the coverage
+# profile, changed by any yq EXPRs.
 write_config() {
-  printf '%s\n' 'LAYER_INPUT=islands.geojson' 'LAYER_FIELDS=(id name)' \
-    'LAYER_FEATURE_ID=id' 'LAYER_MIN_ZOOM=0' 'LAYER_MAX_ZOOM=6' \
-    'LAYER_PROFILE=coverage' "$@" >"${PIPELINE_LAYERS_DIR}/islands.env"
-  cp "${PIPELINE_ROOT}/tests/fixtures/minimal.style.json" "${PIPELINE_LAYERS_DIR}/islands.style.json"
+  layer_file "${PIPELINE_LAYERS_DIR}/islands.yaml" '.source.path = "islands.geojson"' \
+    '.fields.keep = ["name"]' '.processing.maxzoom = 6' '.processing.profile = "coverage"' "$@"
 }
 
 # parts_at_zoom Z: `id parts` per feature at zoom Z of the archive (the
@@ -74,8 +74,8 @@ vertices() {
   [ "$output" = "[13,13,5]" ]
 }
 
-@test "without LAYER_GENERALISE_MAX_ZOOM every island is tiled at low zooms (today's behaviour)" {
-  write_config
+@test "the default profile tiles every island at low zooms: no generalisation" {
+  write_config '.processing.profile = "default"'
   run "$RUN" islands
   [ "$status" -eq 0 ]
   [[ $output != *generalis* ]]
@@ -83,12 +83,12 @@ vertices() {
   [ "$output" = $'1 13\n2 13\n3 5' ]
 }
 
-@test "generalised zooms drop small parts but keep each feature's largest; full detail above" {
-  write_config 'LAYER_GENERALISE_MAX_ZOOM=5'
+@test "coverage generalises every zoom below the max: small parts go, each feature keeps its largest" {
+  write_config
   run "$RUN" islands
   echo "$output"
   [ "$status" -eq 0 ]
-  [[ $output == *"generalising z0-z5"* ]]
+  [[ $output == *"generalising z0-z5: parts under 4 px dropped"*"simplified at 1 px"* ]]
   [[ $output == *"drop guard passed for z0-z6"* ]]
 
   # Default 4 px: at z4 and z5 only the large island (8 and 33 px) stays
@@ -101,7 +101,7 @@ vertices() {
   [ "$output" = $'1 2\n2 2\n3 1' ]
   run parts_at_zoom 3
   [ "$output" = $'1 1\n2 1' ]
-  # z6 is not generalised: every part is back.
+  # The max zoom, z6, is not generalised: every part is back.
   run parts_at_zoom 6
   [ "$output" = $'1 13\n2 13\n3 5' ]
 
@@ -110,15 +110,25 @@ vertices() {
   [ "$output" = "[2,2,2,2,3,3,3]" ]
 }
 
-@test "LAYER_GENERALISE_MIN_PART_PX sets the part threshold in screen pixels" {
+@test "min_part_px sets the part threshold in screen pixels" {
   # 1 px: the medium islands (2 px at z5) stay at z5, not at z4 (0.5 px).
-  write_config 'LAYER_GENERALISE_MAX_ZOOM=5' 'LAYER_GENERALISE_MIN_PART_PX=1'
+  write_config '.processing.min_part_px = 1'
   run "$RUN" islands
   [ "$status" -eq 0 ]
+  [[ $output == *"generalising z0-z5: parts under 1 px dropped"* ]]
   run parts_at_zoom 5
   [ "$output" = $'1 5\n2 5\n3 1' ]
   run parts_at_zoom 4
   [ "$output" = $'1 2\n2 2\n3 1' ]
+}
+
+@test "a coverage layer with one zoom is not generalised" {
+  write_config '.processing.minzoom = 6'
+  run "$RUN" islands
+  [ "$status" -eq 0 ]
+  [[ $output != *generalis* ]]
+  run parts_at_zoom 6
+  [ "$output" = $'1 13\n2 13\n3 5' ]
 }
 
 @test "generalised zoom is still a coverage, with shared borders simplified" {
@@ -142,24 +152,22 @@ vertices() {
   [ "$output" -eq $((before - 11 * 5)) ]
 }
 
-@test "bad LAYER_GENERALISE_* settings are rejected" {
-  write_config 'LAYER_GENERALISE_MAX_ZOOM=6'
+@test "bad generalisation settings are rejected before the data is read" {
+  write_config '.processing.min_part_px = -1'
   run "$RUN" islands
   [ "$status" -eq 1 ]
-  [[ $output == *"LAYER_GENERALISE_MAX_ZOOM must be from LAYER_MIN_ZOOM to below LAYER_MAX_ZOOM"* ]]
+  [[ $output == *"islands.yaml: at '/processing/min_part_px'"* ]]
 
-  write_config 'LAYER_GENERALISE_MAX_ZOOM=low'
+  write_config '.processing.simplify_px = "x"'
   run "$RUN" islands
   [ "$status" -eq 1 ]
-  [[ $output == *"LAYER_GENERALISE_MAX_ZOOM must be an integer"* ]]
+  [[ $output == *"islands.yaml: at '/processing/simplify_px'"* ]]
 
-  write_config 'LAYER_GENERALISE_MAX_ZOOM=4' 'LAYER_GENERALISE_MIN_PART_PX=-1'
+  # Only the coverage profile generalises.
+  write_config '.processing.profile = "default"' '.processing.simplify_px = 1'
   run "$RUN" islands
   [ "$status" -eq 1 ]
-  [[ $output == *"LAYER_GENERALISE_MIN_PART_PX must be a non-negative number"* ]]
-
-  write_config 'LAYER_GENERALISE_MAX_ZOOM=4' 'LAYER_GENERALISE_SIMPLIFY_PX=x'
-  run "$RUN" islands
-  [ "$status" -eq 1 ]
-  [[ $output == *"LAYER_GENERALISE_SIMPLIFY_PX must be a non-negative number"* ]]
+  [[ $output == *"islands.yaml: at '/processing/simplify_px'"* ]]
+  [[ $output != *normalising* ]]
+  [ ! -e "$ARCHIVE" ]
 }

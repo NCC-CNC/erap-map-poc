@@ -5,6 +5,17 @@ description: Add a new map layer from a source dataset in data/raw/ or RAW_DIR (
 
 # Add a layer
 
+> **Layer files changed (design note 04, #115).** A layer is now one file,
+> `pipeline/layers/<layer>.yaml` (schema `pipeline/schema/layer.schema.json`),
+> and your map config is `map.config.yaml`. Where this skill says
+> `<layer>.env`, read the layer file's `source`, `fields` and `processing`
+> (a `profile` preset: `default`, `coverage`, `points` or `raster`);
+> `.style.json`, its `title`, `visible`, `order` and `display` (plain
+> MapLibre style layers, `themes`, `legend`, `popup`, `modal`);
+> `LAYER_CALCULATED` and `.rules.json`, `fields.calculated` (SQLite
+> expressions). `docker compose run --rm pipeline --status` lists any
+> problem in a layer file. This skill is rewritten in #120.
+
 A layer is `pipeline/layers/<name>.env` (input, fields, zooms, tiling) plus
 `pipeline/layers/<name>.style.json` (title, order, style, legend, pop-up).
 Nothing in `web/` changes. Reference: `pipeline/lib/config.sh` (every `.env`

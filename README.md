@@ -82,8 +82,8 @@ language, helps write `.env` and opens the map.
   `src/popup/` pop-up content and number formats, `src/modal/` the click
   modal template and dialog, `src/chart/` the Chart.js charts) and the
   nginx image that serves it along with `data/tiles/`.
-- `map.config.example.json`: a starting point for your own git-ignored
-  `map.config.json` (Your map config, below).
+- `map.config.example.yaml`: a starting point for your own git-ignored
+  `map.config.yaml` (Your map config, below).
 - `data/`: `raw/` for source data, `tiles/` for pipeline output. Neither is
   committed.
 - `docs/`: design notes (`design/`), ADRs (`decisions/`), session handoffs
@@ -264,6 +264,15 @@ closes its pop-up or dialog.
 
 ## Adding a layer
 
+> **Changed in the refactor (design note 04).** A layer is now one file,
+> `pipeline/layers/<layer>.yaml` (`source`, `fields`, `processing` with a
+> `profile` preset, and `display`; schema
+> `pipeline/schema/layer.schema.json`), and your map config is
+> `map.config.yaml` (copy `map.config.example.yaml`; `view`, `basemap`,
+> `layers`, `overrides` of `source` and `processing`, `require`). The
+> `.env`, `.style.json`, `.rules.json` and `map.config.json` files below
+> are gone; this section is rewritten in #120.
+
 A layer is two files in `pipeline/layers/`, and nothing in `web/`: the map
 reads every layer from `data/tiles/manifest.json` at startup (ADR 0007).
 `forest.env` and `forest.style.json` (raster), `protected_areas` (a
@@ -352,12 +361,11 @@ worked examples, and
    (`percent`, `hectares`, `km`, `count`). Design note 02 (Display
    config) has the details. A raster layer uses `"symbology": {"geometry":
    "raster", "color", "opacity", "label"}` (see `forest.style.json`) and
-   has no pop-up. Check display configs (and rules tables) without
-   building:
+   has no pop-up. Check the layer files without building (`invalid`
+   lists each problem):
 
    ```sh
-   docker compose run --rm --entrypoint sh pipeline -c \
-     'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.json'
+   docker compose run --rm pipeline --status
    ```
 
 4. Build it with `docker compose run --rm pipeline <layer>` and reload the
@@ -416,6 +424,15 @@ build of it as `orphan`; the same `--remove` command clears it.
 
 ## Styling a layer
 
+> **Changed in the refactor (design note 04).** A layer is now one file,
+> `pipeline/layers/<layer>.yaml` (`source`, `fields`, `processing` with a
+> `profile` preset, and `display`; schema
+> `pipeline/schema/layer.schema.json`), and your map config is
+> `map.config.yaml` (copy `map.config.example.yaml`; `view`, `basemap`,
+> `layers`, `overrides` of `source` and `processing`, `require`). The
+> `.env`, `.style.json`, `.rules.json` and `map.config.json` files below
+> are gone; this section is rewritten in #120.
+>
 > **Styling never needs a rebuild.** How a layer looks lives in its
 > `pipeline/layers/<layer>.style.json`, not in its tiles. Edit the file,
 > run `docker compose run --rm pipeline --style-only <layer>`, and reload
@@ -453,6 +470,15 @@ file, put a `style` patch for the layer in your `map.config.json` (Your
 map config, below) and run the same `--style-only` command.
 
 ## Your map config
+
+> **Changed in the refactor (design note 04).** A layer is now one file,
+> `pipeline/layers/<layer>.yaml` (`source`, `fields`, `processing` with a
+> `profile` preset, and `display`; schema
+> `pipeline/schema/layer.schema.json`), and your map config is
+> `map.config.yaml` (copy `map.config.example.yaml`; `view`, `basemap`,
+> `layers`, `overrides` of `source` and `processing`, `require`). The
+> `.env`, `.style.json`, `.rules.json` and `map.config.json` files below
+> are gone; this section is rewritten in #120.
 
 The layers in `pipeline/layers/` are shared: changing them means a pull
 request. To change your own map only, write a map config:
@@ -539,10 +565,10 @@ One-off setup (repo admin): Settings, Pages, Source: **GitHub Actions**.
 You also need the GitHub CLI, `gh`, signed in (`gh auth login`) with an
 account that can write to the repo.
 
-The copy is built from the committed layers with `map.config.pages.json`:
+The copy is built from the committed layers with `map.pages.yaml`:
 the raster layers at max zoom 10 instead of 12 (the forest COG goes from
 2.3 GB to roughly a sixteenth) with 8 grey levels instead of 256
-(`LAYER_GREY_LEVELS`, about half the size again), and `protected_areas`
+(`grey_levels`, about half the size again), and `protected_areas`
 from the public CPCAD source with confidential records removed,
 `ProtectedConservedArea_2025.gdb`, instead of the local
 `protected_areas.gdb`. Put that file geodatabase in your `RAW_DIR` folder
@@ -555,7 +581,7 @@ their translucent fills stack and draw darker than in the local map.
 
 ```sh
 # 1. Build the Pages copy into data/pages/ (never data/tiles/; your
-#    map.config.json and MAP_CONFIG are not used). Rasters reuse the
+#    map.config.yaml and MAP_CONFIG are not used). Rasters reuse the
 #    prepared sources in data/work/. --status works here too.
 docker compose run --rm --build pipeline-pages
 docker compose run --rm pipeline-pages --status
@@ -576,7 +602,7 @@ gh run watch $(gh run list --workflow pages.yml --limit 1 --json databaseId --jq
 The site is at <https://ncc-cnc.github.io/erap-map-poc/> once the workflow
 finishes; Pages caches files for up to 10 minutes. The script fails if the
 files total over 1 GB, the Pages limit (it warns over 800 MB): lower a
-layer's `LAYER_MAX_ZOOM` in `map.config.pages.json` and rebuild. To
+layer's `processing.maxzoom` in `map.pages.yaml` and rebuild. To
 redeploy the app with the same data, run `gh workflow run pages.yml --ref
 main` (or Actions, Pages, Run workflow). `scripts/publish-pages.sh --help`
 lists the options (`--no-deploy`, `--tag`, `--repo`).

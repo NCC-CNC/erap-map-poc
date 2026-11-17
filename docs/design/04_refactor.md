@@ -317,3 +317,38 @@ practical:
 - Every converted layer sets an explicit `legend` for now (labels such
   as "No data" or "30 to 100" are not in the expressions); step 4 drops
   those the app derives the same.
+
+## Settled in step 2
+
+- `lib/layerfile.sh` reads every layer file once per run: `jv` against
+  `layer.schema.json` (again after the map config's overrides), then
+  checks a schema cannot make (zooms in order, attribute names unique,
+  style layer and theme ids, a full legend while the app still needs
+  one). A layer with problems is `invalid` in `--status` and fails its
+  build before any data is read; the others still build.
+- Presets: every vector preset keeps the max zoom at full detail
+  (`--simplify-only-low-zooms`, ADR 0013). `default` adds nothing;
+  `coverage` adds `--no-simplification-of-shared-nodes
+  --drop-smallest-as-needed` and generalises every zoom from `minzoom` to
+  `maxzoom - 1`; `points` adds `--drop-rate=1`. `raster` is the GDAL
+  path. There is no way to pass other tippecanoe flags (#122).
+- `source.id` is read into an internal attribute, `_feature_id`, which
+  tippecanoe writes as the feature id and drops from the attributes.
+- Calculated fields are one nested query, each field a level, so a field
+  can use the ones above it. GDAL types a new attribute from its first
+  value; a field whose values are all numbers is written back as numbers
+  when that first value is NULL. A failing expression is found field by
+  field and named in the error.
+- The map config switched to `map.config.yaml` and `map.pages.yaml`
+  (`map.schema.json`) here, as the old JSON format's overrides were the
+  `.env` and `.style.json` settings that went. `require` checks that the
+  source exists. `layers.local/` stays with step 6.
+- Staleness is by hash only: `build_sha256` (effective `source`, `fields`,
+  `processing`) and `display_sha256` (`title`, `visible`, `order`,
+  `display`) in the manifest's provenance, plus the source data's
+  modification time. A build from before layer files has no hash and is
+  stale.
+- Until step 4, the display block keeps the old resolver's shape for the
+  app: `defaultVisible`, the first theme's `paint` filled from
+  `display.layers`, `defaultTheme` the first theme. The web tests' copy of
+  the old display schema is `web/src/test/layer-style.schema.json`.

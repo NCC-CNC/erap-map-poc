@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Raster layers (LAYER_TYPE=raster, ADR 0008 and 0010): a binary raster (0,
+# Raster layers (the raster profile, ADR 0008 and 0010): a binary raster (0,
 # 1 and nodata, one band) as one Cloud Optimized GeoTIFF (COG) in Web
 # Mercator, <layer>.cog.tif, whose pixel value is the share of it covered by
 # 1 cells as a grey level (0 none, 255 all). nginx serves it with range
 # requests like the .pmtiles archives; the web map reads it through the
 # `cog://` protocol (@geomatico/maplibre-cog-protocol) as a `raster-dem`
 # source and colours it with a `color-relief` layer, so the colour and
-# opacity live in the style (from <layer>.style.json) and changing them
+# opacity live in the style (from the layer file's display) and changing them
 # needs no rebuild. Display only: no pop-up. Categorical, continuous and
 # multiband rasters are not supported.
 #
@@ -20,7 +20,7 @@
 #      warp window and took over 2 hours for a Canada-wide 30 m file. The
 #      prepared file is kept in the work dir (PIPELINE_WORK_DIR/raster),
 #      keyed by the source's path, size and modification time and the
-#      layer's LAYER_SOURCE_SRS and LAYER_NODATA, so a rebuild (another zoom
+#      layer's source.srs and source.nodata, so a rebuild (another zoom
 #      range, a code change) skips it. See raster_source.
 #   2. warp: gdalwarp the prepared file to EPSG:3857 at the max zoom's
 #      resolution, multithreaded (-multi and NUM_THREADS; a tiled input
@@ -39,7 +39,7 @@
 #   4. COG: gdal_translate -of COG copies the raster and its overviews into
 #      the COG layout (256 px blocks, ZSTD with a predictor, empty blocks
 #      not written), checked (raster_check_cog), then moved into place.
-#      With fewer than 256 grey levels (LAYER_GREY_LEVELS), the copy reads
+#      With fewer than 256 grey levels (processing.grey_levels), the copy reads
 #      the raster through a VRT that maps each level, the max zoom and every
 #      overview, to the nearest of that many (raster_grey_vrt): the
 #      overviews are averaged from the full shares first, and only the copy
@@ -49,7 +49,7 @@
 #      0, so pixels shown past the max zoom are solid, on or off, not
 #      semi-transparent squares. Thin lines go at the max zoom only. The
 #      overviews are still the ones averaged from the full shares in step
-#      3, reduced by LAYER_GREY_LEVELS as above. The copy reads a VRT whose
+#      3, reduced by processing.grey_levels as above. The copy reads a VRT whose
 #      base has a threshold LUT and whose overviews are the raster's own
 #      levels, each through its own VRT (raster_majority_vrt): no extra
 #      file and no extra pass over the data.
@@ -100,7 +100,7 @@ raster_resampling() {
 # raster_ground_pixel DATASET [SOURCE_SRS]: print the ground size in metres
 # of DATASET's pixel (the larger side) and the latitude of its extent's
 # centre, as `METRES LATITUDE`. SOURCE_SRS, if given, is used instead of
-# the CRS the dataset declares (as LAYER_SOURCE_SRS). The pixel size is in
+# the CRS the dataset declares (as source.srs). The pixel size is in
 # the CRS's units: a linear unit (metre, foot, ...) is converted to metres;
 # an angular one (a geographic CRS) on the WGS 84 equatorial radius, east
 # to west at the centre latitude (x cos(LATITUDE)) and north to south as
@@ -189,7 +189,7 @@ raster_source() {
     key=""
   fi
 
-  # A ComplexSource with the source's nodata (or LAYER_NODATA) under a VRT
+  # A ComplexSource with the source's nodata (or source.nodata) under a VRT
   # band with none: nodata cells are not written, so they read as 0.
   local vrt="${scratch}/${stem}.vrt" opts=(-vrtnodata None)
   [[ -z $src_srs ]] || opts+=(-a_srs "$src_srs")
@@ -424,7 +424,7 @@ raster_max_zoom_values() {
 # overview_count, resampling, max_zoom_values, grey_levels, zooms: [{zoom,
 # width, height}]}, one zoom per level from the max zoom down. RESAMPLING
 # is the warp's method (near or average); max_zoom_values follows from it
-# (raster_max_zoom_values); GREY_LEVELS is LAYER_GREY_LEVELS.
+# (raster_max_zoom_values); GREY_LEVELS is processing.grey_levels.
 raster_report() {
   local cog=$1 minzoom=$2 maxzoom=$3 resampling=$4 grey=$5
   gdalinfo -json "$cog" | jq -c --argjson max "$maxzoom" --argjson min "$minzoom" \
@@ -461,7 +461,7 @@ raster_header() {
 # Build OUT_DIR/LAYER.cog.tif from INPUT (see the top of this file), write
 # the build report (raster_report) to REPORT and the manifest's archive
 # fields (raster_header) to HEADER. GREY_LEVELS (2 to 256,
-# LAYER_GREY_LEVELS) is how many grey levels the COG holds
+# processing.grey_levels) is how many grey levels the COG holds
 # (raster_grey_vrt), in the overviews only when the max zoom is binary by
 # majority (raster_majority_vrt). CACHE_DIR holds prepared sources
 # (raster_source); empty or absent, nothing is cached.

@@ -208,17 +208,16 @@ describe('tabs', () => {
   });
 });
 
-describe('the ecoregion example modal with calculated fields and rule attributes', () => {
+describe('the ecoregion example modal with calculated fields', () => {
   const example = ecoregionsExample.modal;
   const section = (properties: Record<string, unknown>, heading: string) =>
     buildModalContent(example, { properties }, 'Ecoregions').sections.find((s) => s.heading === heading);
   const reason = 'Area-based conservation - 30x30 goals: recommended because current protection is less than 30%';
 
   it('lists a recommended action with its reason', () => {
-    expect(
-      section({ action_area_based_30x30: 1, action_area_based_30x30_reason: reason }, 'Action recommendations')
-        ?.blocks,
-    ).toEqual([{ type: 'list', items: [reason], empty: 'No actions recommended by the rules so far.' }]);
+    expect(section({ action_area_based_30x30: 1 }, 'Action recommendations')?.blocks).toEqual([
+      { type: 'list', items: [reason], empty: 'No actions recommended by the rules so far.' },
+    ]);
   });
 
   it('says none is recommended when the rule is false, and hides the section without rule attributes', () => {
@@ -238,8 +237,7 @@ describe('the ecoregion example modal with calculated fields and rule attributes
   });
 
   it('has a colour theme on the action count', () => {
-    expect(ecoregionsExample.symbology.themes.map((t) => t.color.attribute)).toContain(
-      'actions_area_based_conservation_count',
-    );
+    const theme = ecoregionsExample.themes.find((t) => t.id === 'area_based_actions');
+    expect(JSON.stringify(theme?.paint)).toContain('actions_area_based_conservation_count');
   });
 });

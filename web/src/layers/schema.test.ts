@@ -1,7 +1,7 @@
 /**
  * Keeps the app's types and runtime checks in step with the shared JSON
- * Schema, `pipeline/schema/layer-style.schema.json`, which the pipeline
- * validates every display config against.
+ * Schema, `web/src/test/layer-style.schema.json`, the shape of the
+ * display blocks the pipeline writes (until step 4 of design note 04).
  */
 import Ajv2020 from 'ajv/dist/2020';
 import { describe, expect, it } from 'vitest';
@@ -28,7 +28,8 @@ import type {
   PopupStat,
 } from './types';
 
-// Same options as the pipeline (pipeline/style/display.mjs).
+// Same options as the pipeline used (its Node display tool, removed in
+// design note 04 step 2).
 const ajv = new Ajv2020({ allErrors: true, strict: true, strictRequired: false });
 ajv.addSchema(layerStyleSchema);
 const schemaDisplay = ajv.getSchema(`${layerStyleSchema.$id}#/$defs/display`)!;

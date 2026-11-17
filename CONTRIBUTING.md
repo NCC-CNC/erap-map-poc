@@ -26,7 +26,7 @@ disk, `.env`, `RAW_DIR`, ports, line endings) and changes nothing. By hand:
 ```sh
 git clone https://github.com/NCC-CNC/erap-map-poc.git && cd erap-map-poc
 cp .env.example .env                      # optional: ports, Linux UIDs, RAW_DIR
-cp map.config.example.json map.config.json   # optional: your own map (README)
+cp map.config.example.yaml map.config.yaml   # optional: your own map
 
 # Demo tiles into data/tiles/ from the synthetic test layers (no data needed)
 docker compose run --rm --build -e PIPELINE_LAYERS_DIR=/opt/pipeline/tests/layers pipeline
@@ -46,27 +46,23 @@ shell) to the folder holding it, which compose mounts read-only at
 
 ### Adding or changing a layer
 
-A layer is `pipeline/layers/<layer>.env` (input and tiling) plus
-`pipeline/layers/<layer>.style.json` (title, draw order, style, legend,
-pop-up), described in `docs/design/02_data_layers_and_popups.md`, ADR 0007
-and, for binary raster layers (`LAYER_TYPE=raster`, one COG each), ADR 0008
-and 0010, with a
-step-by-step guide in `README.md` (Adding a layer). Nothing in `web/`
-changes: the map reads every layer from `data/tiles/manifest.json`. Rerun
-the pipeline for that layer and reload the page; compose mounts
-`pipeline/layers/`, so neither image needs a rebuild. A change to
-`<layer>.style.json` only (colours, legend, pop-up, title, order,
-visibility, for vector and raster layers) needs no re-tiling:
+A layer is one file, `pipeline/layers/<layer>.yaml` (source, fields,
+processing preset and display; schema `pipeline/schema/layer.schema.json`,
+design note 04). Nothing in `web/` changes: the map reads every layer from
+`data/tiles/manifest.json`. Rerun the pipeline for that layer and reload
+the page; compose mounts `pipeline/layers/`, so neither image needs a
+rebuild. A change to the layer file's `display`, `title`, `visible` or
+`order` only (for vector and raster layers) needs no re-tiling:
 `docker compose run --rm pipeline --style-only <layer>` updates the
 manifest entry and `style.json` in seconds. A change for your own map
-only (fewer layers, your copy of the data, other colours, a layer only
-you have, the opening view) goes in your git-ignored `map.config.json`
-instead, with no pull request: see `README.md` (Your map config) and ADR
-0009. Check display configs without building:
+only (fewer layers, your copy of the data, a lower max zoom, the opening
+view) goes in your git-ignored `map.config.yaml` instead (copy
+`map.config.example.yaml`; schema `pipeline/schema/map.schema.json`),
+with no pull request. Check the layer files without building (every
+problem is listed, `invalid` with the reason):
 
 ```sh
-docker compose run --rm --entrypoint sh pipeline -c \
-  'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/*.json'
+docker compose run --rm pipeline --status
 ```
 
 Helpers for checking a layer by hand (Claude Code's skills use the same
@@ -75,7 +71,7 @@ ones, see below):
 ```sh
 # Summarise a source dataset (path relative to data/raw/; --json for more)
 docker compose run --rm --build --entrypoint inspect.sh pipeline my/data.shp
-# What is built and what is stale; apply a .style.json change without
+# What is built and what is stale; apply a display change without
 # re-tiling; remove a layer's build (README.md)
 docker compose run --rm pipeline --status
 docker compose run --rm pipeline --style-only mylayer
@@ -91,7 +87,7 @@ For maintainers, after checking the data may be public (#13). README.md
 (GitHub Pages copy) has the one-off setup; ADR 0014 the design:
 
 ```sh
-docker compose run --rm --build pipeline-pages   # data/pages/, map.config.pages.json
+docker compose run --rm --build pipeline-pages   # data/pages/, map.pages.yaml
 docker compose --profile pages up -d web-pages   # look at it on :8081 (WEB_PAGES_PORT)
 scripts/publish-pages.sh --dry-run               # checks only, changes nothing
 scripts/publish-pages.sh                         # upload to pages-data, deploy
@@ -133,13 +129,12 @@ same tools at the same versions as CI, all in Docker:
 export MSYS_NO_PATHCONV=1
 repo=$(pwd -W 2>/dev/null || pwd)   # Windows path in Git Bash, else $PWD
 
-# pipeline job: shellcheck, hadolint, bats (160 tests, including the display
-# tool's node:test unit tests; 60 more for scripts/: setup.sh, screenshot.sh
-# and publish-pages.sh, with stub docker and gh), the map configs against
-# their schema, runtime image
+# pipeline job: shellcheck, hadolint, bats (about 150 tests; 60 more for
+# scripts/: setup.sh, screenshot.sh and publish-pages.sh, with stub docker
+# and gh), the map configs against their schema, runtime image
 docker run --rm -v "$repo":/mnt -w /mnt koalaman/shellcheck:v0.11.0 -x \
-  pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \
-  pipeline/tests/layers/*.env pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh \
+  pipeline/bin/*.sh pipeline/lib/*.sh \
+  pipeline/tests/fixtures/*.sh pipeline/tests/*.bats pipeline/tests/*.bash scripts/screenshot.sh \
   scripts/check-tiles-cache.sh scripts/setup.sh scripts/publish-pages.sh scripts/tests/*.bats
 docker run --rm -v "$repo":/mnt -w /mnt hadolint/hadolint:v2.15.1 \
   hadolint --config .hadolint.yaml pipeline/Dockerfile web/Dockerfile

@@ -1,6 +1,6 @@
 ---
 name: run-checks
-description: Run the CI gates locally in Docker before pushing - shellcheck, hadolint, the pipeline bats tests, the display config check, web lint, typecheck, tests and build, npm audit, compose config, actionlint, markdownlint and the em dash check - and report what failed and how to fix it. Use when asked to run the checks, tests, lint or CI locally, or whether a change is ready to push.
+description: Run the CI gates locally in Docker before pushing - shellcheck, hadolint, the pipeline bats tests, the map config check, web lint, typecheck, tests and build, npm audit, compose config, actionlint, markdownlint and the em dash check - and report what failed and how to fix it. Use when asked to run the checks, tests, lint or CI locally, or whether a change is ready to push.
 ---
 
 # Run the checks
@@ -17,12 +17,14 @@ From `git status` and `git diff --name-only main...`:
 - Only `docs/` or `*.md` changed: the repo-hygiene job only (that is all
   CI runs).
 - `pipeline/`, `scripts/*.sh` or a Dockerfile: the pipeline job.
-- `web/`, or `pipeline/schema/`, `pipeline/tests/fixtures/` or
-  `pipeline/layers/ecoregions.style.json` (the web tests read them): the
-  web job.
+- `web/`, or `pipeline/schema/` or `pipeline/tests/fixtures/` (the web
+  tests read them): the web job. A change to
+  `pipeline/layers/ecoregions.yaml` also changes
+  `pipeline/tests/fixtures/ecoregions_display.json` (the pipeline tests
+  check they agree).
 - `docker-compose.yml` or `.env.example`: the compose job.
-- `pipeline/layers/*.style.json` or `*.rules.json`: also the display config check from
-  `CONTRIBUTING.md` (Adding or changing a layer).
+- `pipeline/layers/*.yaml`: also `docker compose run --rm pipeline
+  --status`, which lists any problem in a layer file.
 
 When unsure, or before marking a PR ready, run all four jobs.
 

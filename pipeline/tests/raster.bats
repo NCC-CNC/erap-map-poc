@@ -1,16 +1,17 @@
 #!/usr/bin/env bats
 # shellcheck source-path=SCRIPTDIR/..
-# Raster layer tests (LAYER_TYPE=raster, lib/raster.sh, ADR 0008 and 0010)
+# Raster layer tests (the raster profile, lib/raster.sh, ADR 0008 and 0010)
 # on synthetic binary GeoTIFFs made at test time by fixtures/make_raster.sh
 # (no committed .tif). Run in the test image with the other bats files:
 #   docker build --target test -t erap-pipeline-test pipeline
 #   docker run --rm erap-pipeline-test
 
+load helpers
+
 setup() {
   PIPELINE_ROOT=$(cd "${BATS_TEST_DIRNAME}/.." && pwd)
   RUN="${PIPELINE_ROOT}/bin/run.sh"
   MAKE="${PIPELINE_ROOT}/tests/fixtures/make_raster.sh"
-  TOOL="${PIPELINE_ROOT}/style/cli.mjs"
   EXPECTED="${PIPELINE_ROOT}/tests/fixtures/expected_raster_display.json"
   export PIPELINE_INPUT_DIR="${BATS_TEST_TMPDIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
@@ -22,15 +23,16 @@ setup() {
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR"
 }
 
-# raster_layer NAME KIND [SETTING...]: make a KIND raster (make_raster.sh)
-# and a raster layer config for it, z3 to z8, with the test display config.
+# raster_layer NAME KIND [EXPR...]: make a KIND raster (make_raster.sh) and
+# a raster layer file for it (fixtures/raster.yaml, z3 to z8), changed by
+# any yq EXPRs.
 raster_layer() {
-  local name=$1 kind=$2
+  local name=$1 kind=$2 file
   shift 2
   "$MAKE" "$kind" "${PIPELINE_INPUT_DIR}/${name}.tif"
-  printf '%s\n' 'LAYER_TYPE=raster' "LAYER_INPUT=${name}.tif" \
-    'LAYER_MIN_ZOOM=3' 'LAYER_MAX_ZOOM=8' "$@" >"${PIPELINE_LAYERS_DIR}/${name}.env"
-  cp "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" "${PIPELINE_LAYERS_DIR}/${name}.style.json"
+  file="${PIPELINE_LAYERS_DIR}/${name}.yaml"
+  cp "${PIPELINE_ROOT}/tests/fixtures/raster.yaml" "$file"
+  set_layer "$file" ".source.path = \"${name}.tif\"" "$@"
 }
 
 # level_opts LEVEL: the open option for COG level LEVEL (0 the full
@@ -68,11 +70,6 @@ level_sum() {
   level_values "$1" "$2" | awk '{ s += $1 } END { printf "%d\n", s }'
 }
 
-assert_no_temp_files() {
-  run find "$PIPELINE_OUTPUT_DIR" -name '*.tmp*'
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
 
 @test "the raster fixture is a binary Byte raster in the strip layout" {
   "$MAKE" byte "${BATS_TEST_TMPDIR}/b.tif"
@@ -174,7 +171,7 @@ assert_no_temp_files() {
   ((float_sum > 0 && float_sum < byte_sum))
 }
 
-@test "LAYER_NODATA sets the nodata of a source that does not declare it" {
+@test "source.nodata sets the nodata of a source that does not declare it" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
@@ -187,7 +184,7 @@ assert_no_temp_files() {
   [ "$status" -eq 0 ]
   (($(level_sum "$COG" 5) > declared))
 
-  echo 'LAYER_NODATA=255' >>"${PIPELINE_LAYERS_DIR}/cover.env"
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.source.nodata = 255'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [ "$(level_sum "$COG" 5)" -eq "$declared" ]
@@ -204,7 +201,7 @@ assert_no_temp_files() {
 }
 
 @test "building one raster layer keeps the vector layer's entry; style.json has both" {
-  cp "${PIPELINE_ROOT}"/tests/layers/sample.env "${PIPELINE_ROOT}"/tests/layers/sample.style.json "$PIPELINE_LAYERS_DIR"
+  cp "${PIPELINE_ROOT}/tests/layers/sample.yaml" "$PIPELINE_LAYERS_DIR"
   run "$RUN" sample
   [ "$status" -eq 0 ]
   local before
@@ -236,8 +233,8 @@ assert_no_temp_files() {
   local before
   before=$(level_sum "$COG" 0)
 
-  jq '.symbology.color = "#ff0000"' "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" \
-    >"${PIPELINE_LAYERS_DIR}/cover.style.json"
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" \
+    '.display.layers[0].paint["color-relief-color"][6] = "rgba(255, 0, 0, 1)"'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [ "$(level_sum "$COG" 0)" -eq "$before" ]
@@ -245,69 +242,56 @@ assert_no_temp_files() {
   [ "$output" = "255 rgba(255, 0, 0, 1)" ]
 }
 
-@test "a bad raster display config fails before tiling and keeps the previous COG" {
+@test "a bad raster layer file fails before preparing and keeps the previous COG" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
   local before
   before=$(sha256sum "$COG")
 
-  # A vector shorthand on a raster layer.
-  cp "${PIPELINE_ROOT}/tests/fixtures/minimal.style.json" "${PIPELINE_LAYERS_DIR}/cover.style.json"
+  # A pop-up on a raster layer.
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.display.popup = {"title": {"attribute": "x"}, "stats": []}'
   run "$RUN" cover
   [ "$status" -eq 1 ]
-  [[ $output == *'needs "symbology" with "geometry": "raster"'* ]]
+  [[ $output == *"cover.yaml: at '/display/popup'"* ]]
   [[ $output != *"preparing"* ]]
 
-  # A pop-up on a raster layer.
-  jq '.popup = {title: {attribute: "x"}, stats: []}' "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" \
-    >"${PIPELINE_LAYERS_DIR}/cover.style.json"
+  # Vector settings on a raster layer.
+  raster_layer cover byte '.fields.keep = ["a"]' '.source.id = "id"'
   run "$RUN" cover
   [ "$status" -eq 1 ]
-  [[ $output == *"raster layers are display only"* ]]
-
-  # A colour that is not #rrggbb.
-  jq '.symbology.color = "green"' "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" \
-    >"${PIPELINE_LAYERS_DIR}/cover.style.json"
-  run "$RUN" cover
-  [ "$status" -eq 1 ]
-  [[ $output == *"/symbology/color must match pattern"* ]]
+  [[ $output == *"cover.yaml: at '/fields'"* ]]
+  [[ $output == *"cover.yaml: at '/source/id'"* ]]
 
   [ "$(sha256sum "$COG")" = "$before" ]
   assert_no_temp_files
 }
 
-@test "the raster shorthand on a vector layer is rejected" {
-  cp "${PIPELINE_ROOT}/tests/layers/sample.env" "$PIPELINE_LAYERS_DIR"
-  cp "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" "${PIPELINE_LAYERS_DIR}/sample.style.json"
-  run "$RUN" sample
+@test "raster layer checks: max zoom limit, nodata" {
+  raster_layer cover byte '.processing.maxzoom = 15'
+  run "$RUN" cover
   [ "$status" -eq 1 ]
-  [[ $output == *'"geometry": "raster" is for raster layers only'* ]]
+  [[ $output == *"cover.yaml: at '/processing/maxzoom'"* ]]
+
+  raster_layer cover byte '.source.nodata = "none"'
+  run "$RUN" cover
+  [ "$status" -eq 1 ]
+  [[ $output == *"cover.yaml: at '/source/nodata'"* ]]
+
+  raster_layer cover byte '.processing.minzoom = 9'
+  run "$RUN" cover
+  [ "$status" -eq 1 ]
+  [[ $output == *"processing: minzoom (9) is above maxzoom (8)"* ]]
 }
 
-@test "raster config checks: LAYER_TYPE, max zoom limit, LAYER_NODATA" {
-  raster_layer cover byte 'LAYER_TYPE=grid'
+@test "--style-only of a layer built as raster but now vector is an error" {
+  raster_layer cover byte
   run "$RUN" cover
-  [ "$status" -eq 1 ]
-  [[ $output == *"LAYER_TYPE must be vector or raster"* ]]
-
-  raster_layer cover byte 'LAYER_MAX_ZOOM=15'
-  run "$RUN" cover
-  [ "$status" -eq 1 ]
-  [[ $output == *"LAYER_MAX_ZOOM must be at most 14"* ]]
-
-  raster_layer cover byte 'LAYER_NODATA=none'
-  run "$RUN" cover
-  [ "$status" -eq 1 ]
-  [[ $output == *"LAYER_NODATA must be a number or nan"* ]]
-}
-
-@test "the repo's raster layer configs pass the pre-check" {
-  run node "$TOOL" check "${PIPELINE_ROOT}/layers/forest.style.json" \
-    "${PIPELINE_ROOT}/layers/agriculture.style.json"
   [ "$status" -eq 0 ]
-  [[ $output == *"forest.style.json: ok"* ]]
-  [[ $output == *"agriculture.style.json: ok"* ]]
+  layer_file "${PIPELINE_LAYERS_DIR}/cover.yaml"
+  run "$RUN" --style-only cover
+  [ "$status" -eq 1 ]
+  [[ $output == *"built as a raster layer, but cover.yaml is a vector layer now: rebuild it"* ]]
 }
 
 @test "a raster built as PNG tiles before COGs is stale, and a rebuild replaces it" {
@@ -396,7 +380,7 @@ assert_no_temp_files() {
   sum=$(level_sum "$COG" 0)
 
   # Another zoom range: the same prepared source.
-  sed -i 's/^LAYER_MAX_ZOOM=8$/LAYER_MAX_ZOOM=7/' "${PIPELINE_LAYERS_DIR}/cover.env"
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.processing.maxzoom = 7'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output == *"prepared source cached"* ]]
@@ -404,14 +388,14 @@ assert_no_temp_files() {
   [ "$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')" = "$prepared" ]
   [ "$(stat -c %y "$prepared")" = "$before" ]
 
-  sed -i 's/^LAYER_MAX_ZOOM=7$/LAYER_MAX_ZOOM=8/' "${PIPELINE_LAYERS_DIR}/cover.env"
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.processing.maxzoom = 8'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [ "$(jq -c '.layers[0].zooms' "$MANIFEST")" = "$levels" ]
   [ "$(level_sum "$COG" 0)" -eq "$sum" ]
 }
 
-@test "prepare: a changed source or LAYER_NODATA is prepared again, replacing the old file" {
+@test "prepare: a changed source or source.nodata is prepared again, replacing the old file" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
@@ -428,7 +412,7 @@ assert_no_temp_files() {
   [ -n "$second" ] && [ "$second" != "$first" ]
   [ "$(find "${PIPELINE_WORK_DIR}/raster" -type f | wc -l)" -eq 2 ] # .tif and .json
 
-  echo 'LAYER_NODATA=255' >>"${PIPELINE_LAYERS_DIR}/cover.env"
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.source.nodata = 255'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output == *"preparing"* ]]
@@ -512,7 +496,7 @@ raster_fn() {
   read -r size lat <<<"$output"
   awk -v s="$size" -v l="$lat" 'BEGIN { exit !(s > 1110 && s < 1115 && l > 45 && l < 60) }'
 
-  # No CRS in the file: the one given (LAYER_SOURCE_SRS) is used.
+  # No CRS in the file: the one given (source.srs) is used.
   local crs
   crs=$(gdalsrsinfo -o proj4 "${BATS_TEST_TMPDIR}/b.tif")
   cp "${BATS_TEST_TMPDIR}/b.tif" "${BATS_TEST_TMPDIR}/n.tif"
@@ -536,7 +520,7 @@ raster_fn() {
   overview=$(level_sum "$COG" 3)
 
   # z6 is about 1500 m on the ground, coarser than the 1 km source.
-  sed -i 's/^LAYER_MAX_ZOOM=8$/LAYER_MAX_ZOOM=6/' "${PIPELINE_LAYERS_DIR}/cover.env"
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.processing.maxzoom = 6'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output == *"resampling average"* ]]
@@ -565,7 +549,7 @@ reference_warp() {
 }
 
 @test "majority: 255 where the averaged share is at least 128; the overviews are the full averaged shares" {
-  raster_layer cover byte 'LAYER_MAX_ZOOM=6'
+  raster_layer cover byte '.processing.maxzoom = 6'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   run jq -e '.metadata.IMAGE_STRUCTURE.LAYOUT == "COG" and (.bands[0] | .type == "Byte"
@@ -605,22 +589,22 @@ reference_warp() {
   [ "$(sha256sum <"${BATS_TEST_TMPDIR}/ref.cog.tif")" = "$(sha256sum <"$COG")" ]
 }
 
-# The 8 grey levels of LAYER_GREY_LEVELS=8: round(k * 255 / 7), k = 0 to 7.
+# The 8 grey levels of grey_levels 8: round(k * 255 / 7), k = 0 to 7.
 GREY8="0 36 73 109 146 182 219 255"
 
-@test "LAYER_GREY_LEVELS must be an integer from 2 to 256" {
+@test "grey_levels must be an integer from 2 to 256" {
   local bad
-  for bad in 1 257 abc 08 ''; do
-    raster_layer cover byte "LAYER_GREY_LEVELS=${bad}"
+  for bad in 1 257 '"abc"' 2.5 '""'; do
+    raster_layer cover byte ".processing.grey_levels = ${bad}"
     run "$RUN" cover
     [ "$status" -eq 1 ]
-    [[ $output == *"LAYER_GREY_LEVELS must be an integer from 2 to 256"* ]]
+    [[ $output == *"cover.yaml: at '/processing/grey_levels'"* ]]
   done
   [ ! -e "$COG" ]
 }
 
 @test "the default of 256 grey levels adds no step and gives the same COG" {
-  raster_layer cover byte 'LAYER_MAX_ZOOM=6'
+  raster_layer cover byte '.processing.maxzoom = 6'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output != *"grey levels"* ]]
@@ -628,22 +612,22 @@ GREY8="0 36 73 109 146 182 219 255"
   local before
   before=$(sha256sum <"$COG")
 
-  echo 'LAYER_GREY_LEVELS=256' >>"${PIPELINE_LAYERS_DIR}/cover.env"
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.processing.grey_levels = 256'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output != *"grey levels"* ]]
   [ "$(sha256sum <"$COG")" = "$before" ]
 }
 
-@test "LAYER_GREY_LEVELS=8: every overview holds only 8 values, from the full shares, and cover never becomes 0" {
+@test "grey_levels 8: every overview holds only 8 values, from the full shares, and cover never becomes 0" {
   # z6 averages at the max zoom (coarser than the 1 km source), so the max
   # zoom is binary by majority and the 8 levels are in the overviews.
-  raster_layer cover byte 'LAYER_MAX_ZOOM=6'
+  raster_layer cover byte '.processing.maxzoom = 6'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   cp "$COG" "${BATS_TEST_TMPDIR}/full.cog.tif"
 
-  echo 'LAYER_GREY_LEVELS=8' >>"${PIPELINE_LAYERS_DIR}/cover.env"
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.processing.grey_levels = 8'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output == *"8 grey levels"* ]]
