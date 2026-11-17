@@ -552,10 +552,13 @@ not built by default (#17).
   "Colour by" list:
   - Protected (%), the default: stepped, under 10 `#deebf7`, 10 to 17
     `#9ecae1`, 17 to 30 `#4292c6`, 30 and over `#08519c`.
-  - Where To Work (%): a gradient `#f7fbff` to `#6baed6` to `#08306b`
-    from 0 to the data's maximum.
-  - Where To Work (total area, ha): a gradient on `wtw_area_ha`, 0,
-    1,000,000 and 2,500,000 ha.
+  - Where To Work (%): stepped in the same four blues, under 5, 5 to
+    20, 20 to 40, 40 and over (about 69, 36, 27 and 17 ecoregions).
+  - Where To Work (total area, ha): stepped on `wtw_area_ha` in the same
+    four blues, under 100,000, 100,000 to 500,000, 500,000 to 1,000,000,
+    1,000,000 and over (58, 60, 22 and 9 ecoregions).
+  - Every theme but the action counts is stepped groups like Protected,
+    not a continuous gradient, so a colour reads as a range.
   - Action recommendations: area-based conservation: stepped on
     `actions_area_based_conservation_count`, none, 1, 2 or more.
   - Each with grey `#bdbdbd` "No data" for a missing value. Title
@@ -571,8 +574,12 @@ not built by default (#17).
   3. Direct threats: a description, then forestry, agriculture, transport
      (high and low), energy and mining, and urban and built-up footprint
      (%).
-  4. Opportunities: a description and a pie of unprotected intact and
-     modified land (the calculated fields).
+  4. Opportunities: a description and a pie of the whole ecoregion:
+     protected (`protected_pcnt`, grey), and unprotected intact and
+     modified land (the calculated fields), so the slices add up to 100%.
+     The Habitat and Direct threats descriptions say why their values
+     need not add up to 100% (habitats overlap and do not cover all
+     land; threat footprints overlap).
   5. Action recommendations: an introduction, then each recommended
      action with its reason, or "No actions recommended by the rules so
      far."
@@ -814,7 +821,7 @@ Example, from the ecoregion layer (`pipeline/layers/ecoregions.env`):
 ```sh
 LAYER_FIELDS+=(protected_intact_pcnt protected_modified_pcnt)
 # Opportunities pie: intact and modified land outside protected areas, as
-# % of the ecoregion (the pie shows them as shares of unprotected land).
+# % of the ecoregion (the pie adds protected_pcnt, so it is the whole ecoregion).
 LAYER_CALCULATED=(
   'unprotected_intact_pcnt=round(intact_pcnt - protected_intact_pcnt, 2)'
   'unprotected_modified_pcnt=round(modified_pcnt - protected_modified_pcnt, 2)'
@@ -1334,7 +1341,7 @@ goes beyond the PoC or the data is shared outside the team.
   and the outline are defaults until confirmed against the current ERAP
   app.
 - Where To Work (total area) theme: uses `wtw_area_ha` from the data, on
-  a gradient to 2,500,000 ha; confirm that this column is the total area
+  four groups up to 2,500,000 ha; confirm that this column is the total area
   meant in #14.
 - Landscape conservation count theme (#14): left out until the rules
   table has a landscape conservation action (the count is 0 for every
