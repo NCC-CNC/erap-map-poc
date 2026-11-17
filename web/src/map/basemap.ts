@@ -16,3 +16,13 @@ export const BASEMAP_STYLES: Readonly<Record<BasemapTheme, string>> = {
   light: 'https://tiles.openfreemap.org/styles/positron',
   dark: 'https://tiles.openfreemap.org/styles/dark',
 };
+
+/**
+ * Each style's land colour (its `background` layer), which the data layers
+ * are drawn over. Legend swatches are drawn on it too, so that a
+ * semi-transparent swatch looks as its layer does on the map.
+ */
+export const BASEMAP_GROUND: Readonly<Record<BasemapTheme, string>> = {
+  light: 'rgb(242, 243, 240)',
+  dark: 'rgb(12, 12, 12)',
+};
