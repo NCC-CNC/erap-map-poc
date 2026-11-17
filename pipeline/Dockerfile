@@ -71,7 +71,7 @@ RUN git clone --depth 1 --branch "v${BATS_VERSION}" \
 # ---------------------------------------------------------------------------
 # The display config tool's packages (ajv, the MapLibre style spec), from
 # its committed lockfile. Plain JavaScript, so they run on the GDAL base.
-FROM node:26.13.0-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68 AS style
+FROM node:26.13.1-bookworm-slim@sha256:5df79989ed685e09f0a98019db4cebfb22fb9df1a53c0161664a011f7ff6b0f1 AS style
 WORKDIR /opt/pipeline/style
 COPY style/package.json style/package-lock.json style/.npmrc ./
 RUN npm ci --omit=dev --no-audit --no-fund
