@@ -1,14 +1,14 @@
 name: CI
 
-# PRs only: with strict branch protection every PR is tested against current
-# main before it merges, so a run on push to main would test the same code
-# again. If you do not use strict protection, add this back under `on:` so a
+# PRs into main or dev (the refactor integration branch) only: with strict
+# branch protection every PR is tested against its current base before it
+# merges, so a run on push would test the same code again. If you do not use strict protection, add this back under `on:` so a
 # fresh repo gets a first run:
 #   push:
 #     branches: [main]
 on:
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 # Cancel superseded runs for the same ref.
 concurrency:
