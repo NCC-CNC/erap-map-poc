@@ -92,6 +92,7 @@ For maintainers, after checking the data may be public (#13). README.md
 
 ```sh
 docker compose run --rm --build pipeline-pages   # data/pages/, map.config.pages.json
+docker compose --profile pages up -d web-pages   # look at it on :8081 (WEB_PAGES_PORT)
 scripts/publish-pages.sh --dry-run               # checks only, changes nothing
 scripts/publish-pages.sh                         # upload to pages-data, deploy
 ```
@@ -154,7 +155,7 @@ docker compose build web
 
 # compose job
 docker compose config -q
-docker compose --profile pipeline --profile dev config -q
+docker compose --profile pipeline --profile dev --profile pages config -q
 
 # repo-hygiene job: actionlint, markdownlint, no em dashes
 docker run --rm -v "$repo":/repo -w /repo rhysd/actionlint:1.7.7 -color

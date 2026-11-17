@@ -6,6 +6,7 @@
 #   docker compose run --rm pipeline-pages         the GitHub Pages copy, data/pages/
 #   docker compose up -d web                       map at http://localhost:8080
 #   docker compose --profile dev up web-dev        Vite dev server on :5173
+#   docker compose --profile pages up -d web-pages the Pages copy (data/pages/) on :8081
 #
 # Variables come from the shell or the git-ignored .env (see .env.example);
 # every one has a default, so .env is optional.
@@ -14,7 +15,7 @@ name: erap-map
 
 services:
   # nginx serving the built app and the pipeline output (web/Dockerfile).
-  web:
+  web: &web
     build:
       context: ./web
     image: natureconservancy/erap-map-web
@@ -33,6 +34,18 @@ services:
       start_period: 10s
       retries: 3
     restart: unless-stopped
+
+  # The GitHub Pages copy in data/pages/ (ADR 0014), served like `web` on
+  # its own port, to check a pipeline-pages build before publishing it or
+  # to run it next to the full local map. Same image and settings as `web`
+  # (the YAML merge replaces ports and volumes whole).
+  web-pages:
+    <<: *web
+    profiles: [pages]
+    ports:
+      - "${WEB_PAGES_PORT:-8081}:8080"
+    volumes:
+      - ./data/pages:/srv/tiles:ro
 
   # Tile builder, run on demand: `docker compose run --rm pipeline [layer ...]`.
   pipeline:

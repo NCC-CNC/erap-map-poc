@@ -112,9 +112,11 @@ block; keep it in step with this section.
 - GitHub Pages copy (ADR 0014): `docker compose run --rm pipeline-pages`
   builds `data/pages/` with `map.config.pages.json` (never `data/tiles/`
   or `map.config.json`; `requiredInputs` stops a build from the wrong
-  protected areas source), then `scripts/publish-pages.sh [--dry-run]`
-  (`gh` signed in) checks it, uploads it to the `pages-data` release and
-  runs `.github/workflows/pages.yml`. Run the real publish only when the
+  protected areas source), `docker compose --profile pages up -d
+  web-pages` serves it on :8081 (`WEB_PAGES_PORT`), then
+  `scripts/publish-pages.sh [--dry-run]` (`gh` signed in) checks it,
+  uploads it to the `pages-data` release and runs
+  `.github/workflows/pages.yml`. Run the real publish only when the
   maintainer asks.
 
 Gates: every CI job below feeds the one required status `checks`; a PR that
