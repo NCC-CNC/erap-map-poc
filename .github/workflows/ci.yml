@@ -157,7 +157,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           # Same Node as web/Dockerfile and the web-dev compose service.
-          node-version: 26.13.0
+          node-version: 26.13.1
           cache: npm
           cache-dependency-path: web/package-lock.json
 

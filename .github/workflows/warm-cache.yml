@@ -60,7 +60,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
-          node-version: 26.13.0
+          node-version: 26.13.1
           cache: npm
           cache-dependency-path: web/package-lock.json
       # setup-node saves ~/.npm at the end of the job when the key missed.
