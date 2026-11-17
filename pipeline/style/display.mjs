@@ -245,6 +245,15 @@ export function colorValue(rule) {
   throw new DisplayError([`unknown colour type ${rule.type}`]);
 }
 
+/**
+ * A shorthand line width: a number as is, or `byZoom` as a linear
+ * interpolation on the zoom (MapLibre checks the zooms ascend).
+ */
+export function widthValue(width) {
+  if (typeof width === 'number') return width;
+  return ['interpolate', ['linear'], ['zoom'], ...width.byZoom.flatMap((s) => [s.zoom, s.width])];
+}
+
 /** `rgba()` of a `#rrggbb` colour at the given alpha. */
 export function rgba(hex, alpha) {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
@@ -295,7 +304,7 @@ export function symbologyLayers(symbology) {
       {
         id: 'outline',
         type: 'line',
-        paint: { 'line-color': symbology.outline.color, 'line-width': symbology.outline.width },
+        paint: { 'line-color': symbology.outline.color, 'line-width': widthValue(symbology.outline.width) },
       },
     ];
   }
@@ -307,7 +316,7 @@ export function symbologyLayers(symbology) {
         'circle-color': color,
         'circle-radius': symbology.radius,
         'circle-stroke-color': symbology.stroke.color,
-        'circle-stroke-width': symbology.stroke.width,
+        'circle-stroke-width': widthValue(symbology.stroke.width),
       },
     },
   ];

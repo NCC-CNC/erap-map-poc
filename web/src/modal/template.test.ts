@@ -228,9 +228,12 @@ describe('the ecoregion example modal with calculated fields and rule attributes
     expect(section({ name: 'x' }, 'Action recommendations')).toBeUndefined();
   });
 
-  it('draws the unprotected land pie from the calculated fields', () => {
-    const pie = section({ unprotected_intact_pcnt: 70.5, unprotected_modified_pcnt: 14.2 }, 'Opportunities')?.blocks[0];
-    expect(pie?.type === 'chart' && pie.chart.datasets[0]?.values).toEqual([70.5, 14.2]);
+  it('draws the whole ecoregion as protected, unprotected intact and unprotected modified land', () => {
+    const pie = section(
+      { protected_pcnt: 15.3, unprotected_intact_pcnt: 70.5, unprotected_modified_pcnt: 14.2 },
+      'Opportunities',
+    )?.blocks[0];
+    expect(pie?.type === 'chart' && pie.chart.datasets[0]?.values).toEqual([15.3, 70.5, 14.2]);
     expect(section({ intact_pcnt: 80 }, 'Opportunities')).toBeUndefined();
   });
 
