@@ -41,14 +41,27 @@
         "id": "wtw",
         "label": "Where To Work (%)",
         "color": {
-          "type": "interpolated",
+          "type": "stepped",
           "attribute": "wtw_percent",
-          "colors": [
-            "#f7fbff",
-            "#6baed6",
-            "#08306b"
+          "stops": [
+            {
+              "from": 0,
+              "color": "#deebf7"
+            },
+            {
+              "from": 5,
+              "color": "#9ecae1"
+            },
+            {
+              "from": 20,
+              "color": "#4292c6"
+            },
+            {
+              "from": 40,
+              "color": "#08519c"
+            }
           ],
-          "min": 0,
+          "max": 100,
           "fallback": {
             "color": "#bdbdbd",
             "label": "No data"
@@ -59,22 +72,27 @@
         "id": "wtw_area",
         "label": "Where To Work (total area, ha)",
         "color": {
-          "type": "interpolated",
+          "type": "stepped",
           "attribute": "wtw_area_ha",
           "stops": [
             {
-              "value": 0,
-              "color": "#f7fbff"
+              "from": 0,
+              "color": "#deebf7"
             },
             {
-              "value": 1000000,
-              "color": "#6baed6"
+              "from": 100000,
+              "color": "#9ecae1"
             },
             {
-              "value": 2500000,
-              "color": "#08306b"
+              "from": 500000,
+              "color": "#4292c6"
+            },
+            {
+              "from": 1000000,
+              "color": "#08519c"
             }
           ],
+          "max": 2500000,
           "fallback": {
             "color": "#bdbdbd",
             "label": "No data"
@@ -130,10 +148,16 @@
       }
     ],
     "defaultTheme": "protected",
-    "fillOpacity": 0.35,
+    "fillOpacity": 0.6,
     "outline": {
       "color": "#08306b",
-      "width": 1
+      "width": {
+        "byZoom": [
+          { "zoom": 0, "width": 0.3 },
+          { "zoom": 8, "width": 0.6 },
+          { "zoom": 14, "width": 1 }
+        ]
+      }
     }
   },
   "modal": {
@@ -212,7 +236,7 @@
       },
       {
         "heading": "Habitat",
-        "description": "How much of the ecoregion each habitat covers, how much of that habitat is protected, and how much overlaps NCC's Where To Work areas.",
+        "description": "How much of the ecoregion each habitat covers, how much of that habitat is protected, and how much overlaps NCC's Where To Work areas. Habitats can overlap and do not include every kind of land, so their cover need not add up to 100%.",
         "blocks": [
           {
             "type": "table",
@@ -351,7 +375,7 @@
       {
         "heading": "Direct threats",
         "tab": "Threats",
-        "description": "Share of the ecoregion under the footprint of each direct threat.",
+        "description": "Share of the ecoregion under the footprint of each direct threat. Footprints can overlap, so together they can add up to more than 100%.",
         "blocks": [
           {
             "type": "attributes",
@@ -404,28 +428,31 @@
       },
       {
         "heading": "Opportunities",
-        "description": "Land outside protected areas, intact and modified, as a share of the ecoregion.",
+        "description": "The whole ecoregion: protected land, and land outside protected areas that is intact or modified.",
         "blocks": [
           {
             "type": "chart",
             "chart": "pie",
-            "title": "Unprotected land",
+            "title": "Protected and unprotected land",
             "valueLabel": "Percent of the ecoregion",
             "format": "percent",
             "categories": [
-              "Intact",
-              "Modified"
+              "Protected",
+              "Unprotected intact",
+              "Unprotected modified"
             ],
             "series": [
               {
-                "label": "Unprotected land",
+                "label": "Land in the ecoregion",
                 "attributes": [
+                  "protected_pcnt",
                   "unprotected_intact_pcnt",
                   "unprotected_modified_pcnt"
                 ]
               }
             ],
             "colors": [
+              "#bdbdbd",
               "#08519c",
               "#fdae6b"
             ]
