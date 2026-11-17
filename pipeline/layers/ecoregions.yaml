@@ -1,0 +1,290 @@
+# yaml-language-server: $schema=../schema/layer.schema.json
+#
+# The ERAP ecoregions: 149 polygons over Canada, a contiguous coverage,
+# with their ERAP metrics. Drawn on top; a click opens the modal.
+
+title: ERAP ecoregions
+visible: true
+order: 40
+
+source:
+  path: ERAP_2026_ecoregions.gdb
+  layer: ERAP_2026_ecoregions
+  # The geodatabase row id: tippecanoe needs an integer id and ECOREGION_ID
+  # is text. It may change when the data is exported again.
+  id: OBJECTID
+
+# Only what the themes and the modal use, English only.
+fields:
+  keep:
+    - ECOREGION_ID: ecoregion_id
+    - ECOREGION_NAME_EN: name
+    - ECOZONE_ID: ecozone_id
+    - ECOZONE_NAME_EN: ecozone
+    - landscape_ha
+    - protected_pcnt
+    - wtw_percent
+    - wtw_area_ha
+    - intact_pcnt
+    - modified_pcnt
+    - protected_intact_pcnt
+    - protected_modified_pcnt
+    - pcnt_landscape_forest_cover
+    - pcnt_forest_protected
+    - pcnt_forest_wtw
+    - pcnt_landscape_grassland_cover
+    - pcnt_grassland_protected
+    - pcnt_grassland_wtw
+    - pcnt_landscape_wetland_cover
+    - pcnt_wetland_protected
+    - pcnt_wetland_wtw
+    - pcnt_landscape_lakes_cover
+    - pcnt_lakes_protected
+    - pcnt_lakes_wtw
+    - rivers_km
+    - pcnt_rivers_protected
+    - pcnt_rivers_wtw
+    - coastline_km
+    - pcnt_coastline_protected
+    - pcnt_coastline_wtw
+    - forestry_pcnt
+    - agriculture_pcnt
+    - transport_high_pcnt
+    - transport_low_pcnt
+    - energy_pcnt
+    - builtup_pcnt
+  calculated:
+    # The Opportunities pie: intact and modified land outside protected
+    # areas, as % of the ecoregion.
+    unprotected_intact_pcnt: round(intact_pcnt - protected_intact_pcnt, 2)
+    unprotected_modified_pcnt: round(modified_pcnt - protected_modified_pcnt, 2)
+    # Action recommendations: 1 where an action is recommended, else 0.
+    # Its title and reason are in the modal's Actions list.
+    action_area_based_30x30: coalesce(protected_pcnt < 30, 0)
+    # How many area-based conservation actions are recommended, for the
+    # "Colour by" theme: the sum of their conditions.
+    actions_area_based_conservation_count: coalesce(protected_pcnt < 30, 0)
+
+processing:
+  profile: coverage
+  minzoom: 0
+  # z12 holds coordinates to about 1 to 2 m across Canada and is not
+  # simplified, so small islands keep their shape when zoomed in.
+  maxzoom: 12
+  # About 90,000 parts, mostly small islands: below z12 keep parts of 2 px
+  # or more and simplify borders gently, so detail builds up zoom by zoom.
+  min_part_px: 2
+  simplify_px: 0.5
+
+display:
+  layers:
+    - id: fill
+      type: fill
+      paint:
+        fill-color:
+          [case, ["==", [typeof, [get, protected_pcnt]], number],
+           [step, [get, protected_pcnt], "#deebf7", 10, "#9ecae1", 17, "#4292c6", 30, "#08519c"],
+           "#bdbdbd"]
+        fill-opacity: 0.6
+    - id: outline
+      type: line
+      paint:
+        line-color: "#08306b"
+        line-width: [interpolate, [linear], [zoom], 0, 0.3, 8, 0.6, 14, 1]
+  themes:
+    - id: protected
+      label: Protected (%)
+      legend:
+        kind: ramp
+        shape: square
+        border: "#08306b"
+        opacity: 0.6
+        items:
+          - { color: "#deebf7", label: 0 to 10 }
+          - { color: "#9ecae1", label: 10 to 17 }
+          - { color: "#4292c6", label: 17 to 30 }
+          - { color: "#08519c", label: 30 to 100 }
+          - { color: "#bdbdbd", label: No data }
+    - id: wtw
+      label: Where To Work (%)
+      paint:
+        fill:
+          fill-color:
+            [case, ["==", [typeof, [get, wtw_percent]], number],
+             [step, [get, wtw_percent], "#deebf7", 5, "#9ecae1", 20, "#4292c6", 40, "#08519c"],
+             "#bdbdbd"]
+      legend:
+        kind: ramp
+        shape: square
+        border: "#08306b"
+        opacity: 0.6
+        items:
+          - { color: "#deebf7", label: 0 to 5 }
+          - { color: "#9ecae1", label: 5 to 20 }
+          - { color: "#4292c6", label: 20 to 40 }
+          - { color: "#08519c", label: 40 to 100 }
+          - { color: "#bdbdbd", label: No data }
+    - id: wtw_area
+      label: Where To Work (total area, ha)
+      paint:
+        fill:
+          fill-color:
+            [case, ["==", [typeof, [get, wtw_area_ha]], number],
+             [step, [get, wtw_area_ha], "#deebf7", 100000, "#9ecae1", 500000, "#4292c6", 1000000, "#08519c"],
+             "#bdbdbd"]
+      legend:
+        kind: ramp
+        shape: square
+        border: "#08306b"
+        opacity: 0.6
+        items:
+          - { color: "#deebf7", label: "0 to 100,000" }
+          - { color: "#9ecae1", label: "100,000 to 500,000" }
+          - { color: "#4292c6", label: "500,000 to 1,000,000" }
+          - { color: "#08519c", label: "1,000,000 to 2,500,000" }
+          - { color: "#bdbdbd", label: No data }
+    - id: area_based_actions
+      label: "Action recommendations: area-based conservation"
+      paint:
+        fill:
+          fill-color:
+            [case, ["==", [typeof, [get, actions_area_based_conservation_count]], number],
+             [step, [get, actions_area_based_conservation_count], "#deebf7", 1, "#6baed6", 2, "#08519c"],
+             "#bdbdbd"]
+      legend:
+        kind: ramp
+        shape: square
+        border: "#08306b"
+        opacity: 0.6
+        items:
+          - { color: "#deebf7", label: None recommended }
+          - { color: "#6baed6", label: 1 recommended }
+          - { color: "#08519c", label: 2 or more recommended }
+          - { color: "#bdbdbd", label: No data }
+
+  modal:
+    title: "{name}"
+    subtitle: "{ecozone} ecozone"
+    sections:
+      - heading: Summary
+        blocks:
+          - type: attributes
+            items:
+              - { label: Ecoregion ID, value: { attribute: ecoregion_id } }
+              - { label: Ecozone, value: { attribute: ecozone } }
+              - { label: Ecozone ID, value: { attribute: ecozone_id } }
+              - { label: Area, value: { attribute: landscape_ha }, format: hectares }
+              - { label: Protected, value: { attribute: protected_pcnt }, format: percent }
+              - { label: Where To Work, value: { attribute: wtw_percent }, format: percent }
+              - { label: Where To Work area, value: { attribute: wtw_area_ha }, format: hectares }
+              - { label: Intact, value: { attribute: intact_pcnt }, format: percent }
+              - { label: Modified, value: { attribute: modified_pcnt }, format: percent }
+
+      - heading: Habitat
+        description: >-
+          How much of the ecoregion each habitat covers, how much of that
+          habitat is protected, and how much overlaps NCC's Where To Work
+          areas. Habitats can overlap and do not include every kind of land,
+          so their cover need not add up to 100%.
+        blocks:
+          - type: table
+            caption: Habitats
+            rowHeader: Habitat
+            columns:
+              - { label: Cover in ecoregion, format: percent }
+              - { label: Protected, format: percent }
+              - { label: In Where To Work, format: percent }
+            rows:
+              - label: Forest
+                values: [pcnt_landscape_forest_cover, pcnt_forest_protected, pcnt_forest_wtw]
+              - label: Grassland
+                values: [pcnt_landscape_grassland_cover, pcnt_grassland_protected, pcnt_grassland_wtw]
+              - label: Wetland
+                values: [pcnt_landscape_wetland_cover, pcnt_wetland_protected, pcnt_wetland_wtw]
+              - label: Lakes
+                values: [pcnt_landscape_lakes_cover, pcnt_lakes_protected, pcnt_lakes_wtw]
+          - type: chart
+            chart: bar
+            title: Habitat cover, protection and Where To Work (%)
+            valueLabel: Percent
+            format: percent
+            categories: [Forest, Grassland, Wetland, Lakes]
+            series:
+              - label: Cover in ecoregion
+                attributes:
+                  - pcnt_landscape_forest_cover
+                  - pcnt_landscape_grassland_cover
+                  - pcnt_landscape_wetland_cover
+                  - pcnt_landscape_lakes_cover
+              - label: Protected
+                attributes:
+                  - pcnt_forest_protected
+                  - pcnt_grassland_protected
+                  - pcnt_wetland_protected
+                  - pcnt_lakes_protected
+              - label: In Where To Work
+                attributes:
+                  - pcnt_forest_wtw
+                  - pcnt_grassland_wtw
+                  - pcnt_wetland_wtw
+                  - pcnt_lakes_wtw
+          - type: table
+            caption: Rivers and shoreline
+            rowHeader: Feature
+            columns:
+              - { label: Total length, format: km }
+              - { label: Protected, format: percent }
+              - { label: In Where To Work, format: percent }
+            rows:
+              - label: Rivers
+                values: [rivers_km, pcnt_rivers_protected, pcnt_rivers_wtw]
+              - label: Shoreline
+                values: [coastline_km, pcnt_coastline_protected, pcnt_coastline_wtw]
+
+      - heading: Direct threats
+        tab: Threats
+        description: >-
+          Share of the ecoregion under the footprint of each direct threat.
+          Footprints can overlap, so together they can add up to more than
+          100%.
+        blocks:
+          - type: attributes
+            items:
+              - { label: Forestry, value: { attribute: forestry_pcnt }, format: percent }
+              - { label: Agriculture, value: { attribute: agriculture_pcnt }, format: percent }
+              - { label: Transport (high), value: { attribute: transport_high_pcnt }, format: percent }
+              - { label: Transport (low), value: { attribute: transport_low_pcnt }, format: percent }
+              - { label: Energy and mining, value: { attribute: energy_pcnt }, format: percent }
+              - { label: Urban and built-up, value: { attribute: builtup_pcnt }, format: percent }
+
+      - heading: Opportunities
+        description: >-
+          The whole ecoregion: protected land, and land outside protected
+          areas that is intact or modified.
+        blocks:
+          - type: chart
+            chart: pie
+            title: Protected and unprotected land
+            valueLabel: Percent of the ecoregion
+            format: percent
+            categories: [Protected, Unprotected intact, Unprotected modified]
+            series:
+              - label: Land in the ecoregion
+                attributes: [protected_pcnt, unprotected_intact_pcnt, unprotected_modified_pcnt]
+            colors: ["#bdbdbd", "#08519c", "#fdae6b"]
+
+      - heading: Action recommendations
+        tab: Actions
+        description: >-
+          Actions recommended for this ecoregion by the ERAP rules, with the
+          reason for each.
+        blocks:
+          - type: list
+            # One item per action: its title and reason, shown when its
+            # calculated field is 1.
+            items:
+              - text: >-
+                  Area-based conservation - 30x30 goals: recommended because
+                  current protection is less than 30%
+                when: action_area_based_30x30
+            empty: No actions recommended by the rules so far.

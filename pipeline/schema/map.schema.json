@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Map config",
+  "description": "Which layers to build and how the map opens: your git-ignored map.config.yaml, or the committed map.pages.yaml for the GitHub Pages copy. Every key is optional. Design note 04.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "view": {
+      "description": "Where the map opens, unless the URL says otherwise.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["center", "zoom"],
+      "properties": {
+        "center": {
+          "description": "[longitude, latitude] in degrees.",
+          "type": "array",
+          "prefixItems": [
+            { "type": "number", "minimum": -180, "maximum": 180 },
+            { "type": "number", "minimum": -90, "maximum": 90 }
+          ],
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "zoom": { "description": "Opening zoom.", "type": "number", "minimum": 0, "maximum": 24 }
+      }
+    },
+    "basemap": {
+      "description": "The basemap the map opens on.",
+      "enum": ["light", "dark"]
+    },
+    "layers": {
+      "description": "The layers to build. Default every layer.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/layerName" }
+    },
+    "overrides": {
+      "description": "Per layer, `source` and `processing` settings that replace the layer file's, such as a different source or a lower max zoom.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/layerName" },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "minProperties": 1,
+        "properties": {
+          "source": { "$ref": "layer.schema.json#/$defs/sourceSettings" },
+          "processing": { "$ref": "layer.schema.json#/$defs/processingSettings" }
+        }
+      }
+    },
+    "require": {
+      "description": "Layers whose source must exist: the build fails rather than skip them.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/layerName" }
+    }
+  },
+  "$defs": {
+    "layerName": {
+      "description": "A layer name: its file name without .yaml.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    }
+  }
+}

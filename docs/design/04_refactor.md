@@ -68,7 +68,8 @@ with tests, and documented for people.
    `coverage`, `points`, `raster`) sets the tippecanoe or GDAL options.
    Low-zoom generalisation and the drop guard live inside `coverage`; a
    layer overrides only `minzoom`, `maxzoom`, `min_part_px` and
-   `simplify_px`.
+   `simplify_px` (and `min_visible_px` and `grey_levels`; see Settled in
+   step 1).
 9. **One map config format, two files.** Your git-ignored, optional
    `map.config.yaml` and the committed `map.pages.yaml` share one schema
    with five keys: `view`, `basemap`, `layers` (which layers to build;
@@ -101,11 +102,11 @@ source:
   #     on: ECOREGION_ID
 
 fields:
-  keep:
-    ECOREGION_NAME_EN: name
-    protected_pcnt: protected_pcnt
-    intact_pcnt: intact_pcnt
-    protected_intact_pcnt: protected_intact_pcnt
+  keep:                      # a name as it is, or {source: output} to rename
+    - ECOREGION_NAME_EN: name
+    - protected_pcnt
+    - intact_pcnt
+    - protected_intact_pcnt
   calculated:
     unprotected_intact_pcnt: round(intact_pcnt - protected_intact_pcnt, 2)
     action_area_based_30x30: protected_pcnt < 30
@@ -288,17 +289,31 @@ practical:
 
 1. Layer file schema and format; convert the four layers and the two test
    layers.
-2. Pipeline reads layer files (bash, `yq`, `jq`, validator); Node and
-   `pipeline/style/` removed.
+2. Pipeline reads layer files (bash, `yq`, `jq`, validator), including
+   calculated fields as SQLite; Node and `pipeline/style/` removed.
 3. Pipeline writes `style.json` and `build.json`; `manifest.json` removed.
 4. App loads `style.json` and reads metadata; legends from expressions;
    generated types.
-5. Calculated fields as SQLite and joins.
+5. Joins.
 6. Map config (`map.config.yaml`, `map.pages.yaml`) and `layers.local/`;
    Pages copy and `publish-pages.sh` on the new format.
 7. Docs (README, guide, layer file reference, READMEs in `pipeline/`,
    `scripts/` and `web/`), ADRs, CLAUDE.md and skills.
 
-## Open questions
+## Settled in step 1
 
-- Which JSON Schema validator to pin in the pipeline image.
+- The validator is `jv` from santhosh-tekuri/jsonschema (a static binary
+  that reads YAML directly), with mikefarah `yq`; both pinned with
+  checksums in the pipeline image.
+- The schemas are `pipeline/schema/layer.schema.json` and
+  `pipeline/schema/map.schema.json`. The old `map-config.schema.json`
+  stays until step 6 switches the map config over.
+- `processing` also keeps `min_visible_px` (the drop guard threshold,
+  any vector layer; `protected_areas` needs 4) and `grey_levels` (raster
+  only; the Pages copy uses 8). `coverage` generalises every zoom below
+  `maxzoom`.
+- `display.themes`: the first theme is what `display.layers` draw and has
+  no `paint`; each other theme sets paint properties per style layer id.
+- Every converted layer sets an explicit `legend` for now (labels such
+  as "No data" or "30 to 100" are not in the expressions); step 4 drops
+  those the app derives the same.

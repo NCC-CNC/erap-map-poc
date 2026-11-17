@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 #
-# Pipeline image: GDAL/OGR, tippecanoe, the pmtiles CLI (ADR 0002) and Node
-# for the display config tool (ADR 0007).
+# Pipeline image: GDAL/OGR, tippecanoe, the pmtiles CLI (ADR 0002), Node
+# for the display config tool (ADR 0007), and yq and jv for the YAML layer
+# files (design note 04).
 # Every tool is pinned. Base images are pinned by tag and digest (the
 # multi-arch index) in literal `FROM` lines so Dependabot can propose
 # updates; it does not resolve `ARG` values in `FROM`. To upgrade a tool,
@@ -51,6 +52,32 @@ RUN curl -fsSL -o /tmp/pmtiles.tar.gz \
  && rm /tmp/pmtiles.tar.gz
 
 # ---------------------------------------------------------------------------
+# Fetch yq (mikefarah/yq), to read the YAML layer files, and jv
+# (santhosh-tekuri/jsonschema), to check them and the map configs against
+# their JSON Schemas. Static Go binaries, each checked against its checksum.
+FROM gdal AS layerfile
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ARG YQ_VERSION=4.54.1
+ARG YQ_SHA256=8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f
+ARG JV_VERSION=6.0.3
+ARG JV_SHA256=36e9ab8481cc8e2cb27c8336decc9abdcbd606b05792ca88d6188e01ec28766b
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL -o /usr/local/bin/yq \
+      "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" \
+ && echo "${YQ_SHA256}  /usr/local/bin/yq" | sha256sum --check --strict - \
+ && chmod +x /usr/local/bin/yq \
+ && curl -fsSL -o /tmp/jv.tar.gz \
+      "https://github.com/santhosh-tekuri/jsonschema/releases/download/v${JV_VERSION}/jv-v${JV_VERSION}-linux-amd64.tar.gz" \
+ && echo "${JV_SHA256}  /tmp/jv.tar.gz" | sha256sum --check --strict - \
+ && tar -xzf /tmp/jv.tar.gz -C /usr/local/bin jv \
+ && rm /tmp/jv.tar.gz
+
+# ---------------------------------------------------------------------------
 # Fetch bats-core (test stage only) from a pinned release tag, checked
 # against its commit.
 FROM gdal AS bats
@@ -89,6 +116,7 @@ RUN apt-get update \
 
 COPY --from=tippecanoe /opt/tippecanoe/bin/ /usr/local/bin/
 COPY --from=pmtiles /usr/local/bin/pmtiles /usr/local/bin/pmtiles
+COPY --from=layerfile /usr/local/bin/yq /usr/local/bin/jv /usr/local/bin/
 COPY --from=style /usr/local/bin/node /usr/local/bin/node
 
 # Pipeline scripts, layer configs, the display schema and tool, and the

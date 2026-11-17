@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=../schema/layer.schema.json
+#
+# Canada's protected and conserved areas (CPCAD 2025, as prepared by NCC),
+# dissolved into 112,050 polygons with no attributes. Display only: one
+# fill, no pop-up.
+
+title: Protected areas (CPCAD)
+visible: true
+order: 30
+
+source:
+  path: protected_areas.gdb
+  layer: cpcad_ncc_dslv_2025
+  # The geodatabase row id, kept only as the feature id the drop guard reads.
+  id: OBJECTID
+
+# Dissolved, so no overlaps, but not a contiguous coverage: the default
+# profile, which drops only what simplification collapses.
+processing:
+  profile: default
+  minzoom: 0
+  maxzoom: 12
+  # An area must be in a zoom's tiles once its largest part covers 4 px.
+  # The default of 1 fails at z12 on slivers under a metre wide that
+  # simplification collapses; nothing that can be seen goes.
+  min_visible_px: 4
+
+display:
+  layers:
+    - id: fill
+      type: fill
+      paint:
+        fill-color: "#c51b7d"
+        fill-opacity: 0.6
+    - id: outline
+      type: line
+      paint:
+        line-color: "#8e0152"
+        line-width: [interpolate, [linear], [zoom], 0, 0.2, 8, 0.3, 14, 0.5]
+  legend:
+    kind: single
+    shape: square
+    border: "#8e0152"
+    opacity: 0.6
+    items:
+      - { color: "#c51b7d", label: Protected and conserved areas }
