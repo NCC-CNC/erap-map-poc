@@ -155,6 +155,7 @@ export function MapView() {
           }}
           themes={themes}
           onThemeChange={(id, themeId) => setThemes((state) => withTheme(state, id, themeId))}
+          basemap={theme}
         />
       </MapPanel>
       {shownModal && (
