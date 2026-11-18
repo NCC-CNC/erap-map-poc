@@ -1,0 +1,316 @@
+{
+  "version": 8,
+  "name": "ERAP Map data layers",
+  "metadata": {
+    "erap:layers": {
+      "cover": {
+        "title": "Test raster",
+        "type": "raster",
+        "order": 5,
+        "visible": true,
+        "legend": {
+          "kind": "single",
+          "shape": "square",
+          "border": "transparent",
+          "opacity": 0.7,
+          "items": [
+            {
+              "color": "#1b7837",
+              "label": "Test raster"
+            }
+          ]
+        }
+      },
+      "sample": {
+        "title": "Sample polygons",
+        "type": "vector",
+        "order": 10,
+        "visible": true,
+        "legend": {
+          "kind": "ramp",
+          "shape": "square",
+          "border": "#ffffff",
+          "opacity": 0.7,
+          "items": [
+            {
+              "color": "#a1dab4",
+              "label": "0 to 25"
+            },
+            {
+              "color": "#41b6c4",
+              "label": "25 to 50"
+            },
+            {
+              "color": "#2c7fb8",
+              "label": "50 to 75"
+            },
+            {
+              "color": "#253494",
+              "label": "75 to 100"
+            },
+            {
+              "color": "#9e9e9e",
+              "label": "No score"
+            }
+          ]
+        },
+        "popup": {
+          "title": {
+            "attribute": "name"
+          },
+          "stats": [
+            {
+              "label": "ID",
+              "value": {
+                "featureId": true
+              }
+            },
+            {
+              "label": "Area",
+              "value": {
+                "attribute": "area_ha"
+              },
+              "format": {
+                "decimals": 1,
+                "suffix": "ha"
+              }
+            },
+            {
+              "label": "Score",
+              "value": {
+                "attribute": "score"
+              },
+              "format": {
+                "suffix": "/ 100"
+              }
+            }
+          ],
+          "charts": [
+            {
+              "type": "bar",
+              "title": "Value by year",
+              "valueLabel": "Value",
+              "points": [
+                {
+                  "label": "2020",
+                  "attribute": "v2020"
+                },
+                {
+                  "label": "2021",
+                  "attribute": "v2021"
+                },
+                {
+                  "label": "2022",
+                  "attribute": "v2022"
+                },
+                {
+                  "label": "2023",
+                  "attribute": "v2023"
+                },
+                {
+                  "label": "2024",
+                  "attribute": "v2024"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "sample_points": {
+        "title": "Sample points",
+        "type": "vector",
+        "order": 20,
+        "visible": true,
+        "legend": {
+          "kind": "categories",
+          "shape": "circle",
+          "border": "#ffffff",
+          "opacity": 1,
+          "items": [
+            {
+              "color": "#e69f00",
+              "label": "Alpha"
+            },
+            {
+              "color": "#cc79a7",
+              "label": "Beta"
+            },
+            {
+              "color": "#d55e00",
+              "label": "Gamma"
+            },
+            {
+              "color": "#9e9e9e",
+              "label": "Other"
+            }
+          ]
+        },
+        "popup": {
+          "title": {
+            "attribute": "name"
+          },
+          "stats": [
+            {
+              "label": "ID",
+              "value": {
+                "featureId": true
+              }
+            },
+            {
+              "label": "Category",
+              "value": {
+                "attribute": "category"
+              }
+            },
+            {
+              "label": "Count",
+              "value": {
+                "attribute": "count"
+              },
+              "format": {}
+            }
+          ]
+        }
+      }
+    }
+  },
+  "sources": {
+    "cover": {
+      "type": "raster-dem",
+      "tileSize": 256,
+      "url": "cog://cover.cog.tif#dem"
+    },
+    "sample": {
+      "type": "vector",
+      "url": "pmtiles://sample.pmtiles"
+    },
+    "sample_points": {
+      "type": "vector",
+      "url": "pmtiles://sample_points.pmtiles"
+    }
+  },
+  "layers": [
+    {
+      "id": "cover-raster",
+      "type": "color-relief",
+      "paint": {
+        "color-relief-color": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "elevation"
+          ],
+          0,
+          "rgba(27, 120, 55, 0)",
+          255,
+          "rgba(27, 120, 55, 1)"
+        ],
+        "color-relief-opacity": 0.7,
+        "resampling": "nearest"
+      },
+      "source": "cover",
+      "layout": {
+        "visibility": "visible"
+      },
+      "metadata": {
+        "erap:layer": "cover"
+      }
+    },
+    {
+      "id": "sample-fill",
+      "type": "fill",
+      "paint": {
+        "fill-color": [
+          "case",
+          [
+            "==",
+            [
+              "typeof",
+              [
+                "get",
+                "score"
+              ]
+            ],
+            "number"
+          ],
+          [
+            "step",
+            [
+              "get",
+              "score"
+            ],
+            "#a1dab4",
+            25,
+            "#41b6c4",
+            50,
+            "#2c7fb8",
+            75,
+            "#253494"
+          ],
+          "#9e9e9e"
+        ],
+        "fill-opacity": 0.7
+      },
+      "source": "sample",
+      "source-layer": "sample",
+      "layout": {
+        "visibility": "visible"
+      },
+      "metadata": {
+        "erap:layer": "sample"
+      }
+    },
+    {
+      "id": "sample-outline",
+      "type": "line",
+      "paint": {
+        "line-color": "#ffffff",
+        "line-width": 0.75
+      },
+      "source": "sample",
+      "source-layer": "sample",
+      "layout": {
+        "visibility": "visible"
+      },
+      "metadata": {
+        "erap:layer": "sample"
+      }
+    },
+    {
+      "id": "sample_points-circle",
+      "type": "circle",
+      "paint": {
+        "circle-color": [
+          "match",
+          [
+            "to-string",
+            [
+              "get",
+              "category"
+            ]
+          ],
+          "alpha",
+          "#e69f00",
+          "beta",
+          "#cc79a7",
+          "gamma",
+          "#d55e00",
+          "#9e9e9e"
+        ],
+        "circle-radius": 6,
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1.5
+      },
+      "source": "sample_points",
+      "source-layer": "sample_points",
+      "layout": {
+        "visibility": "visible"
+      },
+      "metadata": {
+        "erap:layer": "sample_points"
+      }
+    }
+  ]
+}

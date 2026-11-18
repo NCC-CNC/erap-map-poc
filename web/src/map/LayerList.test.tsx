@@ -27,14 +27,14 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-function render(themes: ThemeState, onThemeChange = vi.fn(), layers = [sampleModal]) {
+function render(themes: ThemeState, onThemeChange = vi.fn(), layers = [sampleModal], failed?: ReadonlySet<string>) {
   act(() =>
     root.render(
       <LayerList
         layers={layers}
         problem={null}
         visibility={{}}
-        available={null}
+        failed={failed}
         onChange={() => {}}
         themes={themes}
         onThemeChange={onThemeChange}
@@ -88,6 +88,17 @@ describe('Colour by', () => {
     render({}, vi.fn(), [sample]);
     expect(select()).toBeNull();
     expect(host.querySelector('.layer-legend')?.getAttribute('aria-label')).toBe('Sample polygons legend');
+  });
+
+  it('marks a layer MapLibre could not load, and shows no legend for a layer without one', () => {
+    render({}, vi.fn(), [sample, { ...sampleModal, id: 'other', themes: undefined, legend: undefined }], new Set(['sample']));
+    const box = host.querySelector<HTMLInputElement>('#layer-toggle-sample')!;
+    expect(box.disabled).toBe(true);
+    expect(host.querySelector('#layer-toggle-sample-note')?.textContent).toBe(
+      'Not available: the layer could not be loaded.',
+    );
+    expect(host.querySelector<HTMLInputElement>('#layer-toggle-other')!.disabled).toBe(false);
+    expect(host.querySelectorAll('.layer-legend')).toHaveLength(1);
   });
 });
 

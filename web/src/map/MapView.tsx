@@ -3,8 +3,7 @@ import type { Map as MapLibreMap } from 'maplibre-gl';
 import {
   activeTheme,
   isVisible,
-  loadManifest,
-  manifestUrl,
+  loadStyle,
   withTheme,
   withVisibility,
   type LayerDefinition,
@@ -26,10 +25,11 @@ const NO_LAYERS: readonly LayerDefinition[] = [];
 
 /**
  * Full-page map with a panel holding the basemap toggle and the layer list.
- * The data layers come from the pipeline's `manifest.json`, fetched once
- * when the map is created; the basemap shows without waiting for it. The
- * manifest's `map` (the local map config's view and basemap, ADR 0009) is
- * applied once it has loaded, unless the URL already holds a view.
+ * The data layers come from the pipeline's `style.json`, fetched once
+ * when the map is created and drawn over the basemap, which shows without
+ * waiting for it. Its opening view and basemap (the map config's) are
+ * applied once it has loaded, unless the URL already holds a view. A layer
+ * MapLibre reports an error for is marked in the layer panel.
  * Clicking a feature of a visible layer with a pop-up definition opens its
  * pop-up, and one with a modal template opens the modal dialog (ADR 0012),
  * which closes when its layer is hidden and keeps each layer's selected tab
@@ -43,12 +43,13 @@ export function MapView() {
   const popups = useRef<PopupHandlers | null>(null);
   const appliedStyle = useRef<string | null>(null);
   const [theme, setTheme] = useState<BasemapTheme>(DEFAULT_BASEMAP_THEME);
-  // null until the manifest has been read.
+  // null until style.json has been read.
   const [layers, setLayers] = useState<readonly LayerDefinition[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   // Layers not in here are at their default visibility.
   const [visibility, setVisibility] = useState<VisibilityState>({});
-  const [available, setAvailable] = useState<ReadonlySet<string> | null>(null);
+  // Layers MapLibre reported an error for.
+  const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
   // Layers not in here are in their default theme.
   const [themes, setThemes] = useState<ThemeState>({});
   const [modal, setModal] = useState<OpenModal | null>(null);
@@ -65,26 +66,24 @@ export function MapView() {
   useEffect(() => {
     if (!container.current) return;
     const controller = new AbortController();
-    const baseUrl = tilesBaseUrl();
-    const loaded = loadManifest(manifestUrl(baseUrl), { signal: controller.signal });
+    const loaded = loadStyle(tilesBaseUrl(), { signal: controller.signal });
     // Read before the map can write its own view into the URL.
     const hash = window.location.hash;
     const style = BASEMAP_STYLES[initialTheme.current];
     const created = createMap(container.current, {
       style,
       layers: loaded.then((result) => result.layers),
-      tilesBaseUrl: baseUrl,
       signal: controller.signal,
       isVisible: (def) => isVisible(currentVisibility.current, def),
       themeOf: (def) => activeTheme(currentThemes.current, def),
-      onLayersChecked: setAvailable,
+      onLayerError: (id) => setFailed((state) => (state.has(id) ? state : new Set(state).add(id))),
     });
     void loaded.then((result) => {
       if (controller.signal.aborted) return;
       currentLayers.current = result.layers;
       setLayers(result.layers);
       setProblem(result.problem);
-      // The map config's opening view and basemap (ADR 0009), once known.
+      // The opening view and basemap from style.json (the map config's), once known.
       const view = openingView(result.map, hash);
       if (view) created.jumpTo(view);
       if (result.map?.basemap) setTheme(result.map.basemap);
@@ -148,7 +147,7 @@ export function MapView() {
           layers={layers}
           problem={problem}
           visibility={visibility}
-          available={available}
+          failed={failed}
           onChange={(id, visible) => {
             setVisibility((state) => withVisibility(state, id, visible));
             if (!visible) setModal((open) => (open?.layerId === id ? null : open));
