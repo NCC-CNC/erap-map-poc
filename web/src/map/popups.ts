@@ -14,8 +14,8 @@ export interface PopupHandlers {
 }
 
 /**
- * Opens a pop-up when a feature of a visible layer with a `popup`
- * definition is clicked, or hands a feature of a layer with a `modal`
+ * Opens a small pop-up when a feature of a visible layer with a `popup`
+ * is clicked, or hands a feature of a layer whose pop-up is a `dialog`
  * (ADR 0012) to `onModal`, and shows a pointer cursor over such features.
  * Clicking anywhere else closes the pop-up; only one is open at a time.
  * Where features overlap, the topmost layer wins.
@@ -28,7 +28,7 @@ export interface PopupHandlers {
  * @param layers the data layers, read at event time, as they are loaded
  *   from the manifest after the map is created.
  * @param onModal called with the layer and a copy of the feature when a
- *   feature of a layer with a modal is clicked.
+ *   feature of a layer with a dialog is clicked.
  */
 export function attachPopups(
   map: MapLibreMap,
@@ -70,12 +70,11 @@ export function attachPopups(
     // Topmost feature first.
     const feature = featuresAt(e)[0];
     const def = feature && currentTargets().get(feature.layer.id);
-    if (!feature || !def) return;
-    if (def.modal) {
+    if (!feature || !def?.popup) return;
+    if (def.popup.size === 'dialog') {
       onModal(def, { id: feature.id, properties: { ...feature.properties } });
       return;
     }
-    if (!def.popup) return;
 
     const container = document.createElement('div');
     const root = createRoot(container);

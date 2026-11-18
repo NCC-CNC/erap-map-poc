@@ -53,6 +53,34 @@ export type Color = string;
  */
 export type Themes = Theme[];
 /**
+ * Text with placeholders: `{attribute}` as it is, `{attribute:preset}` in a format preset, `{$id}` the feature id.
+ *
+ * This interface was referenced by `LayerFile`'s JSON-Schema
+ * via the `definition` "template".
+ */
+export type Template = string;
+/**
+ * `small` (default): one section in a pop-up at the click; `dialog`: sections in a dialog over the map.
+ *
+ * This interface was referenced by `LayerFile`'s JSON-Schema
+ * via the `definition` "popupSize".
+ */
+export type PopupSize = 'small' | 'dialog';
+/**
+ * How a dialog shows its sections: `tabs` (default), one at a time; `scroll`, all in one scrolling dialog.
+ *
+ * This interface was referenced by `LayerFile`'s JSON-Schema
+ * via the `definition` "popupLayout".
+ */
+export type PopupLayout = 'tabs' | 'scroll';
+/**
+ * One block of a pop-up section.
+ *
+ * This interface was referenced by `LayerFile`'s JSON-Schema
+ * via the `definition` "block".
+ */
+export type Block = AttributesBlock | TableBlock | ChartBlock | TextBlock | ListBlock;
+/**
  * Where a value comes from: a tile attribute, or the feature id.
  *
  * This interface was referenced by `LayerFile`'s JSON-Schema
@@ -80,26 +108,12 @@ export type Attribute = string;
  */
 export type Format = FormatPreset | NumberFormat;
 /**
- * A named number format: `number` and `count` (0 decimals, thousands separators), `percent` (a value 0 to 100: 1 decimal and %), `hectares` (0 decimals, ha), `km` (1 decimal, km).
+ * A named number format, in the map's locale with thousands separators: `number` (decimals as the value has them, up to 3), `integer` (0 decimals), `percent` (a value 0 to 100: 1 decimal and %). Units go in `suffix`.
  *
  * This interface was referenced by `LayerFile`'s JSON-Schema
  * via the `definition` "formatPreset".
  */
-export type FormatPreset = 'number' | 'count' | 'percent' | 'hectares' | 'km';
-/**
- * Text with placeholders: `{attribute}` as it is, `{attribute:preset}` in a format preset, `{$id}` the feature id.
- *
- * This interface was referenced by `LayerFile`'s JSON-Schema
- * via the `definition` "template".
- */
-export type Template = string;
-/**
- * One block of a modal section.
- *
- * This interface was referenced by `LayerFile`'s JSON-Schema
- * via the `definition` "modalBlock".
- */
-export type ModalBlock = AttributesBlock | TableBlock | ChartBlock | TextBlock | ListBlock;
+export type FormatPreset = 'number' | 'integer' | 'percent';
 /**
  * The attribute for one value, or null for an empty cell.
  *
@@ -249,7 +263,6 @@ export interface Display {
   themes?: Themes;
   legend?: Legend;
   popup?: Popup;
-  modal?: Modal;
 }
 /**
  * A MapLibre style layer without `source` and `source-layer`. Paint, layout and filter are checked against the MapLibre style spec by the web app's tests.
@@ -370,21 +383,60 @@ export interface LegendItem {
   position?: number;
 }
 /**
- * A small pop-up on click: a title, stats and charts. Without a pop-up or a modal the layer is not clickable.
+ * What a click on a feature shows, filled from its attributes: a small pop-up at the click or a dialog. Without one the layer is not clickable.
  *
  * This interface was referenced by `LayerFile`'s JSON-Schema
  * via the `definition` "popup".
  */
 export interface Popup {
-  title: ValueSource;
+  title: Template;
+  subtitle?: Template;
+  size?: PopupSize;
+  layout?: PopupLayout;
   /**
-   * Labelled values.
+   * The sections, in order.
+   *
+   * @minItems 1
    */
-  stats: Stat[];
+  sections: Section[];
+}
+/**
+ * An optional heading and description, then blocks. Hidden when every block is.
+ *
+ * This interface was referenced by `LayerFile`'s JSON-Schema
+ * via the `definition` "section".
+ */
+export interface Section {
   /**
-   * Charts under the stats.
+   * Section heading; required in a dialog.
    */
-  charts?: PopupChart[];
+  heading?: string;
+  /**
+   * A shorter tab label in a dialog; default the heading. Tab labels are unique.
+   */
+  tab?: string;
+  description?: Template;
+  /**
+   * The blocks, in order.
+   *
+   * @minItems 1
+   */
+  blocks?: Block[];
+}
+/**
+ * Labelled values. Items without a value are hidden, and the block with none left.
+ *
+ * This interface was referenced by `LayerFile`'s JSON-Schema
+ * via the `definition` "attributesBlock".
+ */
+export interface AttributesBlock {
+  type: 'attributes';
+  /**
+   * The values.
+   *
+   * @minItems 1
+   */
+  items: Stat[];
 }
 /**
  * A labelled value.
@@ -401,7 +453,7 @@ export interface Stat {
   format?: Format;
 }
 /**
- * A number format: an optional `preset`, changed by `decimals`, `grouping` and `suffix`.
+ * A number format: a `preset` (default `number`), changed by `decimals`, `grouping` and `suffix`.
  *
  * This interface was referenced by `LayerFile`'s JSON-Schema
  * via the `definition` "numberFormat".
@@ -409,7 +461,7 @@ export interface Stat {
 export interface NumberFormat {
   preset?: FormatPreset;
   /**
-   * Decimal places.
+   * Decimal places, always shown.
    */
   decimals?: number;
   /**
@@ -417,99 +469,9 @@ export interface NumberFormat {
    */
   grouping?: boolean;
   /**
-   * Unit after the number, after a space.
+   * Unit after the number, after a space (`%` directly), such as `ha` or `km`.
    */
   suffix?: string;
-}
-/**
- * A small bar or line chart, one point per attribute.
- *
- * This interface was referenced by `LayerFile`'s JSON-Schema
- * via the `definition` "popupChart".
- */
-export interface PopupChart {
-  /**
-   * Chart type.
-   */
-  type: 'bar' | 'line';
-  /**
-   * Heading above the chart.
-   */
-  title: string;
-  /**
-   * What the values are, for the accessible summary.
-   */
-  valueLabel: string;
-  /**
-   * The points, in order.
-   *
-   * @minItems 1
-   */
-  points: {
-    /**
-     * Axis label.
-     */
-    label: string;
-    attribute: Attribute;
-  }[];
-}
-/**
- * Click details in a dialog, filled from the clicked feature's attributes.
- *
- * This interface was referenced by `LayerFile`'s JSON-Schema
- * via the `definition` "modal".
- */
-export interface Modal {
-  title: Template;
-  subtitle?: Template;
-  /**
-   * `tabs` (default): one section at a time; `scroll`: all sections in one scrolling dialog.
-   */
-  layout?: 'tabs' | 'scroll';
-  /**
-   * The sections, in order.
-   *
-   * @minItems 1
-   */
-  sections: ModalSection[];
-}
-/**
- * A heading, an optional description, then blocks. Hidden when every block is.
- *
- * This interface was referenced by `LayerFile`'s JSON-Schema
- * via the `definition` "modalSection".
- */
-export interface ModalSection {
-  /**
-   * Section heading.
-   */
-  heading: string;
-  /**
-   * A shorter tab label; default the heading. Tab labels are unique.
-   */
-  tab?: string;
-  description?: Template;
-  /**
-   * The blocks, in order.
-   *
-   * @minItems 1
-   */
-  blocks?: ModalBlock[];
-}
-/**
- * Labelled values. Items without a value are hidden, and the block with none left.
- *
- * This interface was referenced by `LayerFile`'s JSON-Schema
- * via the `definition` "attributesBlock".
- */
-export interface AttributesBlock {
-  type: 'attributes';
-  /**
-   * The values.
-   *
-   * @minItems 1
-   */
-  items: Stat[];
 }
 /**
  * A table of rows by columns; each row gives one attribute per column. Rows with no values are hidden, and the table with none left.
@@ -558,7 +520,7 @@ export interface TableBlock {
   }[];
 }
 /**
- * A Chart.js chart over `categories`. `bar` takes one or more series (several make a grouped bar chart); `pie` and `doughnut` exactly one. Each series gives one attribute per category. Hidden with no values.
+ * A Chart.js chart over `categories`. `bar` and `line` take one or more series (several make a grouped bar chart or several lines, with a legend); `pie` and `doughnut` exactly one. Each series gives one attribute per category. Hidden with no values.
  *
  * This interface was referenced by `LayerFile`'s JSON-Schema
  * via the `definition` "chartBlock".
@@ -568,7 +530,7 @@ export interface ChartBlock {
   /**
    * Chart type.
    */
-  chart: 'bar' | 'pie' | 'doughnut';
+  chart: 'bar' | 'line' | 'pie' | 'doughnut';
   /**
    * Heading above the chart.
    */
@@ -579,7 +541,7 @@ export interface ChartBlock {
   valueLabel: string;
   format?: Format;
   /**
-   * Bar or slice labels.
+   * Bar, point or slice labels.
    *
    * @minItems 1
    */

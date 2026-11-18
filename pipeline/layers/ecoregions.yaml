@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=../schema/layer.schema.json
 #
 # The ERAP ecoregions: 149 polygons over Canada, a contiguous coverage,
-# with their ERAP metrics. Drawn on top; a click opens the modal.
+# with their ERAP metrics. Drawn on top; a click opens a dialog.
 
 title: ERAP ecoregions
 visible: true
@@ -14,7 +14,7 @@ source:
   # is text. It may change when the data is exported again.
   id: OBJECTID
 
-# Only what the themes and the modal use, English only.
+# Only what the themes and the dialog use, English only.
 fields:
   keep:
     - ECOREGION_ID: ecoregion_id
@@ -59,7 +59,7 @@ fields:
     unprotected_intact_pcnt: round(intact_pcnt - protected_intact_pcnt, 2)
     unprotected_modified_pcnt: round(modified_pcnt - protected_modified_pcnt, 2)
     # Action recommendations: 1 where an action is recommended, else 0.
-    # Its title and reason are in the modal's Actions list.
+    # Its title and reason are in the dialog's Actions list.
     action_area_based_30x30: coalesce(protected_pcnt < 30, 0)
     # How many area-based conservation actions are recommended, for the
     # "Colour by" theme: the sum of the actions above (a field can use
@@ -163,9 +163,10 @@ display:
           - { color: "#08519c", label: 2 or more recommended }
           - { color: "#bdbdbd", label: No data }
 
-  modal:
+  popup:
     title: "{name}"
     subtitle: "{ecozone} ecozone"
+    size: dialog
     sections:
       - heading: Summary
         blocks:
@@ -174,10 +175,10 @@ display:
               - { label: Ecoregion ID, value: { attribute: ecoregion_id } }
               - { label: Ecozone, value: { attribute: ecozone } }
               - { label: Ecozone ID, value: { attribute: ecozone_id } }
-              - { label: Area, value: { attribute: landscape_ha }, format: hectares }
+              - { label: Area, value: { attribute: landscape_ha }, format: { preset: integer, suffix: ha } }
               - { label: Protected, value: { attribute: protected_pcnt }, format: percent }
               - { label: Where To Work, value: { attribute: wtw_percent }, format: percent }
-              - { label: Where To Work area, value: { attribute: wtw_area_ha }, format: hectares }
+              - { label: Where To Work area, value: { attribute: wtw_area_ha }, format: { preset: integer, suffix: ha } }
               - { label: Intact, value: { attribute: intact_pcnt }, format: percent }
               - { label: Modified, value: { attribute: modified_pcnt }, format: percent }
 
@@ -233,7 +234,7 @@ display:
             caption: Rivers and shoreline
             rowHeader: Feature
             columns:
-              - { label: Total length, format: km }
+              - { label: Total length, format: { decimals: 1, suffix: km } }
               - { label: Protected, format: percent }
               - { label: In Where To Work, format: percent }
             rows:

@@ -13,28 +13,26 @@ export type {
   Color,
   Format,
   FormatPreset,
+  Block,
   ListBlock,
-  ModalBlock,
-  ModalSection,
   NumberFormat,
-  PopupChart,
+  PopupLayout,
+  PopupSize,
+  Section,
   TableBlock,
   Template,
   TextBlock,
   ValueSource,
 } from './layer.generated';
 
-/** The pop-up shown when a feature of the layer is clicked. */
+/**
+ * What a click on a feature of the layer shows: a small pop-up at the
+ * click or a dialog, of sections of blocks.
+ */
 export type PopupDefinition = LayerFile.Popup;
-/** One labelled value in a pop-up or an attributes block. */
+/** One labelled value in an attributes block. */
 export type PopupStat = LayerFile.Stat;
-/** One point of a pop-up chart: an x-axis label and its attribute. */
-export type PopupChartPoint = LayerFile.PopupChart['points'][number];
-/** Click details in a modal dialog (ADR 0012). */
-export type ModalDefinition = LayerFile.Modal;
-/** How the modal shows its sections: a tab each (the default), or all in one scroll. */
-export type ModalLayout = NonNullable<LayerFile.Modal['layout']>;
-/** One series of a modal chart. */
+/** One series of a chart block. */
 export type ChartSeries = LayerFile.ChartBlock['series'][number];
 /** One legend entry: a swatch and its label. */
 export type LegendItem = LayerFile.LegendItem;
@@ -55,7 +53,6 @@ export interface LayerMetadata {
   legend?: LegendConfig;
   themes?: ThemeConfig[];
   popup?: PopupDefinition;
-  modal?: ModalDefinition;
 }
 
 /** A legend ready to show: an explicit one completed from the derived one. */
@@ -115,7 +112,6 @@ export interface LayerDefinition {
   /** The legend of a layer without themes; undefined when there is none. */
   legend?: Legend;
   popup?: PopupDefinition;
-  modal?: ModalDefinition;
   /** Colour themes, when the layer has them; `layers` draw the first. */
   themes?: Theme[];
 }

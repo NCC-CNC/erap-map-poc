@@ -31,8 +31,8 @@ const NO_LAYERS: readonly LayerDefinition[] = [];
  * loaded: the page title, zoom limits and bounds, and the opening view
  * (unless the URL already holds one) and basemap. A layer
  * MapLibre reports an error for is marked in the layer panel.
- * Clicking a feature of a visible layer with a pop-up definition opens its
- * pop-up, and one with a modal template opens the modal dialog (ADR 0012),
+ * Clicking a feature of a visible layer with a pop-up opens it: a small
+ * pop-up at the click, or a dialog for a `dialog` pop-up (ADR 0012),
  * which closes when its layer is hidden and keeps each layer's selected tab
  * from one feature to the next. A layer with colour themes is
  * drawn in the theme chosen in the layer panel. MapLibre lives outside

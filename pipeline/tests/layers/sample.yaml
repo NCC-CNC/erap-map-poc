@@ -56,18 +56,21 @@ display:
       - { color: "#253494", label: 75 to 100 }
       - { color: "#9e9e9e", label: No score }
   popup:
-    title: { attribute: name }
-    stats:
-      - { label: ID, value: { featureId: true } }
-      - { label: Area, value: { attribute: area_ha }, format: { decimals: 1, suffix: ha } }
-      - { label: Score, value: { attribute: score }, format: { suffix: / 100 } }
-    charts:
-      - type: bar
-        title: Value by year
-        valueLabel: Value
-        points:
-          - { label: "2020", attribute: v2020 }
-          - { label: "2021", attribute: v2021 }
-          - { label: "2022", attribute: v2022 }
-          - { label: "2023", attribute: v2023 }
-          - { label: "2024", attribute: v2024 }
+    title: "{name}"
+    sections:
+      - blocks:
+          - type: attributes
+            items:
+              - { label: ID, value: { featureId: true } }
+              - { label: Area, value: { attribute: area_ha }, format: { decimals: 1, suffix: ha } }
+              - { label: Score, value: { attribute: score }, format: { suffix: / 100 } }
+          - type: chart
+            chart: bar
+            title: Value by year
+            valueLabel: Value
+            format: integer
+            categories: ["2020", "2021", "2022", "2023", "2024"]
+            series:
+              - label: Value
+                attributes: [v2020, v2021, v2022, v2023, v2024]
+                color: "#2a9d8f"

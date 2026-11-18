@@ -5,7 +5,7 @@ import { keepModal, openModal, withTab } from './state';
 const feature = { id: 2, properties: { name: 'Birch', score: 74 } };
 
 describe('the open modal', () => {
-  it('opens for a layer with a modal template, not for one with a pop-up', () => {
+  it('opens for a layer with a dialog pop-up, not for one with a small pop-up', () => {
     const open = openModal(sampleModal, feature);
     expect(open?.layerId).toBe('sample');
     expect(open?.content.title).toBe('Birch');

@@ -222,9 +222,10 @@
       }
     }
   ],
-  "modal": {
+  "popup": {
     "title": "{name}",
     "subtitle": "{ecozone} ecozone",
+    "size": "dialog",
     "sections": [
       {
         "heading": "Summary",
@@ -255,7 +256,10 @@
                 "value": {
                   "attribute": "landscape_ha"
                 },
-                "format": "hectares"
+                "format": {
+                  "preset": "integer",
+                  "suffix": "ha"
+                }
               },
               {
                 "label": "Protected",
@@ -276,7 +280,10 @@
                 "value": {
                   "attribute": "wtw_area_ha"
                 },
-                "format": "hectares"
+                "format": {
+                  "preset": "integer",
+                  "suffix": "ha"
+                }
               },
               {
                 "label": "Intact",
@@ -402,7 +409,10 @@
             "columns": [
               {
                 "label": "Total length",
-                "format": "km"
+                "format": {
+                  "decimals": 1,
+                  "suffix": "km"
+                }
               },
               {
                 "label": "Protected",
