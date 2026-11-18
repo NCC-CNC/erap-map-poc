@@ -1,6 +1,6 @@
 ---
 name: remove-layer
-description: Remove a map layer - delete its configs in pipeline/layers/, its built archive (.pmtiles for a vector layer, .cog.tif for a raster layer) and its manifest.json entry, regenerate style.json, and open a draft PR. Always confirms with the user first. Use when asked to remove, delete, drop or retire a layer, or to clean up an orphaned build.
+description: Remove a map layer - delete its configs in pipeline/layers/, its built archive (.pmtiles for a vector layer, .cog.tif for a raster layer) and its build.json entry, regenerate style.json, and open a draft PR. Always confirms with the user first. Use when asked to remove, delete, drop or retire a layer, or to clean up an orphaned build.
 ---
 
 # Remove a layer
@@ -20,8 +20,8 @@ Destructive: always confirm before deleting anything. Commands run from
 the repo root in Git Bash. A layer is two configs in git
 (`pipeline/layers/<name>.env` and `<name>.style.json`) plus its build in
 `data/tiles/` (`<name>.pmtiles` for a vector layer, `<name>.cog.tif` for
-a raster layer, and an entry in `manifest.json`, from which `style.json`
-is made). The source data in `data/raw/` (or `RAW_DIR`) is left alone;
+a raster layer, and an entry in `build.json`; `style.json`
+is rewritten without it). The source data in `data/raw/` (or `RAW_DIR`) is left alone;
 say so, and that the user can delete it by hand. So is a raster's
 prepared source in `data/work/raster/` (a cache, up to about 0.7 GB per
 source): `--remove` does not touch it, and the user can delete that
@@ -36,7 +36,7 @@ git log --oneline -3 -- pipeline/layers/<name>.env
 ```
 
 Tell the user exactly what will go: the two config files (if present),
-the archive and its size, and the manifest entry, and that the layer
+the archive and its size, and the build.json entry, and that the layer
 disappears from the map on the next reload. Ask for an explicit yes. Do
 not continue without one. An `orphan` (config already gone) needs only
 step 3.
@@ -58,7 +58,7 @@ in docs) and update them.
 docker compose run --rm --build pipeline --remove <name>
 ```
 
-It drops the manifest entry (atomically), deletes the archive (the
+It drops the build.json entry (atomically), deletes the archive (the
 `.cog.tif` of a raster layer, and any `.pmtiles` left from a raster built
 before COGs) and rewrites `style.json`; the other layers are untouched. Exit 2 means
 nothing was built for that name. Then check:

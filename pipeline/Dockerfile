@@ -100,7 +100,7 @@ RUN git clone --depth 1 --branch "v${BATS_VERSION}" \
 FROM gdal AS base
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# jq: the layer files as JSON, manifest.json and style.json.
+# jq: the layer files as JSON, build.json and style.json.
 # libsqlite3/zlib: tippecanoe runtime libs.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends jq libsqlite3-0 zlib1g \

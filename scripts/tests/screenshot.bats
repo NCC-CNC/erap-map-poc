@@ -18,7 +18,7 @@ setup() {
   REPO=$T/repo
   mkdir -p "$REPO/scripts" "$REPO/data/tiles" "$REPO/web"
   cp "$SRC/scripts/screenshot.sh" "$SRC/scripts/screenshot.cjs" "$REPO/scripts/"
-  printf '{"layers": []}\n' >"$REPO/data/tiles/manifest.json"
+  printf '{"layers": []}\n' >"$REPO/data/tiles/style.json"
   SHOT=$REPO/scripts/screenshot.sh
 
   export STUB_LOG=$T/calls.log

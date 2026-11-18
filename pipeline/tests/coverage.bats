@@ -38,7 +38,7 @@ setup_file() {
 setup() {
   RUN="${PIPELINE_ROOT}/bin/run.sh"
   ARCHIVE="${COVERAGE_DIR}/tiles/coverage.pmtiles"
-  MANIFEST="${COVERAGE_DIR}/tiles/manifest.json"
+  BUILD="${COVERAGE_DIR}/tiles/build.json"
   export PIPELINE_INPUT_DIR="${COVERAGE_DIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
@@ -156,7 +156,7 @@ coverage_gaps() {
   [[ $output != *"--detect-shared-borders"* ]]
   [[ $output != *"--coalesce"* ]]
 
-  run jq -r '.layers[0] | "\(.profile) \(.min_visible_px)"' "$MANIFEST"
+  run jq -r '.layers[0] | "\(.profile) \(.min_visible_px)"' "$BUILD"
   [ "$output" = "coverage 1" ]
 }
 
@@ -199,7 +199,7 @@ coverage_gaps() {
   done
 }
 
-@test "manifest records per-zoom stats from the drop guard" {
+@test "build.json records per-zoom stats from the drop guard" {
   run jq -e '.layers[0] as $l
     | ($l.zooms | length == 7)
     and ([$l.zooms[].zoom] == [0, 1, 2, 3, 4, 5, 6])
@@ -209,7 +209,7 @@ coverage_gaps() {
     and all($l.zooms[2:][]; .present == 1058)
     and all($l.zooms[5:][]; .required == 1058)
     and ($l.max_tile_bytes == ([$l.zooms[].max_tile_bytes] | max))
-    and ($l.feature_count == 1058)' "$MANIFEST"
+    and ($l.feature_count == 1058)' "$BUILD"
   [ "$status" -eq 0 ]
 }
 
@@ -218,7 +218,7 @@ coverage_gaps() {
   run "$RUN" coverage
   [ "$status" -eq 0 ]
   local before
-  before=$(sha256sum "${PIPELINE_OUTPUT_DIR}/coverage.pmtiles" "${PIPELINE_OUTPUT_DIR}/manifest.json")
+  before=$(sha256sum "${PIPELINE_OUTPUT_DIR}/coverage.pmtiles" "${PIPELINE_OUTPUT_DIR}/build.json")
 
   # A tile limit this small makes --drop-smallest-as-needed drop large
   # polygons too.
@@ -227,7 +227,7 @@ coverage_gaps() {
   [ "$status" -eq 1 ]
   [[ $output == *"required feature(s) missing"* ]]
   [[ $output == *"drop guard: required features missing"* ]]
-  [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}/coverage.pmtiles" "${PIPELINE_OUTPUT_DIR}/manifest.json")" = "$before" ]
+  [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}/coverage.pmtiles" "${PIPELINE_OUTPUT_DIR}/build.json")" = "$before" ]
   assert_no_temp_files
 }
 

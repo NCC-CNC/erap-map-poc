@@ -6,7 +6,7 @@ description: Start, stop, rebuild or open the web map locally (the nginx web ima
 # Run the map
 
 Commands run from the repo root in Git Bash. The map reads its layers
-from `data/tiles/manifest.json`, so build layers first if
+from `data/tiles/style.json`, so build layers first if
 `docker compose run --rm --build pipeline --status` shows none built
 (build-layers skill).
 
@@ -30,7 +30,7 @@ docker compose --profile dev up -d web-dev
 
 ```sh
 docker compose ps                              # web should become (healthy)
-curl -fsS http://localhost:8080/tiles/manifest.json | head -c 300
+curl -fsS http://localhost:8080/tiles/style.json | head -c 300
 docker compose logs --tail 50 web              # or web-dev
 ```
 
@@ -48,7 +48,7 @@ scripts/screenshot.sh -n <prefix> <z/lat/lon> [<z/lat/lon> ...]
 ```
 
 Views come from a layer's `center` (lon, lat, zoom) or `bounds` in the
-manifest. Images go to `tmp/screenshots/<prefix>-<light|dark>-z....png`;
+`data/tiles/build.json`. Images go to `tmp/screenshots/<prefix>-<light|dark>-z....png`;
 read them and report any `page error` or `console error` lines. Never
 commit them.
 
@@ -60,7 +60,7 @@ commit them.
   `WEB_DEV_PORT=5174`) before the command, or in `.env`.
 - Old app after a pull or code change: the image is stale; rerun with
   `--build`. Browser cache: hard reload.
-- Panel says data layers are not available: `manifest.json` is missing
+- Panel says data layers are not available: `style.json` is missing
   or not valid; build the layers, then reload.
 - A layer missing or wrong: check `--status` for it, and the browser
   console (or screenshot `page error` lines). `Layer "<name>" skipped:

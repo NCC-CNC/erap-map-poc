@@ -75,7 +75,7 @@ design note in `docs/design/` or an ADR in `docs/decisions/`.
   pipeline writes are atomic (temp file then move); no layer is defined in
   `web/`: each is one file, `pipeline/layers/<layer>.yaml` (schema
   `pipeline/schema/layer.schema.json`, design note 04), and the app reads
-  them from `data/tiles/manifest.json` at runtime. A user's own changes
+  them from `data/tiles/style.json` at runtime. A user's own changes
   (layer selection, source and processing overrides, map view) go in the
   git-ignored `map.config.yaml` (schema `pipeline/schema/map.schema.json`),
   never into the committed layer files. Derived values and action
@@ -93,7 +93,7 @@ block; keep it in step with this section.
 - First-time setup on Windows: `scripts/setup.sh --init` (checks, `.env`,
   images, layers, map); `scripts/setup.sh` alone checks only, read only.
 - Pipeline: `docker compose run --rm pipeline [layer ...]` (no names builds
-  every enabled layer into `data/tiles/`, plus `manifest.json` and
+  every enabled layer into `data/tiles/`, plus `build.json` and
   `style.json`, skipping layers whose source data is missing). The map
   config is `map.config.yaml` at the repo root (`MAP_CONFIG` in `.env`),
   read from the repo mounted read-only at `/repo`.

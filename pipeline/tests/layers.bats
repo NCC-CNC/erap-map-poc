@@ -14,7 +14,7 @@ setup() {
   export PIPELINE_INPUT_DIR="${BATS_TEST_TMPDIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
-  MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
+  BUILD="${PIPELINE_OUTPUT_DIR}/build.json"
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR"
 }
 
@@ -111,6 +111,6 @@ generator_options() {
   run generator_options points
   [[ $output == *"--drop-rate=1"* ]]
   [[ $output != *"--drop-smallest-as-needed"* ]]
-  run jq -c '[.layers[] | [.name, .profile, .min_visible_px, .minzoom]]' "$MANIFEST"
+  run jq -c '[.layers[] | [.name, .profile, .min_visible_px, .minzoom]]' "$BUILD"
   [ "$output" = '[["coverage","coverage",1,0],["default","default",1,0],["none","default",1,0],["points","points",1,0]]' ]
 }

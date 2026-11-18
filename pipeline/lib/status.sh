@@ -2,7 +2,7 @@
 # Layer status, for `run.sh --status`: which layers are configured, which are
 # built, and which builds are out of date. Read only: nothing is written.
 #
-# Every layer with a layer file (lib/layerfile.sh), a manifest.json entry
+# Every layer with a layer file (lib/layerfile.sh), a build.json entry
 # or an archive (<layer>.pmtiles for a vector layer, <layer>.cog.tif for a
 # raster one) is listed, in one of these states:
 #
@@ -13,7 +13,7 @@
 #              `processing` (or the map config's overrides of them) differ
 #              from the build's (the hash in the entry's provenance), its
 #              source data has changed since (file modification time
-#              against the manifest's built_at), it was built before layer
+#              against build.json's built_at), it was built before layer
 #              files (no hash), or its archive is missing. Rebuild it.
 #   restyle    built and not stale, but the layer file's `display`,
 #              `title`, `visible` or `order` differ from the display last
@@ -34,7 +34,7 @@
 #
 # `notes` says why. A change to the pipeline itself does not make a layer
 # stale, with two exceptions for rasters (ADR 0010, lib/raster.sh): one
-# built before its manifest entry recorded `resampling` was warped with -r
+# built before its build.json entry recorded `resampling` was warped with -r
 # near, and is stale if its max zoom is coarser on the ground than its
 # source pixel, which is now averaged (the source's header is read to
 # tell); and one with `resampling` average but no `max_zoom_values` kept
@@ -56,8 +56,8 @@
 # `calculated_fields` are the names of the build's calculated fields; null
 # when it had none, or the layer is not built.
 #
-# Fields from the manifest are null when the layer is not built. `type` is
-# the manifest's (vector when an older entry has none), or the layer
+# Fields from build.json are null when the layer is not built. `type` is
+# build.json's (vector when an older entry has none), or the layer
 # file's when not built. A raster layer (ADR 0010) has `width` and
 # `height` (of its COG, in pixels) and no `feature_count`; a vector layer
 # the other way round. A raster built as PNG tiles before COGs has
@@ -149,7 +149,7 @@ _raster_needs_majority() {
 # _layer_status NAME OUT_DIR ENTRIES: one layer's status object. ENTRIES is
 
 # _layer_status NAME OUT_DIR ENTRIES: one layer's status object. ENTRIES is
-# the manifest's layers array; the layer set is LAYERS_JSON.
+# build.json's layers array; the layer set is LAYERS_JSON.
 _layer_status() {
   local name=$1 out_dir=$2 entries=$3
   local archive="" legacy=false
@@ -185,7 +185,7 @@ _layer_status() {
   if [[ $configured == false ]]; then
     state=orphan
     notes+=("no ${name}.yaml: remove the build with --remove")
-    if [[ $built == false ]]; then notes+=("archive with no manifest entry"); fi
+    if [[ $built == false ]]; then notes+=("archive with no build.json entry"); fi
   elif [[ $enabled == false ]]; then
     state=disabled
     notes+=("not in the map config's layers")
@@ -207,7 +207,7 @@ _layer_status() {
       notes=("$missing")
     elif [[ $built == false ]]; then
       state="not built"
-      if [[ -n $archive && -f $archive ]]; then notes+=("archive with no manifest entry"); fi
+      if [[ -n $archive && -f $archive ]]; then notes+=("archive with no build.json entry"); fi
     else
       local recorded_build recorded_display current_build current_display
       read -r recorded_build recorded_display < <(jq -r \
@@ -277,10 +277,8 @@ _layer_status() {
 layer_status_json() {
   local out_dir=$1
   shift
-  local manifest="${out_dir}/manifest.json" entries='[]'
-  if [[ -s $manifest ]]; then
-    entries=$(jq -c '.layers // []' "$manifest") || die "cannot read $manifest"
-  fi
+  local entries
+  entries=$(build_entries "$out_dir")
 
   local names=("$@")
   if ((${#names[@]} == 0)); then

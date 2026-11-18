@@ -82,11 +82,11 @@ copy_layers() {
   [ "$output" = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15" ]
 }
 
-@test "writes a valid manifest.json listing the layer" {
+@test "writes a valid build.json listing the layer" {
   run "$RUN" sample
   [ "$status" -eq 0 ]
 
-  local manifest="${PIPELINE_OUTPUT_DIR}/manifest.json"
+  local report="${PIPELINE_OUTPUT_DIR}/build.json"
   run jq -e '
     (.updated_at | type == "string")
     and (.layers | length == 1)
@@ -98,21 +98,21 @@ copy_layers() {
          and ([.zooms[].zoom] == [range(9)])
          and all(.zooms[]; .input == 15 and .present == 15
                  and .required == 15 and .required_present == 15)
-         and .max_tile_bytes == ([.zooms[].max_tile_bytes] | max))' "$manifest"
+         and .max_tile_bytes == ([.zooms[].max_tile_bytes] | max))' "$report"
   [ "$status" -eq 0 ]
 }
 
-@test "no arguments builds every layer config and merges the manifest" {
+@test "no arguments builds every layer config and merges build.json" {
   make_layers_dir alpha beta
   run "$RUN"
   [ "$status" -eq 0 ]
   [ -s "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles" ]
   [ -s "${PIPELINE_OUTPUT_DIR}/beta.pmtiles" ]
 
-  # Rebuilding one layer keeps the other's manifest entry.
+  # Rebuilding one layer keeps the other's build.json entry.
   run "$RUN" beta
   [ "$status" -eq 0 ]
-  run jq -r '[.layers[].name] | join(",")' "${PIPELINE_OUTPUT_DIR}/manifest.json"
+  run jq -r '[.layers[].name] | join(",")' "${PIPELINE_OUTPUT_DIR}/build.json"
   [ "$output" = "alpha,beta" ]
 }
 
@@ -179,7 +179,7 @@ copy_layers() {
   done
 }
 
-@test "no arguments builds sample and sample_points into one manifest" {
+@test "no arguments builds sample and sample_points into one build.json" {
   # The two synthetic test layers (tests/layers/).
   copy_layers sample sample_points
   run "$RUN"
@@ -191,7 +191,7 @@ copy_layers() {
     ([.layers[].name] == ["sample", "sample_points"])
     and (.layers[1] | .file == "sample_points.pmtiles"
          and .minzoom == 0 and .maxzoom == 10 and .feature_count == 30)' \
-    "${PIPELINE_OUTPUT_DIR}/manifest.json"
+    "${PIPELINE_OUTPUT_DIR}/build.json"
   [ "$status" -eq 0 ]
 }
 
@@ -203,7 +203,7 @@ copy_layers() {
   [ "$status" -eq 1 ]
   [[ $output == *"input not found: ${PIPELINE_INPUT_DIR}/missing.geojson"* ]]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/broken.pmtiles" ]
-  [ ! -e "${PIPELINE_OUTPUT_DIR}/manifest.json" ]
+  [ ! -e "${PIPELINE_OUTPUT_DIR}/build.json" ]
   assert_no_temp_files
 }
 

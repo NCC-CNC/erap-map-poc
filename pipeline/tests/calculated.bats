@@ -14,7 +14,7 @@ setup() {
   export PIPELINE_INPUT_DIR="${BATS_TEST_TMPDIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
-  MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
+  BUILD="${PIPELINE_OUTPUT_DIR}/build.json"
   ARCHIVE="${PIPELINE_OUTPUT_DIR}/demo.pmtiles"
   LAYER="${PIPELINE_LAYERS_DIR}/demo.yaml"
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR"
@@ -58,7 +58,7 @@ props() {
   [ "$output" = '{"area_ha":"Number","half_gap":"Number","low_count":"Number","low_score":"Number","name":"String","score":"Number","score_gap":"Number","v2020":"Number","v2021":"Number","v2022":"Number","v2023":"Number","v2024":"Number"}' ]
 
   # The build report, and --status.
-  run jq -c '.layers[0].calculated_fields | map([.name, .expression, .non_null, .min, .max])' "$MANIFEST"
+  run jq -c '.layers[0].calculated_fields | map([.name, .expression, .non_null, .min, .max])' "$BUILD"
   [ "$output" = '[["score_gap","100 - score",15,6,97],["low_score","coalesce(score < 30, 0)",15,0,1],["half_gap","round(score_gap / 2.0, 1)",15,3,48.5],["low_count","low_score + 0",15,0,1]]' ]
   run "$RUN" --status demo
   [ "$status" -eq 0 ]
@@ -75,7 +75,7 @@ props() {
   [ "$(jq -c '.maybe' <<<"$output")" = null ]
   run bash -c "pmtiles show --metadata '$ARCHIVE' | jq -r '.vector_layers[0].fields.maybe'"
   [ "$output" = Number ]
-  run jq -c '.layers[0].calculated_fields[0] | [.non_null, .min, .max]' "$MANIFEST"
+  run jq -c '.layers[0].calculated_fields[0] | [.non_null, .min, .max]' "$BUILD"
   [ "$output" = '[10,74,188]' ]
 
   # Text stays text.
@@ -91,14 +91,14 @@ props() {
   run "$RUN" demo
   [ "$status" -eq 0 ]
   local before
-  before=$(sha256sum "$ARCHIVE" "$MANIFEST")
+  before=$(sha256sum "$ARCHIVE" "$BUILD")
 
   demo '.fields.calculated.bad = "score +"'
   run "$RUN" demo
   [ "$status" -eq 1 ]
   [[ $output == *"demo: fields.calculated.bad: score +: near"*"syntax error"* ]]
   [[ $output != *"building tiles"* ]]
-  [ "$(sha256sum "$ARCHIVE" "$MANIFEST")" = "$before" ]
+  [ "$(sha256sum "$ARCHIVE" "$BUILD")" = "$before" ]
 
   # An attribute that is not kept, and one calculated later in the file.
   demo '.fields.calculated = {"a": "notes || 1"}'
@@ -120,7 +120,7 @@ props() {
   run "$RUN" demo
   [ "$status" -eq 1 ]
   [[ $output == *"fields: _feature_id is reserved for the feature id"* ]]
-  [ "$(sha256sum "$ARCHIVE" "$MANIFEST")" = "$before" ]
+  [ "$(sha256sum "$ARCHIVE" "$BUILD")" = "$before" ]
 }
 
 @test "--status: a changed calculated field makes the build stale" {

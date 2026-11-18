@@ -34,7 +34,7 @@ name_of() {
 assert_sample_bounds() {
   run jq -e --arg name "$1" '.layers[] | select(.name == $name) | .bounds as $b
     | [-125, 46, -66, 56] as $want
-    | all(range(4); ($b[.] - $want[.]) | fabs < 0.001)' "${PIPELINE_OUTPUT_DIR}/manifest.json"
+    | all(range(4); ($b[.] - $want[.]) | fabs < 0.001)' "${PIPELINE_OUTPUT_DIR}/build.json"
   [ "$status" -eq 0 ]
 }
 
@@ -53,7 +53,7 @@ assert_sample_bounds() {
   run "$RUN" noprj
   [ "$status" -eq 0 ]
   assert_sample_bounds noprj
-  run jq -r '.layers[0].feature_count' "${PIPELINE_OUTPUT_DIR}/manifest.json"
+  run jq -r '.layers[0].feature_count' "${PIPELINE_OUTPUT_DIR}/build.json"
   [ "$output" = "15" ]
 }
 
@@ -102,7 +102,7 @@ assert_sample_bounds() {
   run "$RUN" shpzip bundle
   [ "$status" -eq 0 ]
   [[ $output == *"normalising ${PIPELINE_INPUT_DIR}/bundle.zip/shp/sample.shp"* ]]
-  run jq -r '[.layers[] | "\(.name):\(.feature_count)"] | join(",")' "${PIPELINE_OUTPUT_DIR}/manifest.json"
+  run jq -r '[.layers[] | "\(.name):\(.feature_count)"] | join(",")' "${PIPELINE_OUTPUT_DIR}/build.json"
   [ "$output" = "bundle:15,shpzip:15" ]
   assert_sample_bounds bundle
   [ "$(name_of bundle 3)" = "Cedar" ]
@@ -131,10 +131,10 @@ assert_sample_bounds() {
   [[ $output == *"normalising ${SAMPLE}"* ]]
   [[ $output == *"normalising /vsizip/${BATS_TEST_TMPDIR}/sample.zip/sample.geojson"* ]]
 
-  # The manifest records a path under the input dir relative to it, and
+  # build.json records a path under the input dir relative to it, and
   # any other as it is; a /vsi path has no size or time.
   run jq -r '.layers[] | "\(.name) \(.provenance.source.path) \(.provenance.source.bytes != null) \(.feature_count)"' \
-    "${PIPELINE_OUTPUT_DIR}/manifest.json"
+    "${PIPELINE_OUTPUT_DIR}/build.json"
   [ "${lines[0]}" = "absolute ${SAMPLE} true 15" ]
   [ "${lines[1]}" = "relative sub/sample.geojson true 15" ]
   [ "${lines[2]}" = "vsi /vsizip/${BATS_TEST_TMPDIR}/sample.zip/sample.geojson false 15" ]

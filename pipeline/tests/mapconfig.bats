@@ -16,7 +16,7 @@ setup() {
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
   export PIPELINE_MAP_CONFIG="${BATS_TEST_TMPDIR}/repo/map.config.yaml"
   CONFIG=$PIPELINE_MAP_CONFIG
-  MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
+  BUILD="${PIPELINE_OUTPUT_DIR}/build.json"
   STYLE="${PIPELINE_OUTPUT_DIR}/style.json"
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR" "${BATS_TEST_TMPDIR}/repo"
   cp "${PIPELINE_ROOT}/tests/fixtures/sample.geojson" "${PIPELINE_INPUT_DIR}/"
@@ -38,9 +38,9 @@ config() {
   printf '%s\n' "$1" >"$CONFIG"
 }
 
-# entry NAME JQ: a jq filter on NAME's manifest entry.
+# entry NAME JQ: a jq filter on NAME's build.json entry.
 entry() {
-  jq -c --arg n "$1" "first(.layers[] | select(.name == \$n)) | $2" "$MANIFEST"
+  jq -c --arg n "$1" "first(.layers[] | select(.name == \$n)) | $2" "$BUILD"
 }
 
 status_json() {
@@ -60,9 +60,9 @@ notes_of() {
   run "$RUN"
   [ "$status" -eq 0 ]
   [[ $output != *"map config:"* ]]
-  run jq -c '[.layers[] | [.name, .enabled, .provenance.overrides]]' "$MANIFEST"
-  [ "$output" = '[["alpha",true,null],["beta",true,null]]' ]
-  run jq -e 'has("map") | not' "$MANIFEST"
+  run jq -c '[.layers[] | [.name, .provenance.overrides]]' "$BUILD"
+  [ "$output" = '[["alpha",null],["beta",null]]' ]
+  run jq -e 'has("center") or has("zoom") or (.metadata | has("erap:basemap")) | not' "$STYLE"
   [ "$status" -eq 0 ]
 }
 
@@ -107,7 +107,6 @@ notes_of() {
   [ "$status" -eq 0 ]
   [[ $output == *"skipping beta: not enabled in the map config"* ]]
   [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}"/*.pmtiles)" = "$tiles" ]
-  [ "$(entry beta .enabled)" = false ]
   run jq -r '[.sources | keys[]] | join(",")' "$STYLE"
   [ "$output" = alpha ]
   [ "$(state_of beta)" = disabled ]
@@ -116,7 +115,6 @@ notes_of() {
   rm "$CONFIG"
   run "$RUN" --style-only
   [ "$status" -eq 0 ]
-  [ "$(entry beta .enabled)" = true ]
   run jq -r '[.sources | keys[]] | join(",")' "$STYLE"
   [ "$output" = alpha,beta ]
 }
@@ -151,7 +149,7 @@ notes_of() {
   run "$RUN" alpha
   [ "$status" -eq 1 ]
   [[ $output == *"alpha.yaml: with the map config overrides: at '/processing/grey_levels'"* ]]
-  [ ! -e "$MANIFEST" ]
+  [ ! -e "$BUILD" ]
 }
 
 @test "a bad map config stops every mode before anything changes" {
@@ -159,7 +157,7 @@ notes_of() {
   run "$RUN" alpha
   [ "$status" -eq 0 ]
   local before
-  before=$(cat "$MANIFEST")
+  before=$(cat "$BUILD")
 
   config 'layer: []'
   run "$RUN"
@@ -189,7 +187,7 @@ notes_of() {
   run "$RUN"
   [ "$status" -eq 2 ]
 
-  [ "$(cat "$MANIFEST")" = "$before" ]
+  [ "$(cat "$BUILD")" = "$before" ]
 }
 
 @test "a full build skips layers with no source data; a named one fails" {
@@ -227,14 +225,14 @@ notes_of() {
 
   # Without it, a full build stops instead of skipping it, and a build of
   # another layer stops too.
-  rm "$MANIFEST" "${PIPELINE_INPUT_DIR}/public.geojson"
+  rm "$BUILD" "${PIPELINE_INPUT_DIR}/public.geojson"
   run "$RUN"
   [ "$status" -eq 1 ]
   [[ $output == *"alpha: source data not found: public.geojson, and the map config requires it (require): nothing was built"* ]]
-  [ ! -e "$MANIFEST" ]
+  [ ! -e "$BUILD" ]
   run "$RUN" beta
   [ "$status" -eq 1 ]
-  [ ! -e "$MANIFEST" ]
+  [ ! -e "$BUILD" ]
 
   # A required layer must be among the layers built.
   config $'layers: [beta]\nrequire: [alpha]'
@@ -262,18 +260,20 @@ notes_of() {
   [ "$(entry alpha .min_visible_px)" = 2 ]
 }
 
-@test "the map view goes into the manifest and style.json, and goes when removed" {
+@test "the map view goes into style.json, and goes when removed" {
   add_layer alpha
   config $'view: { center: [-80.5, 45.25], zoom: 5.5 }\nbasemap: dark'
   run "$RUN"
   [ "$status" -eq 0 ]
-  [ "$(jq -c .map "$MANIFEST")" = '{"center":[-80.5,45.25],"zoom":5.5,"basemap":"dark"}' ]
+  [ "$(jq -r '.metadata["erap:basemap"]' "$STYLE")" = dark ]
+  run jq -e 'has("map") | not' "$BUILD"
+  [ "$status" -eq 0 ]
   [ "$(jq -c '[.center, .zoom]' "$STYLE")" = '[[-80.5,45.25],5.5]' ]
 
   config '{}'
   run "$RUN" --style-only
   [ "$status" -eq 0 ]
-  run jq -e 'has("map") | not' "$MANIFEST"
+  run jq -e '(has("center") or (.metadata | has("erap:basemap"))) | not' "$STYLE"
   [ "$status" -eq 0 ]
   run jq -e 'has("center") | not' "$STYLE"
   [ "$status" -eq 0 ]

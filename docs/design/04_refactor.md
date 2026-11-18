@@ -352,3 +352,30 @@ practical:
   app: `defaultVisible`, the first theme's `paint` filled from
   `display.layers`, `defaultTheme` the first theme. The web tests' copy of
   the old display schema is `web/src/test/layer-style.schema.json`.
+
+## Settled in step 3
+
+- `style.json` keeps what MapLibre does not know about in
+  `metadata["erap:layers"]`, an object keyed by layer name: `title`,
+  `type` (vector or raster), `order`, `visible`, and `legend`, `themes`,
+  `popup` and `modal` as the layer file has them (the first theme has no
+  `paint`). Each style layer has `metadata["erap:layer"]`; the basemap is
+  `metadata["erap:basemap"]`, the view `center` and `zoom`.
+- `style.json` is also where a layer's display is kept between runs: a
+  build or `--style-only` takes a layer's part from its layer file, every
+  other built layer keeps its part as it was (or takes it from its layer
+  file if it has none, such as a layer back in the map config). So a
+  display change still shows as `restyle` until applied, and a layer file
+  with problems does not take its layer off the map.
+- `build.json` is the manifest without `display`, `enabled` and `map`:
+  `{updated_at, layers: [...]}`, one entry per built layer with the build
+  report, `provenance` and `display_updated_at` (set when the display hash
+  changes). A leftover `manifest.json` is deleted when `style.json` is
+  written.
+- `scripts/publish-pages.sh` reads `build.json` and uploads it with
+  `style.json` and the archives (until step 6); `scripts/screenshot.sh`
+  waits for `style.json`.
+- The pipeline no longer writes the old display block, so the web tests'
+  fixtures (`pipeline/tests/fixtures/expected_*display.json`,
+  `ecoregions_display.json`) are no longer checked against it; step 4
+  removes them with the app's manifest reader.

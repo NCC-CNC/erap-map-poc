@@ -440,7 +440,7 @@ raster_report() {
 }
 
 # raster_header PREPARED MIN_ZOOM MAX_ZOOM: print the archive fields of a
-# raster layer's manifest entry (the ones a PMTiles header gives a vector
+# raster layer's build.json entry (the ones a PMTiles header gives a vector
 # layer) as compact JSON: {tile_type: "cog", minzoom, maxzoom, bounds,
 # center}. bounds are the PREPARED source's extent in EPSG:4326 (the COG's
 # own extent is padded to the snapping grid); center is its middle at
@@ -459,7 +459,7 @@ raster_header() {
 
 # build_raster_tiles LAYER INPUT SOURCE_SRS NODATA MIN_ZOOM MAX_ZOOM OUT_DIR TMP_DIR REPORT HEADER GREY_LEVELS [CACHE_DIR]
 # Build OUT_DIR/LAYER.cog.tif from INPUT (see the top of this file), write
-# the build report (raster_report) to REPORT and the manifest's archive
+# the build report (raster_report) to REPORT and build.json's archive
 # fields (raster_header) to HEADER. GREY_LEVELS (2 to 256,
 # processing.grey_levels) is how many grey levels the COG holds
 # (raster_grey_vrt), in the overviews only when the max zoom is binary by

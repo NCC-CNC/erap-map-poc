@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Visibility-aware drop guard: after tiling, check that no feature big enough
 # to see at a zoom was dropped at that zoom, and gather per-zoom stats for
-# manifest.json.
+# build.json.
 #
 # Size: each feature's largest polygon part, measured once in Web Mercator
 # (EPSG:3857, the tiles' own projection) from the normalised GeoJSONSeq.

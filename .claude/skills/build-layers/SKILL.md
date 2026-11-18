@@ -1,6 +1,6 @@
 ---
 name: build-layers
-description: Build or rebuild map layer tiles with the pipeline (one layer, several, or all), then read the build report in data/tiles/manifest.json and explain any failure, such as a drop guard failure, and what to change. Use when asked to build, rebuild, regenerate or refresh layers or tiles, or why a layer build failed.
+description: Build or rebuild map layer tiles with the pipeline (one layer, several, or all), then read the build report in data/tiles/build.json and explain any failure, such as a drop guard failure, and what to change. Use when asked to build, rebuild, regenerate or refresh layers or tiles, or why a layer build failed.
 ---
 
 # Build layers
@@ -19,7 +19,7 @@ description: Build or rebuild map layer tiles with the pipeline (one layer, seve
 The pipeline turns each `pipeline/layers/<name>.env` plus
 `<name>.style.json` into `data/tiles/<name>.pmtiles` (vector) or
 `data/tiles/<name>.cog.tif` (raster, one COG; README, Tile formats) and a
-`manifest.json` entry. Commands run from the repo root in Git Bash.
+`build.json` entry. Commands run from the repo root in Git Bash.
 Nothing under `data/` is ever committed.
 
 ## 1. Decide what to build
@@ -53,7 +53,7 @@ docker compose run --rm --build pipeline <name> [<name> ...]   # or no names: ev
 ```
 
 Exit 0: all built. Exit 1: at least one layer failed, the others still
-built, and a failed layer keeps its previous archive and manifest entry.
+built, and a failed layer keeps its previous archive and build.json entry.
 Exit 2: a usage error (a name with no `.env`), nothing built.
 
 ## 3. Explain failures
@@ -101,7 +101,7 @@ Find each `[ERROR] <name>:` line in the log and match it:
 docker compose run --rm --build pipeline --status <name> ...
 ```
 
-Then the layer's entry in `data/tiles/manifest.json`: `feature_count`
+Then the layer's entry in `data/tiles/build.json`: `feature_count`
 against what the source holds, and per zoom in `zooms[]` that
 `required_present` equals `required` and `max_tile_bytes` stays under
 about 500 kB. A raster layer (`type` raster, `format` cog) has no drop

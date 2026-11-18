@@ -71,4 +71,4 @@ tile) and then what to do: which layers to rebuild, which need only
 and how (from the notes), and any orphan to remove. Flag a largest tile
 over about 500 kB. For a layer's full build report (per zoom: features
 present and required by the drop guard, tile sizes), read its entry in
-`data/tiles/manifest.json`.
+`data/tiles/build.json`.

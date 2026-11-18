@@ -12,12 +12,11 @@ setup() {
   PIPELINE_ROOT=$(cd "${BATS_TEST_DIRNAME}/.." && pwd)
   RUN="${PIPELINE_ROOT}/bin/run.sh"
   MAKE="${PIPELINE_ROOT}/tests/fixtures/make_raster.sh"
-  EXPECTED="${PIPELINE_ROOT}/tests/fixtures/expected_raster_display.json"
   export PIPELINE_INPUT_DIR="${BATS_TEST_TMPDIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
   export PIPELINE_WORK_DIR="${BATS_TEST_TMPDIR}/work"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
-  MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
+  BUILD="${PIPELINE_OUTPUT_DIR}/build.json"
   STYLE="${PIPELINE_OUTPUT_DIR}/style.json"
   COG="${PIPELINE_OUTPUT_DIR}/cover.cog.tif"
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR"
@@ -53,12 +52,12 @@ value_at() {
 }
 
 # level_values COG LEVEL: every pixel value in level LEVEL of COG within
-# the layer's bounds (the manifest's, of its only entry), one per line. The
+# the layer's bounds (build.json's, of its only entry), one per line. The
 # COG itself is padded to the tile grid, mostly empty.
 level_values() {
   local opts bounds
   mapfile -t opts < <(level_opts "$2")
-  bounds=$(jq -r '.layers[0].bounds | "\(.[0]) \(.[3]) \(.[2]) \(.[1])"' "$MANIFEST")
+  bounds=$(jq -r '.layers[0].bounds | "\(.[0]) \(.[3]) \(.[2]) \(.[1])"' "$BUILD")
   # shellcheck disable=SC2086 # bounds is four numbers.
   gdal_translate -q -of XYZ "${opts[@]}" -projwin $bounds -projwin_srs EPSG:4326 \
     "$1" /vsistdout/ | awk '{ print $3 }'
@@ -129,7 +128,7 @@ level_sum() {
   ((output > 0 && output % 255 != 0))
 }
 
-@test "the manifest entry says raster and cog, with the COG's build report" {
+@test "the build.json entry says raster and cog, with the COG's build report" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
@@ -147,11 +146,16 @@ level_sum() {
       and ([.zooms[].zoom] == [8, 7, 6, 5, 4, 3])
       and .zooms[0].width == .width and .zooms[0].height == .height
       and .zooms[5].width * 32 == .width
-      and (has("tile_count") | not) and (has("feature_count") | not)' "$MANIFEST"
+      and (has("tile_count") | not) and (has("feature_count") | not)' "$BUILD"
   [ "$status" -eq 0 ]
-  [ "$(jq '.layers[0].bytes' "$MANIFEST")" -eq "$(stat -c %s "$COG")" ]
+  [ "$(jq '.layers[0].bytes' "$BUILD")" -eq "$(stat -c %s "$COG")" ]
 
-  run jq -e --slurpfile want "$EXPECTED" '.layers[0].display == $want[0]' "$MANIFEST"
+  run jq -e '.layers[0] | (has("display") or has("enabled")) | not' "$BUILD"
+  [ "$status" -eq 0 ]
+  run jq -e --argjson f "$(yq -o json -I 0 . "${PIPELINE_LAYERS_DIR}/cover.yaml")" '
+    .metadata["erap:layers"].cover == {title: $f.title, type: "raster", order: ($f.order // 0),
+      visible: ($f.visible // false), legend: $f.display.legend}
+    and .layers[0].paint == $f.display.layers[0].paint' "$STYLE"
   [ "$status" -eq 0 ]
 }
 
@@ -196,7 +200,7 @@ level_sum() {
   [ "$status" -eq 1 ]
   [[ $output == *"no cover"* ]]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/empty.cog.tif" ]
-  [ ! -e "$MANIFEST" ]
+  [ ! -e "$BUILD" ]
   assert_no_temp_files
 }
 
@@ -205,14 +209,14 @@ level_sum() {
   run "$RUN" sample
   [ "$status" -eq 0 ]
   local before
-  before=$(jq -c '.layers[] | select(.name == "sample")' "$MANIFEST")
+  before=$(jq -c '.layers[] | select(.name == "sample")' "$BUILD")
 
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output != *"layer sample: start"* ]]
-  [ "$(jq -c '.layers[] | select(.name == "sample")' "$MANIFEST")" = "$before" ]
-  run jq -r '[.layers[] | "\(.name):\(.type)"] | join(",")' "$MANIFEST"
+  [ "$(jq -c '.layers[] | select(.name == "sample")' "$BUILD")" = "$before" ]
+  run jq -r '[.layers[] | "\(.name):\(.type)"] | join(",")' "$BUILD"
   [ "$output" = "cover:raster,sample:vector" ]
 
   # style.json: a cog:// raster-dem source and the color-relief layer, under
@@ -302,8 +306,8 @@ level_sum() {
   mv "$COG" "${PIPELINE_OUTPUT_DIR}/cover.pmtiles"
   jq '.layers[0] |= (.file = "cover.pmtiles" | .format = "png" | .tile_count = 10
     | .max_tile_bytes = 100 | del(.width, .height, .block_size, .overview_count, .zooms))' \
-    "$MANIFEST" >"${MANIFEST}.new"
-  mv "${MANIFEST}.new" "$MANIFEST"
+    "$BUILD" >"${BUILD}.new"
+  mv "${BUILD}.new" "$BUILD"
 
   run "$RUN" --status --json cover
   [ "$status" -eq 0 ]
@@ -332,7 +336,7 @@ level_sum() {
   [ "$status" -eq 0 ]
   [ ! -e "$COG" ]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/cover.pmtiles" ]
-  run jq -e '.layers == []' "$MANIFEST"
+  run jq -e '.layers == []' "$BUILD"
   [ "$status" -eq 0 ]
 }
 
@@ -376,7 +380,7 @@ level_sum() {
   local prepared before levels sum
   prepared=$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')
   before=$(stat -c %y "$prepared")
-  levels=$(jq -c '.layers[0].zooms' "$MANIFEST")
+  levels=$(jq -c '.layers[0].zooms' "$BUILD")
   sum=$(level_sum "$COG" 0)
 
   # Another zoom range: the same prepared source.
@@ -391,7 +395,7 @@ level_sum() {
   set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.processing.maxzoom = 8'
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  [ "$(jq -c '.layers[0].zooms' "$MANIFEST")" = "$levels" ]
+  [ "$(jq -c '.layers[0].zooms' "$BUILD")" = "$levels" ]
   [ "$(level_sum "$COG" 0)" -eq "$sum" ]
 }
 
@@ -514,7 +518,7 @@ raster_fn() {
   [ "$status" -eq 0 ]
   [[ $output == *"resampling near"* ]]
   [[ $output != *"majority"* ]]
-  [ "$(jq -r '.layers[0] | "\(.resampling) \(.max_zoom_values)"' "$MANIFEST")" = "near near" ]
+  [ "$(jq -r '.layers[0] | "\(.resampling) \(.max_zoom_values)"' "$BUILD")" = "near near" ]
   # z5 in the z8 build: three overviews down.
   local overview
   overview=$(level_sum "$COG" 3)
@@ -525,7 +529,7 @@ raster_fn() {
   [ "$status" -eq 0 ]
   [[ $output == *"resampling average"* ]]
   [[ $output == *"binary by majority"* ]]
-  [ "$(jq -r '.layers[0] | "\(.resampling) \(.max_zoom_values)"' "$MANIFEST")" = "average majority" ]
+  [ "$(jq -r '.layers[0] | "\(.resampling) \(.max_zoom_values)"' "$BUILD")" = "average majority" ]
   # Only 0 and 255 at the max zoom ...
   run level_values "$COG" 0
   [ "$status" -eq 0 ]
@@ -608,7 +612,7 @@ GREY8="0 36 73 109 146 182 219 255"
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output != *"grey levels"* ]]
-  [ "$(jq '.layers[0].grey_levels' "$MANIFEST")" -eq 256 ]
+  [ "$(jq '.layers[0].grey_levels' "$BUILD")" -eq 256 ]
   local before
   before=$(sha256sum <"$COG")
 
@@ -631,7 +635,7 @@ GREY8="0 36 73 109 146 182 219 255"
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output == *"8 grey levels"* ]]
-  [ "$(jq '.layers[0].grey_levels' "$MANIFEST")" -eq 8 ]
+  [ "$(jq '.layers[0].grey_levels' "$BUILD")" -eq 8 ]
   # Still a valid COG: the same layout, block size and overviews.
   run jq -e '.metadata.IMAGE_STRUCTURE.LAYOUT == "COG" and (.bands[0] | .type == "Byte"
     and .block == [256, 256] and (has("noDataValue") | not) and (.overviews | length) == 3)' \
