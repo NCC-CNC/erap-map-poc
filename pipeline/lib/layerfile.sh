@@ -144,21 +144,11 @@ TIPPECANOE_RESERVED='["--output", "--output-to-directory", "--force", "--layer",
 _map_config() {
   local out=$1 config=${PIPELINE_MAP_CONFIG:-} problems
   if [[ -z $config || ! -e $config ]]; then
-    # The JSON map config (ADR 0009) is not read any more: say so, rather
-    # than build every layer as if there were none.
-    local old="${config%/*}/map.config.json"
-    if [[ -n $config && $config == */* && -f $old ]]; then
-      log_warn "${old} is no longer read: write your map config as ${config##*/} (see map.config.example.yaml)"
-    fi
     echo '{}' >"$out"
     return 0
   fi
   if [[ ! -f $config ]]; then
     log_error "map config is not a file: $config"
-    return 2
-  fi
-  if [[ $config == *.json ]]; then
-    log_error "map config $config is in the old JSON format, which is no longer read: write it as YAML (see map.config.example.yaml)"
     return 2
   fi
   log_info "map config: $config"

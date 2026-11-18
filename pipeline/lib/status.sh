@@ -13,9 +13,8 @@
 #              `processing` (or the map config's overrides of them) differ
 #              from the build's (the hash in the entry's provenance), its
 #              source data or a join table has changed since (file
-#              modification time against build.json's built_at), it was
-#              built before layer files (no hash), or its archive is
-#              missing. Rebuild it.
+#              modification time against build.json's built_at), or its
+#              archive is missing. Rebuild it.
 #   restyle    built and not stale, but the layer file's `display`,
 #              `title`, `visible` or `order` differ from the display last
 #              written (by a build or by `run.sh --style-only`, which
@@ -34,13 +33,7 @@
 #              removes it.
 #
 # `notes` says why. A change to the pipeline itself does not make a layer
-# stale, with two exceptions for rasters (ADR 0010, lib/raster.sh): one
-# built before its build.json entry recorded `resampling` was warped with -r
-# near, and is stale if its max zoom is coarser on the ground than its
-# source pixel, which is now averaged (the source's header is read to
-# tell); and one with `resampling` average but no `max_zoom_values` kept
-# the averaged grey levels at its max zoom, which is now binary by
-# majority, so it is stale. The JSON (layer_status_json) is:
+# stale. The JSON (layer_status_json) is:
 #
 #   { "layers": [ { "name": "sample", "state": "current", "notes": [],
 #       "configured": true, "enabled": true, "origin": "committed",
@@ -49,7 +42,7 @@
 #       "built_at": "2026-01-01T00:00:00Z",
 #       "display_updated_at": "2026-01-01T00:00:00Z", "archive_bytes": 12345,
 #       "minzoom": 0, "maxzoom": 8, "feature_count": 15, "width": null,
-#       "height": null, "tile_count": null,
+#       "height": null,
 #       "max_tile_bytes": 1234,
 #       "calculated_fields": ["x"] },
 #     ... ] }
@@ -61,8 +54,7 @@
 # build.json's (vector when an older entry has none), or the layer
 # file's when not built. A raster layer (ADR 0010) has `width` and
 # `height` (of its COG, in pixels) and no `feature_count`; a vector layer
-# the other way round. A raster built as PNG tiles before COGs has
-# `tile_count` instead and is stale. `origin` (committed, or local for a
+# the other way round. `origin` (committed, or local for a
 # layer in layers.local/) and `enabled`
 # are from the layer files, null when not configured.
 
@@ -125,52 +117,23 @@ _source_files() {
   fi
 }
 
-# _raster_needs_average ENTRY INPUT SOURCE_SRS: succeed if ENTRY, a raster
-# built before the warp's resampling was recorded (so with -r near), would
-# now be warped with -r average: its max zoom is coarser on the ground than
-# the INPUT's pixel (lib/raster.sh, raster_resampling). Reads only INPUT's
-# header; fails for any other entry or if INPUT cannot be read.
-_raster_needs_average() {
-  local entry=$1 input=$2 src_srs=$3 maxzoom dataset pixel lat
-  maxzoom=$(jq -er 'select(.type == "raster" and .format == "cog"
-    and (has("resampling") | not)) | .maxzoom' <<<"$entry" 2>/dev/null) || return 1
-  dataset=$(gdal_input_path "$input" 2>/dev/null) || return 1
-  read -r pixel lat < <(raster_ground_pixel "$dataset" "$src_srs" 2>/dev/null) || return 1
-  [[ -n $lat && $(raster_resampling "$pixel" "$lat" "$maxzoom") == average ]]
-}
-
-# _raster_needs_majority ENTRY: succeed if ENTRY is a raster whose max zoom
-# was averaged (`resampling` average) before `max_zoom_values` was
-# recorded: it holds grey levels where it is now binary by majority
-# (lib/raster.sh, raster_majority_vrt).
-_raster_needs_majority() {
-  jq -e '.type == "raster" and .format == "cog" and .resampling == "average"
-    and (has("max_zoom_values") | not)' <<<"$1" >/dev/null 2>&1
-}
-
-# _layer_status NAME OUT_DIR ENTRIES: one layer's status object. ENTRIES is
-
 # _layer_status NAME OUT_DIR ENTRIES: one layer's status object. ENTRIES is
 # build.json's layers array; the layer set is LAYERS_JSON.
 _layer_status() {
   local name=$1 out_dir=$2 entries=$3
-  local archive="" legacy=false
+  local archive=""
   local entry layer built_at=0 configured=false built=false state input="" type=""
   local notes=() restyle="" enabled=true
 
   entry=$(jq -c --arg n "$name" 'first(.[] | select(.name == $n)) // null' <<<"$entries")
   if [[ $entry != null ]]; then
     built=true
-    # The archive the entry names (an entry from before COGs names its
-    # .pmtiles); a raster built as PNG tiles needs a rebuild (ADR 0010).
+    # The archive the entry names.
     archive=$(jq -r '.file // ""' <<<"$entry")
     if [[ -n $archive ]]; then
       archive="${out_dir}/${archive}"
     else
       archive=$(layer_archives "$out_dir" "$name" | head -n 1) || archive=""
-    fi
-    if jq -e '.type == "raster" and .format != "cog"' <<<"$entry" >/dev/null; then
-      legacy=true
     fi
     built_at=$(jq -r '(.built_at | fromdateiso8601?) // 0' <<<"$entry")
   else
@@ -225,17 +188,7 @@ _layer_status() {
         '"\(.provenance.build_sha256 // "-") \(.provenance.display_sha256 // "-")"' <<<"$entry")
       read -r current_build current_display < <(jq -r '"\(.build_sha256) \(.display_sha256)"' <<<"$layer")
       [[ -f $archive ]] || notes+=("archive missing")
-      if [[ $legacy == true ]]; then
-        notes+=("built as PNG tiles in ${name}.pmtiles: rebuild it as a COG (ADR 0010)")
-      elif _raster_needs_average "$entry" "$input" \
-        "$(jq -r '.source.srs // ""' "$(jq -r '.config' <<<"$layer")")"; then
-        notes+=("warped with -r near, but its max zoom is coarser than the source: rebuild it to average (ADR 0010)")
-      elif _raster_needs_majority "$entry"; then
-        notes+=("grey levels at its max zoom: rebuild it for a binary max zoom by majority (ADR 0010)")
-      fi
-      if [[ $recorded_build == - ]]; then
-        notes+=("built before layer files (.yaml): rebuild it")
-      elif [[ $recorded_build != "$current_build" ]]; then
+      if [[ $recorded_build != "$current_build" ]]; then
         notes+=("source, fields or processing changed since the build (${name}.yaml or the map config's overrides)")
       fi
       if ((${src:-0} > built_at)); then notes+=("source data changed since the build"); fi
@@ -277,7 +230,6 @@ _layer_status() {
       minzoom: $entry.minzoom, maxzoom: $entry.maxzoom,
       feature_count: $entry.feature_count,
       width: $entry.width, height: $entry.height,
-      tile_count: $entry.tile_count,
       max_tile_bytes: $entry.max_tile_bytes,
       calculated_fields: (if $entry.calculated_fields == null then null
                           else [$entry.calculated_fields[].name] end)}' \
@@ -337,7 +289,7 @@ print_layer_status() {
        (if .minzoom == null then "-" else "\(.minzoom)-\(.maxzoom)" end),
        (if .feature_count != null then (.feature_count | tostring)
         elif .width != null then "\(.width)x\(.height) px"
-        elif .tile_count != null then "\(.tile_count) tiles" else "-" end),
+        else "-" end),
        (.max_tile_bytes | size),
        (.notes | join("\u001f")),
        (if .calculated_fields then "calculated: \(.calculated_fields | join(", "))" else "" end)]

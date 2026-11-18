@@ -298,44 +298,13 @@ level_sum() {
   [[ $output == *"built as a raster layer, but cover.yaml is a vector layer now: rebuild it"* ]]
 }
 
-@test "a raster built as PNG tiles before COGs is stale, and a rebuild replaces it" {
+@test "--remove deletes a raster layer's COG" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  # Make the build look like one from before COGs (ADR 0008).
-  mv "$COG" "${PIPELINE_OUTPUT_DIR}/cover.pmtiles"
-  jq '.layers[0] |= (.file = "cover.pmtiles" | .format = "png" | .tile_count = 10
-    | .max_tile_bytes = 100 | del(.width, .height, .block_size, .overview_count, .zooms))' \
-    "$BUILD" >"${BUILD}.new"
-  mv "${BUILD}.new" "$BUILD"
-
-  run "$RUN" --status --json cover
-  [ "$status" -eq 0 ]
-  run jq -e '.layers[0] | .state == "stale" and .format == "png" and .tile_count == 10
-    and .archive_bytes > 0 and any(.notes[]; test("rebuild it as a COG"))' <<<"$output"
-  [ "$status" -eq 0 ]
-
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  [[ $output == *"removed the old archive cover.pmtiles"* ]]
-  [ -s "$COG" ]
-  [ ! -e "${PIPELINE_OUTPUT_DIR}/cover.pmtiles" ]
-  run "$RUN" --status --json cover
-  [ "$status" -eq 0 ]
-  run jq -e '.layers[0] | .state == "current" and .format == "cog" and .width > 0
-    and .tile_count == null' <<<"$output"
-  [ "$status" -eq 0 ]
-}
-
-@test "--remove deletes a raster layer's COG and any older .pmtiles" {
-  raster_layer cover byte
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  echo old >"${PIPELINE_OUTPUT_DIR}/cover.pmtiles"
   run "$RUN" --remove cover
   [ "$status" -eq 0 ]
   [ ! -e "$COG" ]
-  [ ! -e "${PIPELINE_OUTPUT_DIR}/cover.pmtiles" ]
   run jq -e '.layers == []' "$BUILD"
   [ "$status" -eq 0 ]
 }

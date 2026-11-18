@@ -318,6 +318,4 @@ require: [protected_areas]
 
 A change to `view`, `basemap`, `title` or `locale`, or a layer taken out
 of `layers`, is applied with `--style-only`; a layer added to `layers`
-needs a build, and a change to `overrides` makes the layer stale. The
-old `map.config.json` is not read: write the same choices as
-`map.config.yaml` by hand.
+needs a build, and a change to `overrides` makes the layer stale.

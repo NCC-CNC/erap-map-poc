@@ -29,8 +29,7 @@
 # `display.layers` with a prefixed id, the source, the source layer (vector
 # only), `visibility` from `visible` and `erap:layer` naming the layer.
 # Sources are relative to the output dir: pmtiles:// for a vector layer,
-# cog://...#dem for a raster COG (ADR 0010; a raster built as PNG tiles
-# before that is a raster pmtiles:// source). Layers draw in ascending
+# cog://...#dem for a raster COG (ADR 0010). Layers draw in ascending
 # `order`, then by name.
 
 # Fonts for symbol layers with text, as the web app's basemaps use.
@@ -46,16 +45,11 @@ GLYPHS_URL='https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf'
 # its old part, or is left out with a warning if it has none. The view,
 # basemap, title and locale come from the map config. Each layer taken from its layer file
 # has its display hash recorded in build.json (build_set_display). Atomic,
-# like the archives. Nothing to do without a build.json. A manifest.json
-# from before style.json and build.json is removed.
+# like the archives. Nothing to do without a build.json.
 write_style() {
   local out_dir=$1
   shift
   local style="${out_dir}/style.json"
-  if [[ -e "${out_dir}/manifest.json" ]]; then
-    rm -f -- "${out_dir}/manifest.json"
-    log_info "removed ${out_dir}/manifest.json (replaced by build.json and style.json)"
-  fi
   [[ -s "${out_dir}/build.json" ]] || return 0
 
   local entries old='{}' configs='{}' shas='{}' enabled map name config wanted n
@@ -92,8 +86,7 @@ write_style() {
   jq -n --argjson entries "$entries" --argjson old "$old" --argjson configs "$configs" \
     --argjson enabled "$enabled" --argjson map "$map" --arg glyphs "$GLYPHS_URL" '
     def source: if (.type // "vector") != "raster" then {type: "vector", url: "pmtiles://\(.file)"}
-      elif (.file | endswith(".cog.tif")) then {type: "raster-dem", tileSize: 256, url: "cog://\(.file)#dem"}
-      else {type: "raster", tileSize: 256, url: "pmtiles://\(.file)"} end;
+      else {type: "raster-dem", tileSize: 256, url: "cog://\(.file)#dem"} end;
     # fresh(config): a built layer (the input) from its layer file.
     def fresh($c): . as $e | ($e.type // "vector") as $type
       | {name: $e.name,

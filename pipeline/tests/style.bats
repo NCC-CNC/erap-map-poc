@@ -30,7 +30,6 @@ yaml_json() {
   cp "${PIPELINE_ROOT}"/tests/layers/*.yaml "$PIPELINE_LAYERS_DIR"
   run "$RUN"
   [ "$status" -eq 0 ]
-  [ ! -e "${PIPELINE_OUTPUT_DIR}/manifest.json" ]
 
   run jq -e '
     .version == 8 and (has("glyphs") | not) and (has("center") | not)
@@ -133,13 +132,10 @@ yaml_json() {
   [ "$(jq -r '.layers[] | select(.name == "sample") | .state' <<<"$output")" = current ]
 }
 
-@test "a layer left out by the map config leaves style.json; a manifest.json goes" {
+@test "a layer left out by the map config leaves style.json" {
   cp "${PIPELINE_ROOT}"/tests/layers/*.yaml "$PIPELINE_LAYERS_DIR"
-  mkdir -p "$PIPELINE_OUTPUT_DIR"
-  printf '{"layers": []}\n' >"${PIPELINE_OUTPUT_DIR}/manifest.json"
   run "$RUN"
   [ "$status" -eq 0 ]
-  [ ! -e "${PIPELINE_OUTPUT_DIR}/manifest.json" ]
 
   printf 'layers: [sample_points]\n' >"${BATS_TEST_TMPDIR}/map.yaml"
   PIPELINE_MAP_CONFIG="${BATS_TEST_TMPDIR}/map.yaml" run "$RUN" sample_points

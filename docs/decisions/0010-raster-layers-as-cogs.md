@@ -122,6 +122,7 @@ as `image/tiff` with range requests. The manifest entry has `format`
 A raster built before this (`.pmtiles`, `format` `png`) still shows (its
 red channel read as the grey level), is `stale` in `--status`, and is
 replaced, `.pmtiles` deleted, by its next build. `--remove` deletes both.
+Support for such builds was dropped in #134: rebuild them.
 
 ### Amendment: average when the max zoom is coarser than the source (#83)
 
@@ -147,7 +148,7 @@ The method is logged and recorded in the manifest entry (`resampling`).
 A raster built before that has no `resampling`, was warped with `near`,
 and is `stale` in `--status` if its max zoom would now average (the
 source's header is read to tell); a z12 build of 30 m data stays
-`current`.
+`current`. This check was dropped in #134.
 
 ### Amendment: optional fewer grey levels (#92)
 
@@ -201,7 +202,8 @@ overviews.
 The manifest entry records `max_zoom_values`: `majority` with
 `resampling` `average`, `near` with `near`. A build with `resampling`
 `average` and no `max_zoom_values` (built between #83 and this) has grey
-levels at its max zoom and is `stale` in `--status`.
+levels at its max zoom and is `stale` in `--status`. This check was
+dropped in #134.
 
 ## Results
 

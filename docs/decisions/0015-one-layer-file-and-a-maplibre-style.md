@@ -74,8 +74,7 @@ Node, and the app read a custom `manifest.json`.
   app reads its `erap:` metadata.
 - Display overrides in a map config, provenance tracking, computed class
   breaks and the separate click modal are gone. An old `map.config.json`
-  is not read; the pipeline says so, and it is rewritten by hand as
-  `map.config.yaml`.
+  is not read; it is rewritten by hand as `map.config.yaml`.
 - The pipeline image is smaller and has one language. The layer schema
   is the only description of the format; the app's TypeScript types are
   generated from it.
