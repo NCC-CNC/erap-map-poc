@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Tests for `run.sh --style-only` (restyle_layer in bin/run.sh,
-# manifest_set_display in lib/manifest.sh) and how --status reads a display
+# write_style in lib/style.sh) and how --status reads a display
 # update (lib/status.sh), on copies of the sample layer and a synthetic
 # raster layer. Run in the test image with the other bats files:
 #   docker build --target test -t erap-pipeline-test pipeline
@@ -15,7 +15,7 @@ setup() {
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
   export PIPELINE_WORK_DIR="${BATS_TEST_TMPDIR}/work"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
-  MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
+  BUILD="${PIPELINE_OUTPUT_DIR}/build.json"
   STYLE="${PIPELINE_OUTPUT_DIR}/style.json"
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR"
   cp "${PIPELINE_ROOT}/tests/fixtures/sample.geojson" "${PIPELINE_INPUT_DIR}/"
@@ -49,7 +49,7 @@ entry_without() {
   local name=$1
   shift
   jq -c --arg n "$name" 'first(.layers[] | select(.name == $n))
-    | delpaths([$ARGS.positional[] | [.]])' "$MANIFEST" --args "$@"
+    | delpaths([$ARGS.positional[] | [.]])' "$BUILD" --args "$@"
 }
 
 state_of() {
@@ -67,7 +67,7 @@ notes_of() {
   local tiles beta_entry alpha_report built_from
   tiles=$(sha256sum "${PIPELINE_OUTPUT_DIR}"/*.pmtiles)
   beta_entry=$(entry_without beta)
-  alpha_report=$(entry_without alpha display display_updated_at provenance)
+  alpha_report=$(entry_without alpha display_updated_at provenance)
   built_from=$(entry_without alpha | jq -c ".provenance | del(.display_sha256)")
 
   restyle alpha '.title = "Alpha restyled"' \
@@ -80,18 +80,17 @@ notes_of() {
 
   [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}"/*.pmtiles)" = "$tiles" ]
   [ "$(entry_without beta)" = "$beta_entry" ]
-  [ "$(entry_without alpha display display_updated_at provenance)" = "$alpha_report" ]
+  [ "$(entry_without alpha display_updated_at provenance)" = "$alpha_report" ]
   # The provenance keeps what the tiles were built from; only the display
   # hash moves.
   [ "$(entry_without alpha | jq -c ".provenance | del(.display_sha256)")" = "$built_from" ]
-  run jq -e '.layers[] | select(.name == "alpha")
-    | .display.title == "Alpha restyled"
-      and (.display.popup.stats | length) == 1
-      and .display.layers[0].paint["fill-color"][2][2] == "#ff0000"
-      and (.display_updated_at | type == "string")' "$MANIFEST"
+  run jq -e '.layers[] | select(.name == "alpha") | .display_updated_at | type == "string"' "$BUILD"
+  [ "$status" -eq 0 ]
+  run jq -e '.metadata["erap:layers"].alpha
+    | .title == "Alpha restyled" and (.popup.stats | length) == 1' "$STYLE"
   [ "$status" -eq 0 ]
 
-  # style.json is rewritten from the whole manifest.
+  # style.json keeps the other layer.
   run jq -r '[.sources | keys[]] | join(",")' "$STYLE"
   [ "$output" = "alpha,beta" ]
   run jq -r '[.layers[] | select(.source == "alpha") | .paint["fill-color"]?
@@ -110,38 +109,38 @@ notes_of() {
   run "$RUN" --style-only
   [ "$status" -eq 0 ]
   [[ $output == *"display updated for 2 layer(s)"* ]]
-  run jq -c '[.layers[] | [.name, .display.title]]' "$MANIFEST"
+  run jq -c '[.metadata["erap:layers"] | to_entries[] | [.key, .value.title]]' "$STYLE"
   [ "$output" = '[["alpha","A2"],["beta","B2"]]' ]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/gamma.pmtiles" ]
 }
 
-@test "--style-only rejects an invalid layer file without changing the manifest" {
+@test "--style-only rejects an invalid layer file without changing build.json or style.json" {
   add_layer alpha beta
   run "$RUN"
   [ "$status" -eq 0 ]
   local before
-  before=$(sha256sum "$MANIFEST")
+  before=$(sha256sum "$BUILD" "$STYLE")
 
   restyle alpha '.visible = "yes"'
   run "$RUN" --style-only alpha
   [ "$status" -eq 1 ]
   [[ $output == *"alpha.yaml: at '/visible'"* ]]
   [[ $output == *"alpha.yaml has problems (above); keeping the previous build"* ]]
-  [ "$(sha256sum "$MANIFEST")" = "$before" ]
+  [ "$(sha256sum "$BUILD" "$STYLE")" = "$before" ]
   assert_no_temp_files
 
   # Not YAML at all: the same.
   printf 'title: [unclosed\n' >"${PIPELINE_LAYERS_DIR}/alpha.yaml"
   run "$RUN" --style-only alpha
   [ "$status" -eq 1 ]
-  [ "$(sha256sum "$MANIFEST")" = "$before" ]
+  [ "$(sha256sum "$BUILD" "$STYLE")" = "$before" ]
 
   # The bad layer fails; the good one is still updated.
   restyle beta '.title = "B2"'
   run "$RUN" --style-only alpha beta
   [ "$status" -eq 1 ]
   [[ $output == *"1 of 2 layer(s) failed: alpha"* ]]
-  run jq -c '[.layers[] | .display.title]' "$MANIFEST"
+  run jq -c '[.metadata["erap:layers"][] | .title]' "$STYLE"
   [ "$output" = '["Sample polygons","B2"]' ]
 }
 
@@ -150,7 +149,7 @@ notes_of() {
   run "$RUN" --style-only alpha
   [ "$status" -eq 2 ]
   [[ $output == *"layer 'alpha' is not built yet"* ]]
-  [ ! -e "$MANIFEST" ]
+  [ ! -e "$BUILD" ]
 
   run "$RUN" --style-only
   [ "$status" -eq 2 ]
@@ -159,11 +158,11 @@ notes_of() {
   run "$RUN" alpha
   [ "$status" -eq 0 ]
   local before
-  before=$(sha256sum "$MANIFEST")
+  before=$(sha256sum "$BUILD")
   run "$RUN" --style-only alpha beta
   [ "$status" -eq 2 ]
   [[ $output == *"layer 'beta' is not built yet"* ]]
-  [ "$(sha256sum "$MANIFEST")" = "$before" ]
+  [ "$(sha256sum "$BUILD")" = "$before" ]
 
   # An entry whose archive is gone needs a rebuild.
   rm "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles"
@@ -172,7 +171,7 @@ notes_of() {
   run "$RUN" --style-only
   [ "$status" -eq 2 ]
   [[ $output == *"skipping alpha: archive missing"* ]]
-  [ "$(sha256sum "$MANIFEST")" = "$before" ]
+  [ "$(sha256sum "$BUILD")" = "$before" ]
 }
 
 @test "--style-only recolours a raster layer, leaving the archive byte-identical" {
@@ -182,17 +181,17 @@ notes_of() {
   [ "$status" -eq 0 ]
   local archive="${PIPELINE_OUTPUT_DIR}/cover.cog.tif" before report
   before=$(sha256sum "$archive")
-  report=$(entry_without cover display display_updated_at provenance)
+  report=$(entry_without cover display_updated_at provenance)
 
   restyle cover '.display.layers[0].paint["color-relief-color"][6] = "rgba(255, 0, 0, 1)"' \
     '.display.layers[0].paint["color-relief-opacity"] = 0.4'
   run "$RUN" --style-only cover
   [ "$status" -eq 0 ]
   [ "$(sha256sum "$archive")" = "$before" ]
-  [ "$(entry_without cover display display_updated_at provenance)" = "$report" ]
+  [ "$(entry_without cover display_updated_at provenance)" = "$report" ]
   run jq -r '.layers[] | select(.source == "cover") | .paint["color-relief-color"][6]' "$STYLE"
   [ "$output" = "rgba(255, 0, 0, 1)" ]
-  run jq -r '.layers[] | select(.name == "cover") | .type' "$MANIFEST"
+  run jq -r '.layers[] | select(.name == "cover") | .type' "$BUILD"
   [ "$output" = raster ]
 }
 
@@ -211,18 +210,20 @@ notes_of() {
   run "$RUN" --style-only alpha
   [ "$status" -eq 0 ]
   [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles")" = "$tiles" ]
-  run jq -e --slurpfile want "${PIPELINE_ROOT}/tests/fixtures/expected_modal_display.json" \
-    '.layers[0].display == $want[0]' "$MANIFEST"
+  run jq -e --argjson f "$(yq -o json -I 0 . "${PIPELINE_LAYERS_DIR}/alpha.yaml")" \
+    '.metadata["erap:layers"].alpha | .themes == $f.display.themes and .modal == $f.display.modal' "$STYLE"
   [ "$status" -eq 0 ]
 
-  # The first theme is the default, and its legend the layer's.
+  # The first theme is what the style layers draw.
   restyle alpha 'del(.display.themes[0])' \
     '.display.layers[0].paint["fill-color"] = .display.themes[0].paint.fill["fill-color"]' \
     'del(.display.themes[0].paint)'
   run "$RUN" --style-only alpha
   [ "$status" -eq 0 ]
-  run jq -r '.layers[0].display | [.defaultTheme, .legend.kind, (.themes | length)] | join(",")' "$MANIFEST"
+  run jq -r '.metadata["erap:layers"].alpha.themes | [.[0].id, .[0].legend.kind, length] | join(",")' "$STYLE"
   [ "$output" = "score_gradient,gradient,2" ]
+  run jq -r '.layers[0].paint["fill-color"][2][0]' "$STYLE"
+  [ "$output" = interpolate ]
 }
 
 @test "--status: a changed display needs --style-only, which makes it current" {
@@ -242,7 +243,7 @@ notes_of() {
   [[ ${lines[2]} == "  - display changed since it was last updated"* ]]
 
   local built_at
-  built_at=$(jq -r '.layers[] | select(.name == "alpha") | .built_at' "$MANIFEST")
+  built_at=$(jq -r '.layers[] | select(.name == "alpha") | .built_at' "$BUILD")
   sleep 1
   run "$RUN" --style-only alpha cover
   [ "$status" -eq 0 ]
@@ -279,8 +280,8 @@ notes_of() {
   add_layer alpha
   run "$RUN" alpha
   [ "$status" -eq 0 ]
-  jq '.layers[0] |= del(.display_updated_at)' "$MANIFEST" >"${MANIFEST}.new"
-  mv "${MANIFEST}.new" "$MANIFEST"
+  jq '.layers[0] |= del(.display_updated_at)' "$BUILD" >"${BUILD}.new"
+  mv "${BUILD}.new" "$BUILD"
   [ "$(state_of alpha)" = current ]
   run "$RUN" --status --json
   run jq -e '.layers[0] | .display_updated_at == .built_at' <<<"$output"

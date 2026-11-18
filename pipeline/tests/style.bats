@@ -1,11 +1,9 @@
 #!/usr/bin/env bats
 # shellcheck source-path=SCRIPTDIR/..
-# The display block and style.json (lib/style.sh): a layer file's display
-# becomes its manifest entry's `display` block, as the web app reads it,
-# and style.json combines every built layer. The expected display fixtures
-# are read by the web app's tests too (web/src/test/fixtures.ts), so both
-# sides are tested against what the pipeline writes. Run in the test image
-# with the other bats files:
+# style.json (lib/style.sh): the MapLibre style of every built layer, with
+# what MapLibre does not know about in `erap:` metadata (design note 04),
+# and the layer file checks on `display`. Run in the test image with the
+# other bats files:
 #   docker build --target test -t erap-pipeline-test pipeline
 #   docker run --rm erap-pipeline-test
 
@@ -18,56 +16,116 @@ setup() {
   export PIPELINE_INPUT_DIR="${BATS_TEST_TMPDIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
-  MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
+  BUILD="${PIPELINE_OUTPUT_DIR}/build.json"
   STYLE="${PIPELINE_OUTPUT_DIR}/style.json"
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR"
 }
 
-# display_of FILE: the display block of layer file FILE, sorted JSON.
-display_of() {
-  (
-    # shellcheck source=lib/log.sh
-    source "${PIPELINE_ROOT}/lib/log.sh"
-    # shellcheck source=lib/style.sh
-    source "${PIPELINE_ROOT}/lib/style.sh"
-    yq -o json '.' "$1" >"${BATS_TEST_TMPDIR}/layer.json"
-    display_block "${BATS_TEST_TMPDIR}/layer.json" | jq -S .
-  )
+# yaml_json FILE: layer file FILE as compact JSON.
+yaml_json() {
+  yq -o json -I 0 '.' "$1"
 }
 
-@test "the test layers' display blocks are the expected fixtures" {
+@test "style.json is a MapLibre style of every built layer, in display order" {
   cp "${PIPELINE_ROOT}"/tests/layers/*.yaml "$PIPELINE_LAYERS_DIR"
   run "$RUN"
   [ "$status" -eq 0 ]
-  run jq -e --slurpfile want "${FIXTURES}/expected_display.json" \
-    '[.layers[] | {key: .name, value: .display}] | from_entries == $want[0]' "$MANIFEST"
+  [ ! -e "${PIPELINE_OUTPUT_DIR}/manifest.json" ]
+
+  run jq -e '
+    .version == 8 and (has("glyphs") | not) and (has("center") | not)
+    and (.metadata | has("erap:basemap") | not)
+    and .sources == {
+      sample: {type: "vector", url: "pmtiles://sample.pmtiles"},
+      sample_points: {type: "vector", url: "pmtiles://sample_points.pmtiles"}}
+    and ([.layers[] | [.id, .source, .["source-layer"], .layout.visibility, .metadata["erap:layer"]]] == [
+      ["sample-fill", "sample", "sample", "visible", "sample"],
+      ["sample-outline", "sample", "sample", "visible", "sample"],
+      ["sample_points-circle", "sample_points", "sample_points", "visible", "sample_points"]])' "$STYLE"
   [ "$status" -eq 0 ]
 
-  [ "$(display_of "${FIXTURES}/sample_modal.yaml")" = "$(jq -S . "${FIXTURES}/expected_modal_display.json")" ]
-  [ "$(display_of "${FIXTURES}/raster.yaml")" = "$(jq -S . "${FIXTURES}/expected_raster_display.json")" ]
+  # The paint and the metadata come straight from the layer file.
+  local sample
+  sample=$(yaml_json "${PIPELINE_LAYERS_DIR}/sample.yaml")
+  run jq -e --argjson f "$sample" '
+    .layers[0].paint == $f.display.layers[0].paint
+    and .metadata["erap:layers"].sample == {title: $f.title, type: "vector", order: 10,
+      visible: true, legend: $f.display.legend, popup: $f.display.popup}' "$STYLE"
+  [ "$status" -eq 0 ]
+
+  # build.json holds the build report, no display.
+  run jq -e '[.layers[].name] == ["sample", "sample_points"]
+    and all(.layers[]; has("display") | not) and all(.layers[]; .feature_count > 0)' "$BUILD"
+  [ "$status" -eq 0 ]
+
+  # A higher order on sample draws it on top, a hidden layer is hidden, and
+  # text needs the glyphs.
+  set_layer "${PIPELINE_LAYERS_DIR}/sample.yaml" '.order = 30' '.visible = false' \
+    '.display.layers += [{"id": "label", "type": "symbol", "layout": {"text-field": ["get", "name"]}}]'
+  run "$RUN" --style-only sample
+  [ "$status" -eq 0 ]
+  run jq -r '[.layers[] | "\(.id):\(.layout.visibility)"] | join(",")' "$STYLE"
+  [ "$output" = "sample_points-circle:visible,sample-fill:none,sample-outline:none,sample-label:none" ]
+  run jq -r '.glyphs' "$STYLE"
+  [[ $output == "https://tiles.openfreemap.org/fonts/"* ]]
+  run jq -c '.metadata["erap:layers"].sample | [.order, .visible]' "$STYLE"
+  [ "$output" = '[30,false]' ]
 }
 
-@test "the ecoregions display block is the web app's fixture" {
-  # web/src/test/fixtures.ts reads it for the modal and theme tests.
-  run diff <(display_of "${PIPELINE_ROOT}/layers/ecoregions.yaml") \
-    <(jq -S . "${FIXTURES}/ecoregions_display.json")
-  echo "$output"
+@test "style.json: colour themes and the click modal as the layer file has them" {
+  cp "${FIXTURES}/sample_modal.yaml" "${PIPELINE_LAYERS_DIR}/sample.yaml"
+  run "$RUN" sample
+  [ "$status" -eq 0 ]
+  run jq -e --argjson f "$(yaml_json "${FIXTURES}/sample_modal.yaml")" '
+    .metadata["erap:layers"].sample as $m
+    | $m.themes == $f.display.themes and $m.modal == $f.display.modal
+      and ($m.themes[0] | has("paint") | not) and ($m | has("legend") | not)' "$STYLE"
   [ "$status" -eq 0 ]
 }
 
-@test "themes: the first draws display.layers; its paint is what the others change" {
-  run display_of "${FIXTURES}/sample_modal.yaml"
-  run jq -c '[.defaultTheme, (.themes | map(.id)), (.legend == .themes[0].legend),
-    (.themes[0].paint | keys), (.themes[0].paint.fill | keys)]' <<<"$output"
-  [ "$output" = '["score",["score","score_gradient","area"],true,["fill"],["fill-color"]]' ]
+@test "a display change reaches style.json through a build or --style-only only" {
+  cp "${PIPELINE_ROOT}"/tests/layers/*.yaml "$PIPELINE_LAYERS_DIR"
+  run "$RUN"
+  [ "$status" -eq 0 ]
 
-  # A theme that changes the outline too: the first theme gets the
-  # outline's paint as display.layers set it.
-  yq '.display.themes[1].paint.outline = {"line-width": 2}' "${FIXTURES}/sample_modal.yaml" \
-    >"${BATS_TEST_TMPDIR}/m.yaml"
-  run display_of "${BATS_TEST_TMPDIR}/m.yaml"
-  run jq -c '.themes[0].paint | [keys, .outline]' <<<"$output"
-  [ "$output" = '[["fill","outline"],{"line-width":0.75}]' ]
+  # Building another layer keeps sample's part as it was.
+  set_layer "${PIPELINE_LAYERS_DIR}/sample.yaml" '.title = "Renamed"'
+  run "$RUN" sample_points
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.metadata["erap:layers"].sample.title' "$STYLE")" = "Sample polygons" ]
+  run "$RUN" --status --json
+  [ "$(jq -r '.layers[] | select(.name == "sample") | .state' <<<"$output")" = restyle ]
+
+  # A layer file with problems does not stop another layer's --style-only,
+  # and keeps its own part.
+  set_layer "${PIPELINE_LAYERS_DIR}/sample_points.yaml" '.display.layers[0].id = "-bad"'
+  run "$RUN" --style-only sample
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.metadata["erap:layers"].sample.title' "$STYLE")" = "Renamed" ]
+  [ "$(jq -r '.sources | keys | join(",")' "$STYLE")" = "sample,sample_points" ]
+  [ "$(jq '[.layers[] | select(.metadata["erap:layer"] == "sample_points")] | length' "$STYLE")" -eq 1 ]
+  run "$RUN" --status --json
+  [ "$(jq -r '.layers[] | select(.name == "sample") | .state' <<<"$output")" = current ]
+}
+
+@test "a layer left out by the map config leaves style.json; a manifest.json goes" {
+  cp "${PIPELINE_ROOT}"/tests/layers/*.yaml "$PIPELINE_LAYERS_DIR"
+  mkdir -p "$PIPELINE_OUTPUT_DIR"
+  printf '{"layers": []}\n' >"${PIPELINE_OUTPUT_DIR}/manifest.json"
+  run "$RUN"
+  [ "$status" -eq 0 ]
+  [ ! -e "${PIPELINE_OUTPUT_DIR}/manifest.json" ]
+
+  printf 'layers: [sample_points]\n' >"${BATS_TEST_TMPDIR}/map.yaml"
+  PIPELINE_MAP_CONFIG="${BATS_TEST_TMPDIR}/map.yaml" run "$RUN" sample_points
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.sources | keys | join(",")' "$STYLE")" = "sample_points" ]
+  [ "$(jq -r '.metadata["erap:layers"] | keys | join(",")' "$STYLE")" = "sample_points" ]
+  # Still built: back in the style, from its layer file, once enabled again.
+  [ "$(jq -r '[.layers[].name] | join(",")' "$BUILD")" = "sample,sample_points" ]
+  run "$RUN" sample_points
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.sources | keys | join(",")' "$STYLE")" = "sample,sample_points" ]
 }
 
 @test "display checks: legend, unique ids and theme paint on a style layer" {
@@ -91,40 +149,8 @@ display_of() {
   [ "$status" -eq 1 ]
   [[ $output == *"sample.yaml: display.themes[1].paint: halo is not an id in display.layers"* ]]
   [[ $output == *"sample.yaml: display.themes[2].legend: needed"* ]]
-  [ ! -e "$MANIFEST" ]
-}
-
-@test "style.json is a standalone style of every layer, in display order" {
-  cp "${PIPELINE_ROOT}"/tests/layers/*.yaml "$PIPELINE_LAYERS_DIR"
-  run "$RUN"
-  [ "$status" -eq 0 ]
-
-  run jq -e '
-    .version == 8 and (has("glyphs") | not)
-    and .sources == {
-      sample: {type: "vector", url: "pmtiles://sample.pmtiles"},
-      sample_points: {type: "vector", url: "pmtiles://sample_points.pmtiles"}}
-    and ([.layers[] | [.id, .source, .["source-layer"], .layout.visibility]] == [
-      ["sample-fill", "sample", "sample", "visible"],
-      ["sample-outline", "sample", "sample", "visible"],
-      ["sample_points-circle", "sample_points", "sample_points", "visible"]])' "$STYLE"
-  [ "$status" -eq 0 ]
-
-  # The paint comes straight from the display blocks.
-  run jq -e --slurpfile want "${FIXTURES}/expected_display.json" \
-    '.layers[0].paint == $want[0].sample.layers[0].paint' "$STYLE"
-  [ "$status" -eq 0 ]
-
-  # A higher order on sample draws it on top, a hidden layer is hidden, and
-  # text needs the glyphs.
-  set_layer "${PIPELINE_LAYERS_DIR}/sample.yaml" '.order = 30' '.visible = false' \
-    '.display.layers += [{"id": "label", "type": "symbol", "layout": {"text-field": ["get", "name"]}}]'
-  run "$RUN" --style-only sample
-  [ "$status" -eq 0 ]
-  run jq -r '[.layers[] | "\(.id):\(.layout.visibility)"] | join(",")' "$STYLE"
-  [ "$output" = "sample_points-circle:visible,sample-fill:none,sample-outline:none,sample-label:none" ]
-  run jq -r '.glyphs' "$STYLE"
-  [[ $output == "https://tiles.openfreemap.org/fonts/"* ]]
+  [ ! -e "$BUILD" ]
+  [ ! -e "$STYLE" ]
 }
 
 @test "no layer in layers/ reads the synthetic fixtures: they are test layers (#17)" {

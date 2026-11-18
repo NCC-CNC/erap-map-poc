@@ -49,12 +49,12 @@ shell) to the folder holding it, which compose mounts read-only at
 A layer is one file, `pipeline/layers/<layer>.yaml` (source, fields,
 processing preset and display; schema `pipeline/schema/layer.schema.json`,
 design note 04). Nothing in `web/` changes: the map reads every layer from
-`data/tiles/manifest.json`. Rerun the pipeline for that layer and reload
+`data/tiles/style.json`. Rerun the pipeline for that layer and reload
 the page; compose mounts `pipeline/layers/`, so neither image needs a
 rebuild. A change to the layer file's `display`, `title`, `visible` or
 `order` only (for vector and raster layers) needs no re-tiling:
-`docker compose run --rm pipeline --style-only <layer>` updates the
-manifest entry and `style.json` in seconds. A change for your own map
+`docker compose run --rm pipeline --style-only <layer>` updates
+the layer in `style.json` in seconds. A change for your own map
 only (fewer layers, your copy of the data, a lower max zoom, the opening
 view) goes in your git-ignored `map.config.yaml` instead (copy
 `map.config.example.yaml`; schema `pipeline/schema/map.schema.json`),

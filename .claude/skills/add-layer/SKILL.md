@@ -118,7 +118,7 @@ steps 1 to 4, then step 5.
    (`prepare`, `warp`, `overviews`, `cog`). Offer a regional clip first if
    the user only wants a look. A raster with no 1 cells fails with
    `no cover`.
-6. Read the layer's entry in `data/tiles/manifest.json`: `file`
+6. Read the layer's entry in `data/tiles/build.json`: `file`
    `<name>.cog.tif`, `format` `cog`, `bytes` (the COG's size), `width` and
    `height` (pixels at the max zoom; padded to the tile grid, mostly
    empty), `block_size` 256, `overview_count` (one per zoom below the
@@ -196,7 +196,7 @@ docker compose run --rm --build pipeline <name>
 ```
 
 A failure names the problem (style config, drop guard, input); fix and
-rerun. Then read the layer's entry in `data/tiles/manifest.json`:
+rerun. Then read the layer's entry in `data/tiles/build.json`:
 `zooms[]` (per zoom: `present` of `input`, `required` equal to
 `required_present`, `max_tile_bytes`), `bounds` and `display.legend`.
 Flag tiles over about 500 kB, and features missing at zooms where users

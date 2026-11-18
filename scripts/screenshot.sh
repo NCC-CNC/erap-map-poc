@@ -8,8 +8,8 @@
 # Usage: scripts/screenshot.sh [options] VIEW...
 #
 #   VIEW                 zoom/lat/lon, MapLibre's URL hash order, for example
-#                        6/55/-110. The layer's manifest entry has a centre
-#                        (data/tiles/manifest.json, `center`: lon, lat, zoom).
+#                        6/55/-110. The layer's build.json entry has a centre
+#                        (data/tiles/build.json, `center`: lon, lat, zoom).
 #   -b, --basemap THEME  light, dark or all (default all): the basemaps the
 #                        app offers (web/src/map/basemap.ts).
 #   -o, --out DIR        output directory (default tmp/screenshots, which git
@@ -27,7 +27,7 @@
 #   --colour-by LAYER=THEME
 #                        pick a colour theme in a layer's "Colour by" list
 #                        before the screenshot (theme ids are in the layer's
-#                        manifest entry, display.themes). Repeatable.
+#                        style.json metadata, erap:layers). Repeatable.
 #   --tab LABEL          with --click, also select the modal tab LABEL (as
 #                        shown in the modal) and take one more screenshot,
 #                        ending in -click-tab-LABEL.png (spaces as _).
@@ -139,8 +139,8 @@ main() {
   local joined_tabs
   joined_tabs=$(IFS='|'; printf '%s' "${tabs[*]}")
 
-  [[ -s ${root}/data/tiles/manifest.json ]] \
-    || { log "no data/tiles/manifest.json: run the pipeline first"; return 1; }
+  [[ -s ${root}/data/tiles/style.json ]] \
+    || { log "no data/tiles/style.json: run the pipeline first"; return 1; }
   mkdir -p "$out"
 
   if [[ -z $image ]]; then
@@ -173,7 +173,7 @@ main() {
 
   local ok=""
   for _ in $(seq 1 30); do
-    if curl -fsS "http://127.0.0.1:${started}/tiles/manifest.json" >/dev/null 2>&1; then
+    if curl -fsS "http://127.0.0.1:${started}/tiles/style.json" >/dev/null 2>&1; then
       ok=1
       break
     fi

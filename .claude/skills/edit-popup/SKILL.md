@@ -83,7 +83,7 @@ Say which of the wanted values are tiled and which are not.
 Make sure the layer is built and current
 (`docker compose run --rm pipeline --status <name>`). Pick a view centred
 on a feature with typical values (`zoom/lat/lon`; the entry's `center` in
-`data/tiles/manifest.json` is a start) and take the before shot with the
+`data/tiles/build.json` is a start) and take the before shot with the
 feature clicked:
 
 ```sh

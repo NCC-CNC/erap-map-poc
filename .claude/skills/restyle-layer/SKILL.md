@@ -46,7 +46,7 @@ the steps below.
 
 Make sure the layer is built (`data/tiles/<name>.pmtiles`, or
 `<name>.cog.tif` for a raster layer, and its entry in
-`data/tiles/manifest.json`); if not, build it first
+`data/tiles/build.json`); if not, build it first
 (`docker compose run --rm --build pipeline <name>`). Pick two or three
 views from the entry's `bounds` (`zoom/lat/lon`) and take the before
 shots:
@@ -59,7 +59,7 @@ scripts/screenshot.sh -n <name>-before <z/lat/lon> <z/lat/lon> ...
 
 Make the change in `<name>.style.json`. Attribute names are the output
 names from `LAYER_FIELDS`; for values and ranges, read the layer entry in
-the manifest or run
+`data/tiles/build.json` or run
 `docker compose run --rm --build --entrypoint inspect.sh pipeline <LAYER_INPUT>`.
 A raster layer (`LAYER_TYPE=raster`) keeps the raster shorthand: only
 `color` (`#rrggbb`), `opacity`, `label`, title, order and visibility. Its
@@ -75,7 +75,7 @@ A display-only change (the usual case, vector or raster):
 docker compose run --rm pipeline --style-only <name>
 ```
 
-It checks the config as a build does, updates the layer's manifest entry
+It checks the config as a build does, updates the layer's build.json entry
 and `style.json`, and leaves the tiles or COG alone (seconds, even for a
 Canada-wide layer). A bad config fails with one line per problem and
 changes nothing: fix and rerun. If it says the pipeline does not know

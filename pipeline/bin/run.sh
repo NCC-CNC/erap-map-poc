@@ -22,9 +22,9 @@
 #                names it: then nothing is built. A named layer with no
 #                source data fails.
 #   --style-only update the named layers' display from their layer file, or
-#                every built and enabled layer's, without re-tiling: replace
-#                the display block of its manifest.json entry (the build
-#                report is kept) and rewrite style.json. For a change to a
+#                every built and enabled layer's, without re-tiling: rewrite
+#                their part of style.json (build.json keeps the build
+#                report and records the display hash). For a change to a
 #                layer file's `display`, `title`, `visible` or `order` (of a
 #                vector or raster layer), or to the map config's layer
 #                selection or view.
@@ -40,14 +40,16 @@
 #                raster layer) and largest tile. Read only. --list is the
 #                same.
 #   --json       with --status: print JSON instead of a table.
-#   --remove     delete the named layers' archives and manifest entries
+#   --remove     delete the named layers' archives and build.json entries
 #                and rewrite style.json. The layer files are not touched:
 #                delete them first (git rm), or the next full build makes
 #                the layer again.
 #
 # Environment (defaults match the docker-compose mounts):
 #   PIPELINE_INPUT_DIR   source data, read only        (default /data/raw)
-#   PIPELINE_OUTPUT_DIR  .pmtiles, .cog.tif, manifest.json and style.json
+#   PIPELINE_OUTPUT_DIR  .pmtiles, .cog.tif, style.json (read by the map,
+#                        lib/style.sh) and build.json (the build report,
+#                        lib/build.sh)
 #                                                      (default /data/tiles)
 #   PIPELINE_LAYERS_DIR  layer files                   (default <pipeline>/layers)
 #   PIPELINE_MAP_CONFIG  map config; none if unset or the file is missing
@@ -80,8 +82,8 @@ source "${PIPELINE_ROOT}/lib/tiles.sh"
 source "${PIPELINE_ROOT}/lib/guard.sh"
 # shellcheck source=lib/generalise.sh
 source "${PIPELINE_ROOT}/lib/generalise.sh"
-# shellcheck source=lib/manifest.sh
-source "${PIPELINE_ROOT}/lib/manifest.sh"
+# shellcheck source=lib/build.sh
+source "${PIPELINE_ROOT}/lib/build.sh"
 # shellcheck source=lib/style.sh
 source "${PIPELINE_ROOT}/lib/style.sh"
 # shellcheck source=lib/raster.sh
@@ -111,9 +113,8 @@ build_layer() {
   local layer_scratch="${scratch}/${name}"
   mkdir -p "$layer_scratch"
   local started=$SECONDS
-  local display="${layer_scratch}/display.json" report="${layer_scratch}/report.json"
+  local report="${layer_scratch}/report.json"
   local header="${layer_scratch}/header.json" header_json=""
-  display_block "$(layer_get "$name" config)" >"$display" || die "cannot read the display of $name"
 
   if [[ $LAYER_TYPE == raster ]]; then
     build_raster_tiles "$name" "$LAYER_INPUT" "$LAYER_SOURCE_SRS" "$LAYER_NODATA" \
@@ -124,7 +125,7 @@ build_layer() {
     build_vector_layer
   fi
 
-  manifest_update "$PIPELINE_OUTPUT_DIR" "$name" "$LAYER_TYPE" "$display" \
+  build_update "$PIPELINE_OUTPUT_DIR" "$name" "$LAYER_TYPE" \
     "$(jq -c '.' "$report")" "$((SECONDS - started))" \
     "$(layer_provenance "$name" "$LAYER_INPUT")" "$header_json"
   remove_other_archives "$name" "$(layer_archive_file "$name" "$LAYER_TYPE")"
@@ -132,7 +133,7 @@ build_layer() {
 
 # remove_other_archives NAME KEEP: delete NAME's archives other than KEEP
 # (a file name in the output dir), such as a raster layer's .pmtiles from
-# before COGs (ADR 0010), once the manifest no longer names them.
+# before COGs (ADR 0010), once build.json no longer names them.
 remove_other_archives() {
   local name=$1 keep=$2 path
   while IFS= read -r path; do
@@ -200,55 +201,47 @@ check_layer_tiles() {
     "$LAYER_MIN_VISIBLE_PX" "$stats"
 }
 
-# restyle_layer NAME SCRATCH: the --style-only steps for one built layer, in
-# a subshell like build_layer: its display block from its layer file, into
-# its manifest entry. The archive is not touched; a layer file with
-# problems fails the layer and keeps its entry as it was.
+# restyle_layer NAME: the --style-only checks for one built layer, in a
+# subshell like build_layer: its layer file has no problems and the build
+# is of the same type. style.json then takes its display from the layer
+# file (write_style). The archive is not touched; a layer that fails keeps
+# its part of style.json as it was.
 restyle_layer() {
-  local name=$1 scratch=$2
+  local name=$1
   PIPELINE_LOG_PREFIX=$name
   layer_check "$name"
-  local manifest="${PIPELINE_OUTPUT_DIR}/manifest.json" built type
+  local report="${PIPELINE_OUTPUT_DIR}/build.json" built type
   built=$(jq -er --arg n "$name" 'first(.layers[] | select(.name == $n)) | .type // "vector"' \
-    "$manifest") || die "no entry for $name in $manifest"
+    "$report") || die "no entry for $name in $report"
   type=$(layer_get "$name" type)
   [[ $built == "$type" ]] \
     || die "built as a $built layer, but ${name}.yaml is a $type layer now: rebuild it"
-
-  local display="${scratch}/${name}.display.json"
-  display_block "$(layer_get "$name" config)" >"$display" || die "cannot read the display of $name"
-  manifest_set_display "$PIPELINE_OUTPUT_DIR" "$name" "$display" "$(layer_get "$name" display_sha256)"
 }
 
-# finish_manifest: apply the map config's layer selection and map view to
-# the manifest (lib/manifest.sh) and rewrite style.json from it. Returns 1
-# if either fails.
-finish_manifest() {
+# finish_style [LAYER...]: rewrite style.json (lib/style.sh) from build.json
+# and the map config, the named layers' display from their layer files.
+# Returns 1 if it fails.
+finish_style() {
   set +e
-  (
-    manifest_apply_config "$PIPELINE_OUTPUT_DIR" "$LAYERS_JSON"
-    write_style "$PIPELINE_OUTPUT_DIR"
-  )
+  (write_style "$PIPELINE_OUTPUT_DIR" "$@")
   local status=$?
   set -e
   return "$status"
 }
 
-# style_only_main SCRATCH LAYER...: the --style-only mode. With no names,
-# every enabled layer in the manifest whose archive and layer file exist.
-# Every named layer is checked before any is updated; then each is
-# attempted, as in a build, and style.json is rewritten from the manifest.
+# style_only_main LAYER...: the --style-only mode. With no names, every
+# enabled layer in build.json whose archive and layer file exist. Every
+# named layer is checked before any is updated; then each is attempted, as
+# in a build, and style.json is rewritten with the ones that passed.
 style_only_main() {
-  local scratch=$1
-  shift
-  local manifest="${PIPELINE_OUTPUT_DIR}/manifest.json" layers=("$@") name
+  local report="${PIPELINE_OUTPUT_DIR}/build.json" layers=("$@") name
   if ((${#layers[@]} == 0)); then
-    if [[ ! -s $manifest ]]; then
+    if [[ ! -s $report ]]; then
       log_error "no layers built in $PIPELINE_OUTPUT_DIR: build them first"
       return 2
     fi
     local built
-    built=$(jq -r '.layers[]?.name' "$manifest") || die "cannot read $manifest"
+    built=$(jq -r '.layers[]?.name' "$report") || die "cannot read $report"
     while IFS= read -r name; do
       [[ -n $name ]] || continue
       if ! layer_archive "$PIPELINE_OUTPUT_DIR" "$name" >/dev/null; then
@@ -273,7 +266,7 @@ style_only_main() {
       return 2
     fi
     if ! layer_archive "$PIPELINE_OUTPUT_DIR" "$name" >/dev/null \
-      || ! jq -e --arg n "$name" 'any(.layers[]?; .name == $n)' "$manifest" >/dev/null 2>&1; then
+      || ! build_has "$PIPELINE_OUTPUT_DIR" "$name"; then
       log_error "layer '$name' is not built yet: build it first (run.sh $name)"
       return 2
     fi
@@ -288,14 +281,14 @@ style_only_main() {
   done
   [[ -w $PIPELINE_OUTPUT_DIR ]] || die "output dir not writable: $PIPELINE_OUTPUT_DIR"
 
-  local failed=() status
+  local failed=() restyled=() status
   for name in "${layers[@]}"; do
     set +e
-    (restyle_layer "$name" "$scratch")
+    (restyle_layer "$name")
     status=$?
     set -e
     if ((status == 0)); then
-      log_info "layer $name: display updated"
+      restyled+=("$name")
     else
       log_error "layer $name: display not updated (exit $status)"
       failed+=("$name")
@@ -303,7 +296,10 @@ style_only_main() {
   done
 
   local style_status=0
-  finish_manifest || style_status=$?
+  finish_style "${restyled[@]}" || style_status=$?
+  if ((style_status == 0)); then
+    for name in "${restyled[@]}"; do log_info "layer $name: display updated"; done
+  fi
 
   if ((${#failed[@]} > 0)); then
     log_error "${#failed[@]} of ${#layers[@]} layer(s) failed: ${failed[*]}"
@@ -331,8 +327,7 @@ status_main() {
       return 2
     fi
     if ! layer_known "$name" && ! layer_archives "$PIPELINE_OUTPUT_DIR" "$name" >/dev/null \
-      && ! jq -e --arg n "$name" 'any(.layers[]?; .name == $n)' \
-        "${PIPELINE_OUTPUT_DIR}/manifest.json" >/dev/null 2>&1; then
+      && ! build_has "$PIPELINE_OUTPUT_DIR" "$name"; then
       log_error "no layer file or build for layer '$name'"
       return 2
     fi
@@ -348,21 +343,21 @@ status_main() {
 }
 
 # remove_main LAYER...: the --remove mode. Every layer is checked before any
-# is removed. Each manifest entry goes before its archive, so the map never
-# lists a layer whose archive is gone.
+# is removed: its build.json entry, then its archives; style.json is then
+# rewritten without it.
 remove_main() {
   if (($# == 0)); then
     log_error "--remove needs at least one layer name"
     return 2
   fi
-  local manifest="${PIPELINE_OUTPUT_DIR}/manifest.json" name
+  local name
   for name in "$@"; do
     if ! layer_name_valid "$name"; then
       log_error "invalid layer name: $name"
       return 2
     fi
     if ! layer_archives "$PIPELINE_OUTPUT_DIR" "$name" >/dev/null \
-      && ! jq -e --arg n "$name" 'any(.layers[]; .name == $n)' "$manifest" >/dev/null 2>&1; then
+      && ! build_has "$PIPELINE_OUTPUT_DIR" "$name"; then
       log_error "nothing built for layer '$name' in $PIPELINE_OUTPUT_DIR"
       return 2
     fi
@@ -370,7 +365,7 @@ remove_main() {
   [[ -w $PIPELINE_OUTPUT_DIR ]] || die "output dir not writable: $PIPELINE_OUTPUT_DIR"
 
   for name in "$@"; do
-    manifest_remove "$PIPELINE_OUTPUT_DIR" "$name"
+    build_remove "$PIPELINE_OUTPUT_DIR" "$name"
     remove_other_archives "$name" ""
     log_info "removed layer $name"
     if layer_enabled "$name"; then
@@ -465,7 +460,7 @@ build_main() {
 
   log_info "input $PIPELINE_INPUT_DIR, output $PIPELINE_OUTPUT_DIR, layers: ${layers[*]:-none}"
 
-  local failed=() status
+  local failed=() built=() status
   for name in "${layers[@]}"; do
     log_info "layer $name: start"
     # set +e around the subshell rather than `if ! (...)`: in a tested
@@ -476,16 +471,17 @@ build_main() {
     set -e
     if ((status == 0)); then
       log_info "layer $name: done"
+      built+=("$name")
     else
       log_error "layer $name: failed (exit $status)"
       failed+=("$name")
     fi
   done
 
-  # The combined style follows the manifest, including entries kept from
-  # earlier runs, so it is rewritten even when a layer failed.
+  # The style follows build.json, including layers kept from earlier runs,
+  # so it is rewritten even when a layer failed.
   local style_status=0
-  finish_manifest || style_status=$?
+  finish_style "${built[@]}" || style_status=$?
 
   if ((${#skipped[@]} > 0)); then
     log_warn "${#skipped[@]} layer(s) skipped, source data not found: ${skipped[*]}"
@@ -551,7 +547,7 @@ main() {
   case $mode in
     status) status_main "$json" "${layers[@]}" ;;
     remove) remove_main "${layers[@]}" ;;
-    style) style_only_main "$scratch" "${layers[@]}" ;;
+    style) style_only_main "${layers[@]}" ;;
     *) build_main "$scratch" "${layers[@]}" ;;
   esac
 }

@@ -24,7 +24,7 @@ root in Git Bash. Never commit data or screenshots.
 
 Note the current build and take before shots while the old tiles are
 still there (views as `zoom/lat/lon` from the entry's `bounds` and
-`center` in `data/tiles/manifest.json`):
+`center` in `data/tiles/build.json`):
 
 ```sh
 docker compose run --rm --build pipeline --status <name>
@@ -34,7 +34,7 @@ scripts/screenshot.sh -n <name>-before <z/lat/lon> <z/lat/lon> ...
 Keep `feature_count` and, from `<name>.env`, `LAYER_INPUT`,
 `LAYER_SOURCE_LAYER`, `LAYER_FIELDS` and `LAYER_FEATURE_ID`. For a raster
 layer (`LAYER_TYPE=raster`), keep `bytes`, `width` and `height` from its
-manifest entry instead.
+build.json entry instead.
 
 ## 2. Put the new data in place and inspect it
 

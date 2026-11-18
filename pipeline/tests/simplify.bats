@@ -21,7 +21,7 @@ setup() {
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
   mkdir -p "$PIPELINE_LAYERS_DIR"
   ARCHIVE="${PIPELINE_OUTPUT_DIR}/islands.pmtiles"
-  MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
+  BUILD="${PIPELINE_OUTPUT_DIR}/build.json"
 }
 
 # write_config [EXPR...]: the islands layer, z0 to z4 with the coverage
@@ -66,7 +66,7 @@ vertices_at_zoom() {
     [ "$status" -eq 0 ]
     run generator_options
     [[ $output == *"--simplify-only-low-zooms"* ]]
-    run jq -r '.layers[0].profile' "$MANIFEST"
+    run jq -r '.layers[0].profile' "$BUILD"
     [ "$output" = "$profile" ]
   done
 }

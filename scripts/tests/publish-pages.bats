@@ -46,15 +46,14 @@ EOF
 }
 
 # pages_build [DIR]: a Pages build in DIR (default data/pages) as the
-# pipeline writes it: manifest.json (by jq, as pipeline/lib/manifest.sh
+# pipeline writes it: build.json (by jq, as pipeline/lib/build.sh
 # does), style.json and the archives, plus files that are not published.
 pages_build() {
   local dir=${1:-$PAGES}
   mkdir -p "$dir"
-  jq -n '{updated_at: "2026-11-16T00:00:00Z", map: {center: [-96, 60], zoom: 3},
+  jq -n '{updated_at: "2026-11-16T00:00:00Z",
     layers: [
       {name: "forest", file: "forest.cog.tif", type: "raster",
-       display: {title: "Forest", layers: [{id: "raster", paint: {}}]},
        provenance: {origin: "committed", source: {path: "Forest.tif", bytes: 1},
                     overrides: {env: {LAYER_MAX_ZOOM: 10}}}},
       {name: "protected_areas", file: "protected_areas.pmtiles", type: "vector",
@@ -65,7 +64,7 @@ pages_build() {
       {name: "ecoregions", file: "ecoregions.pmtiles", type: "vector",
        rules: {file: "/opt/pipeline/layers/ecoregions.rules.json"},
        provenance: {origin: "committed", source: {path: "eco.gdb"}, overrides: null}}
-    ]}' >"$dir/manifest.json"
+    ]}' >"$dir/build.json"
   printf '{"version": 8}\n' >"$dir/style.json"
   printf 'cog' >"$dir/forest.cog.tif"
   printf 'pa' >"$dir/protected_areas.pmtiles"
@@ -75,9 +74,9 @@ pages_build() {
   printf 'x' >"$dir/notes.txt"
 }
 
-# set_entry NAME JQ: change NAME's manifest entry with a jq update.
+# set_entry NAME JQ: change NAME's build.json entry with a jq update.
 set_entry() {
-  local m=$PAGES/manifest.json
+  local m=$PAGES/build.json
   jq --arg n "$1" "(.layers[] | select(.name == \$n)) |= ($2)" "$m" >"$m.new"
   mv "$m.new" "$m"
 }
@@ -113,13 +112,14 @@ changes() {
   run "$PUBLISH" --dry-run
   [ "$status" -eq 0 ]
   [[ $output == *"5 files"* ]]
-  [[ $output == *"upload manifest.json"* ]]
+  [[ $output == *"upload build.json"* ]]
   [[ $output == *"upload style.json"* ]]
   [[ $output == *"upload forest.cog.tif"* ]]
   [[ $output == *"upload protected_areas.pmtiles"* ]]
   [[ $output == *"upload ecoregions.pmtiles"* ]]
   [[ $output == *"remove old_layer.pmtiles"* ]]
   [[ $output == *"dry run: nothing was changed (release pages-data in owner/repo)"* ]]
+  [[ $output == *"remove manifest.json"* ]]
   [[ $output != *".gitkeep"* ]]
   [[ $output != *"tmp.cog.tif"* ]]
   [[ $output != *"notes.txt"* ]]
@@ -133,7 +133,7 @@ changes() {
   [ "$status" -eq 0 ]
   run changes
   [ "${lines[0]}" = "gh release create pages-data --repo owner/repo --latest=false --title GitHub Pages data --notes Map data for the GitHub Pages copy of the map (ADR 0014), uploaded by scripts/publish-pages.sh. Not a software release." ]
-  [ "${lines[1]}" = "gh release upload pages-data manifest.json style.json forest.cog.tif protected_areas.pmtiles ecoregions.pmtiles --repo owner/repo --clobber" ]
+  [ "${lines[1]}" = "gh release upload pages-data build.json style.json forest.cog.tif protected_areas.pmtiles ecoregions.pmtiles --repo owner/repo --clobber" ]
   [ "${lines[2]}" = "gh workflow run pages.yml --repo owner/repo --ref main" ]
   [ "${#lines[@]}" -eq 3 ]
 
@@ -144,7 +144,7 @@ changes() {
   [ "$status" -eq 0 ]
   [[ $output == *"not deployed (--no-deploy)"* ]]
   run changes
-  [ "${lines[0]}" = "gh release upload demo manifest.json style.json forest.cog.tif protected_areas.pmtiles ecoregions.pmtiles --repo other/repo --clobber" ]
+  [ "${lines[0]}" = "gh release upload demo build.json style.json forest.cog.tif protected_areas.pmtiles ecoregions.pmtiles --repo other/repo --clobber" ]
   [ "${lines[1]}" = "gh release delete-asset demo old_layer.pmtiles --repo other/repo --yes" ]
   [ "${#lines[@]}" -eq 2 ]
 }
@@ -178,7 +178,7 @@ changes() {
   [ ! -s "$STUB_LOG" ]
 }
 
-@test "refuses a missing folder, manifest, style or archive" {
+@test "refuses a missing folder, build report, style or archive" {
   rm -rf "$PAGES"
   run "$PUBLISH" --dry-run
   [ "$status" -eq 1 ]
@@ -213,11 +213,11 @@ changes() {
   [[ $output == *"protected_areas: built from '', not ProtectedConservedArea_2025.gdb"* ]]
 
   pages_build
-  jq '.layers |= map(select(.name != "protected_areas"))' "$PAGES/manifest.json" >"$T/m.json"
-  mv "$T/m.json" "$PAGES/manifest.json"
+  jq '.layers |= map(select(.name != "protected_areas"))' "$PAGES/build.json" >"$T/m.json"
+  mv "$T/m.json" "$PAGES/build.json"
   run "$PUBLISH" --dry-run
   [ "$status" -eq 1 ]
-  [[ $output == *"protected_areas: not in the manifest"* ]]
+  [[ $output == *"protected_areas: not in build.json"* ]]
   [ ! -s "$STUB_LOG" ]
 }
 

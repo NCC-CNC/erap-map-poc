@@ -83,8 +83,8 @@ resolve_input() {
 # layer_problems: the problems in a layer (effective JSON on stdin) that
 # the schema cannot express, one per line: zooms in order, attribute names
 # unique, style layer and theme ids unique, theme paint on a style layer of
-# the layer, and, for the current web app (until style.json replaces
-# manifest.json, design note 04), a full legend.
+# the layer, and, for the current web app (until it builds legends itself,
+# design note 04 step 4), a full legend.
 layer_problems() {
   jq -r --arg fid "$FEATURE_ID_ATTRIBUTE" '
     def legend_ok: type == "object" and has("kind") and has("shape") and has("border") and has("opacity");
@@ -283,7 +283,7 @@ layer_check() {
   die "${name}.yaml has problems (above); keeping the previous build"
 }
 
-# layer_provenance NAME INPUT: NAME's `provenance` for its manifest entry, as
+# layer_provenance NAME INPUT: NAME's `provenance` for its build.json entry, as
 # compact JSON: where the layer comes from (`origin`, committed: the layers
 # dir), its source data (INPUT, the resolved source path: path relative to
 # the input dir, total size of its files, newest modification time; null

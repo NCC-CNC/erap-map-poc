@@ -106,7 +106,7 @@ vertices() {
   [ "$output" = $'1 13\n2 13\n3 5' ]
 
   # Every feature at every zoom where it is not sub-pixel dust.
-  run jq -c '[.layers[0].zooms[].present]' "${PIPELINE_OUTPUT_DIR}/manifest.json"
+  run jq -c '[.layers[0].zooms[].present]' "${PIPELINE_OUTPUT_DIR}/build.json"
   [ "$output" = "[2,2,2,2,3,3,3]" ]
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # Tests for `run.sh --status` (lib/status.sh) and `run.sh --remove`
-# (manifest_remove in lib/manifest.sh), on copies of the sample layer and a
+# (build_remove in lib/build.sh), on copies of the sample layer and a
 # synthetic raster layer.
 # Run in the test image with the other bats files:
 #   docker build --target test -t erap-pipeline-test pipeline
@@ -15,7 +15,7 @@ setup() {
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
   export PIPELINE_WORK_DIR="${BATS_TEST_TMPDIR}/work"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
-  MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
+  BUILD="${PIPELINE_OUTPUT_DIR}/build.json"
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR"
   # The fixture as source data in the input dir, so tests can touch it.
   cp "${PIPELINE_ROOT}/tests/fixtures/sample.geojson" "${PIPELINE_INPUT_DIR}/"
@@ -53,7 +53,7 @@ touch_later() {
     == [["alpha", "not built", true, false, "sample.geojson"],
         ["beta", "not built", true, false, "sample.geojson"]]' <<<"$output"
   [ "$status" -eq 0 ]
-  [ ! -e "$MANIFEST" ]
+  [ ! -e "$BUILD" ]
 
   run "$RUN" --status
   [ "$status" -eq 0 ]
@@ -128,8 +128,8 @@ touch_later() {
   run "$RUN" alpha
   [ "$status" -eq 0 ]
   jq '.layers[0].provenance |= (del(.build_sha256, .display_sha256) | .env_sha256 = "x")' \
-    "$MANIFEST" >"${MANIFEST}.new"
-  mv "${MANIFEST}.new" "$MANIFEST"
+    "$BUILD" >"${BUILD}.new"
+  mv "${BUILD}.new" "$BUILD"
   [ "$(state_of alpha)" = stale ]
   [[ "$(notes_of alpha)" == "built before layer files (.yaml): rebuild it;"* ]]
 }
@@ -210,7 +210,7 @@ touch_later() {
   [[ $output == *"needs at least one layer name"* ]]
 }
 
-@test "--remove drops the archive and manifest entry and rewrites style.json" {
+@test "--remove drops the archive and build.json entry and rewrites style.json" {
   add_layer alpha beta
   run "$RUN"
   [ "$status" -eq 0 ]
@@ -221,7 +221,7 @@ touch_later() {
   [[ $output != *"is still in"* ]]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles" ]
   [ -s "${PIPELINE_OUTPUT_DIR}/beta.pmtiles" ]
-  run jq -r '[.layers[].name] | join(",")' "$MANIFEST"
+  run jq -r '[.layers[].name] | join(",")' "$BUILD"
   [ "$output" = beta ]
   run jq -r '[.sources | keys[]] | join(",")' "${PIPELINE_OUTPUT_DIR}/style.json"
   [ "$output" = beta ]
@@ -239,8 +239,8 @@ touch_later() {
   [[ $output == *"alpha.yaml is still in"* ]]
   [ "$(state_of alpha)" = "not built" ]
 
-  # The last layer gone: an empty manifest and a style with no layers.
-  run jq -c '.layers' "$MANIFEST"
+  # The last layer gone: an empty build.json and a style with no layers.
+  run jq -c '.layers' "$BUILD"
   [ "$output" = "[]" ]
   run jq -c '[.layers, .sources]' "${PIPELINE_OUTPUT_DIR}/style.json"
   [ "$output" = "[[],{}]" ]
@@ -251,13 +251,13 @@ touch_later() {
   run "$RUN" alpha
   [ "$status" -eq 0 ]
   local before
-  before=$(sha256sum "$MANIFEST")
+  before=$(sha256sum "$BUILD")
 
   run "$RUN" --remove alpha nope
   [ "$status" -eq 2 ]
   [[ $output == *"nothing built for layer 'nope'"* ]]
   [ -s "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles" ]
-  [ "$(sha256sum "$MANIFEST")" = "$before" ]
+  [ "$(sha256sum "$BUILD")" = "$before" ]
 }
 
 # add_raster NAME [EXPR...]: a raster layer on a synthetic binary GeoTIFF
@@ -311,7 +311,7 @@ add_raster() {
   run "$RUN" --remove cover
   [ "$status" -eq 0 ]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/cover.cog.tif" ]
-  run jq -r '[.layers[].name] | join(",")' "$MANIFEST"
+  run jq -r '[.layers[].name] | join(",")' "$BUILD"
   [ "$output" = alpha ]
   run jq -r '[.sources | keys[]] | join(",")' "${PIPELINE_OUTPUT_DIR}/style.json"
   [ "$output" = alpha ]
@@ -325,8 +325,8 @@ add_raster() {
 
   # An entry from before the resampling was recorded was warped with near;
   # z6 (about 1500 m on the ground) over the 1 km source now averages.
-  jq '.layers |= map(del(.resampling))' "$MANIFEST" >"${MANIFEST}.new"
-  mv "${MANIFEST}.new" "$MANIFEST"
+  jq '.layers |= map(del(.resampling))' "$BUILD" >"${BUILD}.new"
+  mv "${BUILD}.new" "$BUILD"
   [ "$(state_of cover)" = stale ]
   [[ "$(notes_of cover)" == *"rebuild it to average"* ]]
 
@@ -334,8 +334,8 @@ add_raster() {
   set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.processing.maxzoom = 8'
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  jq '.layers |= map(del(.resampling))' "$MANIFEST" >"${MANIFEST}.new"
-  mv "${MANIFEST}.new" "$MANIFEST"
+  jq '.layers |= map(del(.resampling))' "$BUILD" >"${BUILD}.new"
+  mv "${BUILD}.new" "$BUILD"
   [ "$(state_of cover)" = current ]
 }
 
@@ -343,13 +343,13 @@ add_raster() {
   add_raster cover
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.layers[0] | "\(.resampling) \(.max_zoom_values)"' "$MANIFEST")" = "average majority" ]
+  [ "$(jq -r '.layers[0] | "\(.resampling) \(.max_zoom_values)"' "$BUILD")" = "average majority" ]
   [ "$(state_of cover)" = current ]
 
   # An entry from before max_zoom_values was recorded, averaged at z6:
   # grey levels at its max zoom, now binary by majority.
-  jq '.layers |= map(del(.max_zoom_values))' "$MANIFEST" >"${MANIFEST}.new"
-  mv "${MANIFEST}.new" "$MANIFEST"
+  jq '.layers |= map(del(.max_zoom_values))' "$BUILD" >"${BUILD}.new"
+  mv "${BUILD}.new" "$BUILD"
   [ "$(state_of cover)" = stale ]
   [[ "$(notes_of cover)" == *"rebuild it for a binary max zoom by majority"* ]]
   run "$RUN" cover
@@ -360,9 +360,9 @@ add_raster() {
   set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.processing.maxzoom = 8'
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.layers[0].max_zoom_values' "$MANIFEST")" = near ]
-  jq '.layers |= map(del(.max_zoom_values))' "$MANIFEST" >"${MANIFEST}.new"
-  mv "${MANIFEST}.new" "$MANIFEST"
+  [ "$(jq -r '.layers[0].max_zoom_values' "$BUILD")" = near ]
+  jq '.layers |= map(del(.max_zoom_values))' "$BUILD" >"${BUILD}.new"
+  mv "${BUILD}.new" "$BUILD"
   [ "$(state_of cover)" = current ]
 }
 
@@ -372,7 +372,7 @@ add_raster() {
   echo 'overrides: { cover: { processing: { grey_levels: 8 } } }' >"$PIPELINE_MAP_CONFIG"
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  [ "$(jq '.layers[0].grey_levels' "$MANIFEST")" -eq 8 ]
+  [ "$(jq '.layers[0].grey_levels' "$BUILD")" -eq 8 ]
   [ "$(state_of cover)" = current ]
 
   echo 'overrides: { cover: { processing: { grey_levels: 16 } } }' >"$PIPELINE_MAP_CONFIG"
@@ -380,6 +380,6 @@ add_raster() {
   [[ "$(notes_of cover)" == *"source, fields or processing changed since the build"* ]]
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  [ "$(jq '.layers[0].grey_levels' "$MANIFEST")" -eq 16 ]
+  [ "$(jq '.layers[0].grey_levels' "$BUILD")" -eq 16 ]
   [ "$(state_of cover)" = current ]
 }
