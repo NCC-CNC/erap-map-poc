@@ -27,6 +27,7 @@
 #         "enabled": true, "problems": [],
 #         "overrides": {...} or null,
 #         "type": "vector", "input": "/data/raw/ERAP_2026_ecoregions.gdb",
+#         "joins": [] (source.joins paths, resolved),
 #         "build_sha256": "...", "display_sha256": "..." } ] }
 #
 # `build_sha256` is the hash of the effective `source`, `fields` and
@@ -168,7 +169,7 @@ resolve_layers() {
   map="${out}/map.json"
   _map_config "$map" || return 2
 
-  local file name origin dir rows=() problems overrides config sha_build sha_display input type
+  local file name origin dir rows=() problems overrides config sha_build sha_display input type joins
   local -A seen=()
   local clashes=() files=()
   # Committed layers first, then your own in layers.local/ (if any).
@@ -193,7 +194,7 @@ resolve_layers() {
     fi
     seen[$name]=1
     overrides=$(jq -c --arg n "$name" '.overrides[$n] // null' "$map")
-    config="" sha_build="" sha_display="" input="" type=""
+    config="" sha_build="" sha_display="" input="" type="" joins="[]"
     # On a schema problem, `problems` holds jv's findings.
     if problems=$(_check_schema "$LAYER_SCHEMA" "$file"); then
       config="${out}/${name}.json"
@@ -214,6 +215,8 @@ resolve_layers() {
         sha_build=$(jq -S -c '{source, fields, processing}' "$config" | _sha256 -)
         sha_display=$(jq -S -c '{title, visible, order, display}' "$config" | _sha256 -)
         input=$(resolve_input "$(jq -r '.source.path' "$config")")
+        joins=$(jq -c --arg dir "$PIPELINE_INPUT_DIR" \
+          '[(.source.joins // [])[].path | if startswith("/") then . else "\($dir)/\(.)" end]' "$config")
         type=$(jq -r 'if .processing.profile == "raster" then "raster" else "vector" end' "$config")
       fi
     fi
@@ -221,13 +224,14 @@ resolve_layers() {
       --arg config "$config" \
       --arg problems "$problems" --argjson overrides "$overrides" \
       --arg build "$sha_build" --arg display "$sha_display" \
-      --arg input "$input" --arg type "$type" \
+      --arg input "$input" --arg type "$type" --argjson joins "$joins" \
       '{name: $name, file: $file, origin: $origin,
         config: (if $config == "" then null else $config end),
         problems: ($problems | split("\n") | map(select(. != ""))),
         overrides: $overrides,
         type: (if $type == "" then null else $type end),
         input: (if $input == "" then null else $input end),
+        joins: $joins,
         build_sha256: (if $build == "" then null else $build end),
         display_sha256: (if $display == "" then null else $display end)}')")
   done
@@ -303,6 +307,11 @@ layer_get() {
     'first(.layers[] | select(.name == $n)) | .[$f] // empty | tostring' "$LAYERS_JSON"
 }
 
+# layer_joins NAME: the resolved paths of NAME's source.joins, one per line.
+layer_joins() {
+  jq -r --arg n "$1" 'first(.layers[] | select(.name == $n)) | (.joins // [])[]' "$LAYERS_JSON"
+}
+
 # layer_known NAME: whether NAME has a layer file.
 layer_known() {
   jq -e --arg n "$1" 'any(.layers[]; .name == $n)' "$LAYERS_JSON" >/dev/null
@@ -333,22 +342,34 @@ layer_check() {
 # compact JSON: where the layer comes from (`origin`: committed, the layers
 # dir, or local, layers.local/), its source data (INPUT, the resolved source path: path relative to
 # the input dir, total size of its files, newest modification time; null
-# fields for a /vsi path), the map config's overrides as applied (null for
+# fields for a /vsi path), the same for each join table (`joins`, only
+# for a layer with joins), the map config's overrides as applied (null for
 # none) and the hashes of what it was built from, which --status compares
 # (lib/status.sh).
 layer_provenance() {
-  local name=$1 input=$2 bytes="" mtime=""
+  local name=$1 input=$2 path files=()
+  while IFS= read -r path; do
+    files+=("$(_provenance_file "$path")")
+  done < <(printf '%s\n' "$input"; layer_joins "$name")
+  jq -c --arg n "$name" --args \
+    'first(.layers[] | select(.name == $n))
+     | ($ARGS.positional | map(fromjson)) as $files
+     | {origin, source: $files[0]}
+       + (if ($files | length) > 1 then {joins: $files[1:]} else {} end)
+       + {overrides, build_sha256, display_sha256}' "${files[@]}" <"$LAYERS_JSON"
+}
+
+# _provenance_file PATH: PATH (resolved) as {path, bytes, modified_at}, the
+# path relative to the input dir; null fields for a /vsi path.
+_provenance_file() {
+  local input=$1 bytes="" mtime=""
   if mtime=$(source_mtime "$input") && [[ -n $mtime ]]; then
     bytes=$(source_bytes "$input")
   fi
-  jq -c --arg n "$name" --arg input "${input#"${PIPELINE_INPUT_DIR}"/}" \
-    --arg bytes "$bytes" --arg mtime "$mtime" \
-    'first(.layers[] | select(.name == $n))
-     | {origin,
-        source: {path: $input,
-                 bytes: (if $bytes == "" then null else ($bytes | tonumber) end),
-                 modified_at: (if $mtime == "" then null else ($mtime | tonumber | todate) end)},
-        overrides, build_sha256, display_sha256}' "$LAYERS_JSON"
+  jq -n -c --arg input "${input#"${PIPELINE_INPUT_DIR}"/}" --arg bytes "$bytes" --arg mtime "$mtime" \
+    '{path: $input,
+      bytes: (if $bytes == "" then null else ($bytes | tonumber) end),
+      modified_at: (if $mtime == "" then null else ($mtime | tonumber | todate) end)}'
 }
 
 # load_layer NAME: set the LAYER_* variables from NAME's effective layer
@@ -366,6 +387,8 @@ layer_provenance() {
 #   LAYER_FEATURE_ID      the attribute holding source.id after normalising
 #   LAYER_FIELDS          `src:dest` per attribute read from the source, the
 #                         feature id first, then fields.keep
+#   LAYER_JOINS           source.joins as JSON, paths resolved; [] for none
+#                         (lib/joins.sh)
 #   LAYER_CALCULATED_NAMES, LAYER_CALCULATED_EXPRESSIONS
 #                         fields.calculated, in file order (lib/calculated.sh)
 #   LAYER_MIN_ZOOM, LAYER_MAX_ZOOM
@@ -409,6 +432,7 @@ load_layer() {
   LAYER_FIELDS=()
   LAYER_CALCULATED_NAMES=()
   LAYER_CALCULATED_EXPRESSIONS=()
+  LAYER_JOINS='[]'
   LAYER_GENERALISE_MAX_ZOOM=""
   LAYER_TIPPECANOE_FLAGS=()
   if [[ $LAYER_TYPE == vector ]]; then
@@ -419,6 +443,9 @@ load_layer() {
     # NUL-separated: an expression may span lines.
     mapfile -t LAYER_CALCULATED_NAMES < <(jq -r '(.fields.calculated // {}) | keys_unsorted[]' "$config")
     mapfile -d '' -t LAYER_CALCULATED_EXPRESSIONS < <(jq -j '(.fields.calculated // {})[] | . + "\u0000"' "$config")
+    LAYER_JOINS=$(jq -c --arg dir "$PIPELINE_INPUT_DIR" \
+      '[(.source.joins // [])[] | .path |= (if startswith("/") then . else "\($dir)/\(.)" end)]' \
+      "$config")
     if [[ $LAYER_PROFILE == coverage ]] && ((LAYER_MIN_ZOOM < LAYER_MAX_ZOOM)); then
       LAYER_GENERALISE_MAX_ZOOM=$((LAYER_MAX_ZOOM - 1))
     fi

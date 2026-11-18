@@ -430,6 +430,35 @@ practical:
   `expected_*display.json` and `web/src/test/layer-style.schema.json`
   are gone.
 
+## Settled in step 5
+
+- `source.joins` (`lib/joins.sh`) adds each table's rows before
+  `fields.keep`: a joined attribute is kept, and can be renamed, in
+  `fields.keep` by its name after `joins[].fields` (default every
+  attribute but the key), and calculated fields can use it. A join path
+  resolves like `source.path`.
+- Not one SQL join: GDAL's SQLite dialect joining to another dataset took
+  minutes for 20,000 features (no index), and OGR SQL's join a lookup per
+  feature. Instead each table is read once with ogr2ogr into a JSON
+  object from key to row, the source is read as before plus each key, and
+  jq adds the rows in one pass (200,000 features and rows in about 8 s).
+- Keys match as text: an integer key matches the same digits in a CSV,
+  and a whole real counts as the integer (7.0 matches 7). A CSV is read
+  with its types detected, a quoted value kept as text (so "007" keeps its
+  zeros, and must be text in the source too) and an empty one as NULL.
+- One-to-many is an error: a key in more than one row fails the layer,
+  naming the key. A joined name that the source or another join already
+  has fails it too. A feature with no row is kept, without that table's
+  attributes; a join that matches no feature logs a warning.
+- A missing table is like missing source data: `--status` says `source
+  missing` ("join table not found"), a full build skips the layer, a
+  named one fails.
+- Staleness: the join settings are in `source`, so in `build_sha256`; a
+  table modified after the build makes the layer stale ("join table
+  changed since the build"). The build report in `build.json` has
+  `joins` (path, layer, key, attributes, rows, features matched) and
+  `provenance.joins` (each table's path, size and modification time).
+
 ## Settled in step 6
 
 - Your own layers go in `pipeline/layers.local/` (git-ignored), read

@@ -1,0 +1,6 @@
+id,region,budget,code
+1,West,120.5,"007"
+2,West,80,"012"
+3,East,,"100"
+5,North,42,
+42,Nowhere,1,"999"
