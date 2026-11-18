@@ -72,7 +72,7 @@ notes_of() {
 
   restyle alpha '.title = "Alpha restyled"' \
     '.display.layers[0].paint["fill-color"][2][2] = "#ff0000"' \
-    '.display.popup.stats |= .[:1]'
+    '.display.popup.sections[0].blocks[0].items |= .[:1]'
   run "$RUN" --style-only alpha
   [ "$status" -eq 0 ]
   [[ $output == *"display updated for 1 layer(s), no tiles rebuilt"* ]]
@@ -87,7 +87,7 @@ notes_of() {
   run jq -e '.layers[] | select(.name == "alpha") | .display_updated_at | type == "string"' "$BUILD"
   [ "$status" -eq 0 ]
   run jq -e '.metadata["erap:layers"].alpha
-    | .title == "Alpha restyled" and (.popup.stats | length) == 1' "$STYLE"
+    | .title == "Alpha restyled" and (.popup.sections[0].blocks[0].items | length) == 1' "$STYLE"
   [ "$status" -eq 0 ]
 
   # style.json keeps the other layer.
@@ -195,14 +195,14 @@ notes_of() {
   [ "$output" = raster ]
 }
 
-@test "--style-only applies colour themes and a click modal (ADR 0012)" {
+@test "--style-only applies colour themes and a dialog pop-up (ADR 0012)" {
   add_layer alpha
   run "$RUN" alpha
   [ "$status" -eq 0 ]
   local tiles
   tiles=$(sha256sum "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles")
 
-  # The sample modal fixture: three themes and a modal, the same source,
+  # The sample modal fixture: three themes and a dialog, the same source,
   # fields and processing.
   cp "${PIPELINE_ROOT}/tests/fixtures/sample_modal.yaml" "${PIPELINE_LAYERS_DIR}/alpha.yaml"
   restyle alpha '.source.path = "sample.geojson"'
@@ -211,7 +211,7 @@ notes_of() {
   [ "$status" -eq 0 ]
   [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles")" = "$tiles" ]
   run jq -e --argjson f "$(yq -o json -I 0 . "${PIPELINE_LAYERS_DIR}/alpha.yaml")" \
-    '.metadata["erap:layers"].alpha | .themes == $f.display.themes and .modal == $f.display.modal' "$STYLE"
+    '.metadata["erap:layers"].alpha | .themes == $f.display.themes and .popup == $f.display.popup' "$STYLE"
   [ "$status" -eq 0 ]
 
   # The first theme is what the style layers draw.

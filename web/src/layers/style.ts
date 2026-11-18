@@ -8,6 +8,7 @@ import type {
   LayerMetadata,
   LayerType,
   MapDefaults,
+  PopupDefinition,
   Theme,
   ThemeConfig,
 } from './types';
@@ -18,7 +19,7 @@ import type {
  * basemap. Each style layer names its map layer in
  * `metadata["erap:layer"]`; the style's `metadata["erap:layers"]` holds
  * what MapLibre does not know about (title, order, visibility, legend,
- * themes, pop-up, modal), the layer file's `display` as it is
+ * themes, pop-up), the layer file's `display` as it is
  * (`./layer.generated.ts`). The style's `center`, `zoom` and
  * `metadata["erap:basemap"]` are the opening view; `erap:view` (zoom
  * limits and bounds), `erap:title` and `erap:locale` (numbers are
@@ -60,6 +61,12 @@ export const BASEMAP_NAMES: readonly BasemapName[] = ['light', 'dark'];
 
 type Json = Record<string, unknown>;
 const isObject = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
+/**
+ * A pop-up in the current shape (sections of blocks). One written by an
+ * older pipeline (`stats`, or a `modal`) is left out until the layer is
+ * restyled, so the layer is not clickable rather than broken.
+ */
+const isPopup = (v: unknown): v is PopupDefinition => isObject(v) && Array.isArray(v.sections);
 const inRange = (v: unknown, min: number, max: number): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
 
@@ -190,7 +197,7 @@ export function parseStyle(json: unknown, tilesBaseUrl: string): StyleLayers {
   const sources = json.sources as Record<string, Json>;
   const metadata = isObject(json.metadata) ? json.metadata : {};
   const map = mapDefaults(json);
-  // Numbers (legends here, pop-ups and modals later) in the map's locale.
+  // Numbers (legends, pop-ups and charts) in the map's locale.
   setNumberLocale(map?.locale);
   const entries = (isObject(metadata['erap:layers']) ? metadata['erap:layers'] : {}) as Record<
     string,
@@ -243,8 +250,7 @@ export function parseStyle(json: unknown, tilesBaseUrl: string): StyleLayers {
       sources: own,
       layers: styleLayers,
       ...(themes ? { themes } : { legend: resolveLegend(meta.legend, styleLayers, title) }),
-      ...(meta.popup ? { popup: meta.popup } : {}),
-      ...(meta.modal ? { modal: meta.modal } : {}),
+      ...(isPopup(meta.popup) ? { popup: meta.popup } : {}),
     };
   });
 

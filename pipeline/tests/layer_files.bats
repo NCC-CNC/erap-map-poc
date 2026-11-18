@@ -29,6 +29,13 @@ broken() {
   }
 }
 
+# valid FILE EXPR: run jv on FILE changed by the yq EXPR.
+valid() {
+  local copy="${BATS_TEST_TMPDIR}/changed.yaml"
+  yq "$2" "$1" >"$copy"
+  run jv "$LAYER_SCHEMA" "$copy"
+}
+
 # map_config YAML: write a map config, print its path.
 map_config() {
   printf '%s\n' "$1" >"${BATS_TEST_TMPDIR}/map.yaml"
@@ -79,7 +86,7 @@ map_config() {
 
 @test "a raster layer has no fields, pop-up or vector settings" {
   broken "$LAYER_SCHEMA" "$FOREST" '.fields.keep = ["a"]' "/fields"
-  broken "$LAYER_SCHEMA" "$FOREST" '.display.popup = {"title": {"attribute": "a"}, "stats": []}' "display/popup"
+  broken "$LAYER_SCHEMA" "$FOREST" '.display.popup = {"title": "{a}", "sections": [{"description": "a"}]}' "display/popup"
   broken "$LAYER_SCHEMA" "$FOREST" '.processing.min_visible_px = 4' "processing/min_visible_px"
   broken "$LAYER_SCHEMA" "$FOREST" '.processing.maxzoom = 15' "processing/maxzoom"
   broken "$LAYER_SCHEMA" "$SAMPLE" '.processing.grey_levels = 8' "processing/grey_levels"
@@ -92,8 +99,37 @@ map_config() {
   broken "$LAYER_SCHEMA" "$SAMPLE" '.display.layers[0].type = "polygon"' "display/layers/0/type"
 }
 
-@test "a layer has a pop-up or a modal, not both" {
-  broken "$LAYER_SCHEMA" "$SAMPLE" '.display.modal = {"title": "x", "sections": [{"heading": "x", "description": "x"}]}' "/display"
+@test "one pop-up: small with one section, or a dialog of headed sections" {
+  local dialog="${PIPELINE_ROOT}/tests/fixtures/sample_modal.yaml"
+  # The old modal key and pop-up shape are gone.
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.display.modal = .display.popup' "additional properties 'modal' not allowed"
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.display.popup.stats = []' "additional properties 'stats' not allowed"
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.display.popup.title = {"attribute": "name"}' "display/popup/title"
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.display.popup.size = "large"' "display/popup/size"
+  # A small pop-up: one section, no layout or tab.
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.display.popup.sections += [{"description": "x"}]' "display/popup/sections"
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.display.popup.layout = "tabs"' "display/popup/layout"
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.display.popup.sections[0].tab = "x"' "display/popup/sections/0/tab"
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.display.popup.sections[0] = {"heading": "x"}' "display/popup/sections/0"
+  # A dialog: every section has a heading.
+  broken "$LAYER_SCHEMA" "$dialog" 'del(.display.popup.sections[1].heading)' "missing property 'heading'"
+  broken "$LAYER_SCHEMA" "$dialog" '.display.popup.layout = "pages"' "display/popup/layout"
+  # Charts: bar, line, pie, doughnut.
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.display.popup.sections[0].blocks[1].chart = "area"' "chart"
+  valid "$SAMPLE" '.display.popup.sections[0].blocks[1].chart = "line"'
+  [ "$status" -eq 0 ]
+}
+
+@test "number formats: number, integer and percent, units in suffix" {
+  local at='.display.popup.sections[0].blocks[0].items[1].format'
+  for preset in hectares km count; do
+    broken "$LAYER_SCHEMA" "$SAMPLE" "${at} = \"${preset}\"" "format"
+    broken "$LAYER_SCHEMA" "$SAMPLE" "${at} = {\"preset\": \"${preset}\"}" "format"
+  done
+  for format in '"number"' '"integer"' '"percent"' '{"preset": "integer", "suffix": "ha"}' '{"decimals": 1, "suffix": "km"}'; do
+    valid "$SAMPLE" "${at} = ${format}"
+    [ "$status" -eq 0 ]
+  done
 }
 
 @test "themes: the first draws the layers as they are, the others set paint" {

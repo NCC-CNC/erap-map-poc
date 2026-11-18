@@ -1,13 +1,13 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { FeatureChart } from '../chart/FeatureChart';
+import { selectedSection, type PopupContent } from '../popup/content';
+import { SectionBody } from '../popup/Sections';
 import { focusableIn, trapTarget } from './focus';
-import { selectedSection, type BlockContent, type ModalContent, type SectionContent } from './template';
 
 /** Keys that move between tabs (WAI-ARIA tabs pattern, horizontal). */
 const TAB_KEYS = ['ArrowLeft', 'ArrowRight', 'Home', 'End'];
 
 /**
- * Click details in an accessible modal dialog (ADR 0012): `role="dialog"`
+ * A `dialog` pop-up (ADR 0012) as an accessible modal dialog: `role="dialog"`
  * with `aria-modal`, labelled by its title. Focus moves to the close
  * button on open, stays inside while open (Tab and Shift+Tab cycle) and
  * returns to where it was on close. Escape, the close button and a click
@@ -29,7 +29,7 @@ export function FeatureModal({
   tab,
   onTabChange,
 }: {
-  content: ModalContent;
+  content: PopupContent;
   onClose: () => void;
   tab?: number;
   onTabChange?: (index: number) => void;
@@ -171,73 +171,4 @@ export function FeatureModal({
       </div>
     </div>
   );
-}
-
-function SectionBody({ section }: { section: SectionContent }) {
-  return (
-    <>
-      {section.description && <p>{section.description}</p>}
-      {section.blocks.map((block, j) => (
-        <Block key={j} block={block} />
-      ))}
-    </>
-  );
-}
-
-function Block({ block }: { block: BlockContent }) {
-  switch (block.type) {
-    case 'attributes':
-      return (
-        <dl className="feature-modal-attributes">
-          {block.items.map((item, i) => (
-            <div key={i}>
-              <dt>{item.label}</dt>
-              <dd>{item.value}</dd>
-            </div>
-          ))}
-        </dl>
-      );
-    case 'table':
-      return (
-        <div className="feature-modal-table">
-          <table>
-            {block.caption && <caption>{block.caption}</caption>}
-            <thead>
-              <tr>
-                <th scope="col">{block.rowHeader ?? ''}</th>
-                {block.columns.map((column, i) => (
-                  <th key={i} scope="col">
-                    {column}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {block.rows.map((row, i) => (
-                <tr key={i}>
-                  <th scope="row">{row.label}</th>
-                  {row.cells.map((cell, j) => (
-                    <td key={j}>{cell}</td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    case 'chart':
-      return <FeatureChart view={block.chart} />;
-    case 'text':
-      return <p>{block.text}</p>;
-    case 'list':
-      return block.items.length ? (
-        <ul className="feature-modal-list">
-          {block.items.map((item, i) => (
-            <li key={i}>{item}</li>
-          ))}
-        </ul>
-      ) : (
-        <p className="feature-modal-empty">{block.empty}</p>
-      );
-  }
 }

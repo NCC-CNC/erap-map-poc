@@ -72,13 +72,13 @@ yaml_json() {
   [ "$output" = '[30,false]' ]
 }
 
-@test "style.json: colour themes and the click modal as the layer file has them" {
+@test "style.json: colour themes and the dialog pop-up as the layer file has them" {
   cp "${FIXTURES}/sample_modal.yaml" "${PIPELINE_LAYERS_DIR}/sample.yaml"
   run "$RUN" sample
   [ "$status" -eq 0 ]
   run jq -e --argjson f "$(yaml_json "${FIXTURES}/sample_modal.yaml")" '
     .metadata["erap:layers"].sample as $m
-    | $m.themes == $f.display.themes and $m.modal == $f.display.modal
+    | $m.themes == $f.display.themes and $m.popup == $f.display.popup
       and ($m.themes[0] | has("paint") | not) and ($m | has("legend") | not)' "$STYLE"
   [ "$status" -eq 0 ]
 }
@@ -102,8 +102,8 @@ yaml_json() {
   [ "$output" = true ]
 }
 
-@test "ecoregions_display.json is the themes and modal of ecoregions.yaml" {
-  run jq -n --argjson a "$(yq -o json -I 0 '.display | {"themes": .themes, "modal": .modal}' \
+@test "ecoregions_display.json is the themes and pop-up of ecoregions.yaml" {
+  run jq -n --argjson a "$(yq -o json -I 0 '.display | {"themes": .themes, "popup": .popup}' \
     "${PIPELINE_ROOT}/layers/ecoregions.yaml")" --slurpfile b "${FIXTURES}/ecoregions_display.json" '$a == $b[0]'
   [ "$output" = true ]
 }
@@ -174,6 +174,30 @@ yaml_json() {
   [[ $output == *"sample.yaml: display.themes[1].paint: halo is not an id in display.layers"* ]]
   [ ! -e "$BUILD" ]
   [ ! -e "$STYLE" ]
+}
+
+@test "pop-up checks: unique tabs, a value per column and category, one series in a pie" {
+  local file="${PIPELINE_LAYERS_DIR}/sample.yaml"
+  cp "${FIXTURES}/sample_modal.yaml" "$file"
+  run "$RUN" --status --json
+  [ "$(jq -r '.layers[0].state' <<<"$output")" != invalid ]
+
+  # Sections: Summary (tab Summary), Values, Notes. Values: a table of 2
+  # columns, a bar chart of 2 categories, a pie of 2.
+  set_layer "$file" '.display.popup.sections[1].tab = "Summary"
+    | .display.popup.sections[1].blocks[0].rows[1].values = ["v2021"]
+    | .display.popup.sections[1].blocks[1].series[0].attributes = ["v2020"]
+    | .display.popup.sections[1].blocks[2].series += [{"label": "More", "attributes": ["v2021", "v2022"]}]
+    | .display.popup.sections[1].blocks[2].colors = ["#000000"]'
+  run "$RUN" --status --json
+  run jq -r '.layers[0].notes[]' <<<"$output"
+  local at="sample.yaml: display.popup.sections[1].blocks"
+  [ "${lines[0]}" = "sample.yaml: display.popup.sections: tab Summary is used twice" ]
+  [ "${lines[1]}" = "${at}[0]: row 2021 has 1 values for 2 columns" ]
+  [ "${lines[2]}" = "${at}[1]: series Early has 1 attributes for 2 categories" ]
+  [ "${lines[3]}" = "${at}[2]: a pie chart has exactly one series" ]
+  [ "${lines[4]}" = "${at}[2]: 1 colors for 2 categories" ]
+  [ "${#lines[@]}" -eq 5 ]
 }
 
 @test "no layer in layers/ reads the synthetic fixtures: they are test layers (#17)" {

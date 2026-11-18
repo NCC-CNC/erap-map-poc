@@ -71,14 +71,37 @@ describe("the test layers' style.json, as the pipeline writes it", () => {
     );
     expect(content).toEqual({
       title: 'Heron',
-      stats: [
-        { label: 'ID', value: '12' },
-        { label: 'Category', value: 'beta' },
-        { label: 'Count', value: '1,234' },
+      size: 'small',
+      layout: 'tabs',
+      sections: [
+        {
+          index: 0,
+          tab: '',
+          blocks: [
+            {
+              type: 'attributes',
+              items: [
+                { label: 'ID', value: '12' },
+                { label: 'Category', value: 'beta' },
+                { label: 'Count', value: '1,234' },
+              ],
+            },
+          ],
+        },
       ],
-      charts: [],
     });
     expect(raster.popup).toBeUndefined();
+  });
+
+  it('leaves out a pop-up in the old shape (stats, or a modal) until the layer is restyled', () => {
+    const style = expectedStyle();
+    const layers = (style.metadata as Record<string, Record<string, Record<string, unknown>>>)['erap:layers']!;
+    layers.sample!.popup = { title: { attribute: 'name' }, stats: [] };
+    layers.sample_points!.modal = { title: '{name}', sections: [{ heading: 'x', description: 'x' }] };
+    delete layers.sample_points!.popup;
+    const parsed = parseStyle(style, TILES).layers;
+    expect(parsed.find((d) => d.id === 'sample')?.popup).toBeUndefined();
+    expect(parsed.find((d) => d.id === 'sample_points')?.popup).toBeUndefined();
   });
 
   it('has no opening view without a map config', () => {
@@ -87,13 +110,13 @@ describe("the test layers' style.json, as the pipeline writes it", () => {
 });
 
 describe('colour themes from style.json (ADR 0012)', () => {
-  it('reads the themes in order, the modal as it is, and no layer legend', () => {
+  it('reads the themes in order, the dialog pop-up as it is, and no layer legend', () => {
     expect(sampleModal.themes?.map((t) => t.id)).toEqual(['score', 'score_gradient', 'area']);
     const meta = (expectedModalStyle().metadata as Record<string, Record<string, Record<string, unknown>>>)[
       'erap:layers'
     ]!.sample!;
-    expect(sampleModal.modal).toEqual(meta.modal);
-    expect(sampleModal.popup).toBeUndefined();
+    expect(sampleModal.popup).toEqual(meta.popup);
+    expect(sampleModal.popup?.size).toBe('dialog');
     expect(sampleModal.legend).toBeUndefined();
   });
 

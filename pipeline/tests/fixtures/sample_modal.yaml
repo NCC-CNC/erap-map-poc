@@ -1,6 +1,6 @@
 # yaml-language-server: $schema=../../schema/layer.schema.json
 #
-# The `sample` test layer with colour themes and a click modal (ADR 0012).
+# The `sample` test layer with colour themes and a dialog pop-up (ADR 0012).
 # Built alone, its style.json is expected_modal_style.json, which the web
 # app's tests read too (tests/style.bats checks they agree).
 
@@ -84,18 +84,19 @@ display:
              [interpolate, [linear], [get, area_ha], 3947.5, "#eff3ff", 48514.5, "#08519c"],
              "#9e9e9e"]
       # No legend: the map derives it from the interpolate (3,948 to 48,515).
-  modal:
+  popup:
     title: "{name}"
+    size: dialog
     subtitle: Sample feature {$id}
     sections:
       - heading: Summary of the feature
         tab: Summary
-        description: A made-up feature of {area_ha:hectares}.
+        description: A made-up feature of {area_ha:integer} ha.
         blocks:
           - type: attributes
             items:
               - { label: ID, value: { featureId: true } }
-              - { label: Area, value: { attribute: area_ha }, format: hectares }
+              - { label: Area, value: { attribute: area_ha }, format: { preset: integer, suffix: ha } }
               - { label: Score, value: { attribute: score }, format: { suffix: / 100 } }
       - heading: Values
         blocks:
@@ -103,7 +104,7 @@ display:
             caption: Values by year
             rowHeader: Year
             columns:
-              - { label: Value, format: count }
+              - { label: Value, format: integer }
               - { label: Score, format: percent }
             rows:
               - { label: "2020", values: [v2020, score] }
@@ -113,7 +114,7 @@ display:
             chart: bar
             title: Values, early and late
             valueLabel: Value
-            format: count
+            format: integer
             categories: [First, Second]
             series:
               - { label: Early, attributes: [v2020, v2021] }
@@ -125,6 +126,14 @@ display:
             categories: ["2020", "2024"]
             series:
               - { label: Value, attributes: [v2020, v2024] }
+          - type: chart
+            chart: line
+            title: Value by year
+            valueLabel: Value
+            format: integer
+            categories: ["2020", "2021", "2022", "2023", "2024"]
+            series:
+              - { label: Value, attributes: [v2020, v2021, v2022, v2023, v2024] }
       - heading: Notes
         blocks:
           - type: text

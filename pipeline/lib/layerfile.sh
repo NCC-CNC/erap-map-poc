@@ -90,7 +90,9 @@ resolve_input() {
 # layer_problems: the problems in a layer (effective JSON on stdin) that
 # the schema cannot express, one per line: zooms in order, attribute names
 # unique, style layer and theme ids unique, theme paint on a style layer of
-# the layer, no tippecanoe option the pipeline sets itself. A legend is
+# the layer, no tippecanoe option the pipeline sets itself, and in the
+# pop-up unique tab labels, a value per table column and per chart
+# category, one series in a pie or doughnut. A legend is
 # optional: the web app builds one from the colour expression (design
 # note 04).
 layer_problems() {
@@ -111,7 +113,24 @@ layer_problems() {
     ((.display.themes // []) | [.[].id] | group_by(.) | map(select(length > 1) | .[0])[]
       | "display.themes: id \(.) is used twice"),
     ((.processing.tippecanoe // [])[] | select(split("=")[0] | IN($reserved[]))
-      | "processing.tippecanoe: \(split("=")[0]) is set by the pipeline")'
+      | "processing.tippecanoe: \(split("=")[0]) is set by the pipeline"),
+    (.display.popup // empty
+      | ([.sections[] | .tab // .heading // empty] | group_by(.) | map(select(length > 1) | .[0])[]
+          | "display.popup.sections: tab \(.) is used twice"),
+        (.sections | to_entries[] | .key as $s | (.value.blocks // []) | to_entries[]
+          | "display.popup.sections[\($s)].blocks[\(.key)]" as $at | .value
+          | if .type == "table" then
+              (.columns | length) as $n | .rows[] | select((.values | length) != $n)
+              | "\($at): row \(.label) has \(.values | length) values for \($n) columns"
+            elif .type == "chart" then
+              (.categories | length) as $n
+              | (.series[] | select((.attributes | length) != $n)
+                  | "\($at): series \(.label) has \(.attributes | length) attributes for \($n) categories"),
+                (select((.chart | IN("pie", "doughnut")) and (.series | length) != 1)
+                  | "\($at): a \(.chart) chart has exactly one series"),
+                (select(.colors and (.colors | length) != $n)
+                  | "\($at): \(.colors | length) colors for \($n) categories")
+            else empty end))'
 }
 
 # The tippecanoe options the pipeline sets itself (lib/tiles.sh), which

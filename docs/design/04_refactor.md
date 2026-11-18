@@ -126,12 +126,11 @@ display:
            10, "#9ecae1", 17, "#4292c6", 30, "#08519c"]
         fill-opacity: 0.7
   themes: []   # alternative paint blocks for "Colour by"
-  popup: {}    # as today: title, stats, charts
-  modal: {}    # as today: tabs, sections, tables, charts
+  popup: {}    # title, size (small or dialog), sections of blocks
 ```
 
-The pop-up and modal keep today's structure; they move into the file
-as they are, apart from renaming where that makes them clearer.
+The pop-up and modal moved into the file as they were; #124 then made
+them one `popup` (see Settled in the one pop-up).
 
 ## Outputs
 
@@ -214,7 +213,7 @@ require: [protected_areas]
 ## Web app
 
 What stays: React and MapLibre, the basemap toggle, the layer panel (on
-and off, "Colour by"), legends, pop-ups, the modal, charts and number
+and off, "Colour by"), legends, pop-ups and dialogs, charts and number
 formats, all looking and working as now. The basemap loads first and the
 data layers go on top; a basemap switch adds them again with their
 visibility and theme. The view stays in the URL hash.
@@ -224,7 +223,7 @@ How it reads `style.json`:
 - A short loader checks it is a version 8 style. Each style layer carries
   `metadata["erap:layer"]` (the map layer it belongs to, such as
   `ecoregions`); the style's top-level `metadata["erap:layers"]` holds each
-  map layer's title, order, visibility, themes, legend, pop-up and modal.
+  map layer's title, order, visibility, themes, legend and pop-up.
 - Sources are written by the pipeline as relative `pmtiles://` and `cog://`
   URLs; the app resolves them against the tiles URL, so the same file
   works locally and on Pages.
@@ -245,7 +244,7 @@ writes built layers) and the raster PNG path (rasters are COG only, ADR
 0010).
 
 Tests: vitest covers the loader (valid, missing, bad), legends from each
-expression type, themes, and pop-up and modal content. CI checks the test
+expression type, themes, and pop-up content in both sizes. CI checks the test
 layers' `style.json` with the MapLibre style validator.
 
 ## Docs
@@ -256,7 +255,7 @@ Each file has one reader:
 | --- | --- | --- |
 | `README.md` | everyone | what it is, quick start, everyday commands, links (about 150 lines) |
 | `docs/how-it-works.md` | anyone | data flow diagram (layer file, pipeline, tiles and `style.json`, app) and what each step and output is |
-| `docs/guide.md` | people running the map | each task as plain commands: add a layer, change its look, its pop-up or modal, update its data, remove it, personal layers, publish the Pages copy |
+| `docs/guide.md` | people running the map | each task as plain commands: add a layer, change its look, its pop-up, update its data, remove it, personal layers, publish the Pages copy |
 | `docs/layer-file.md` | people writing layer files | every key of the layer file and map config, with examples |
 | `pipeline/README.md` | developers | what is in `pipeline/` and what each script in `bin/` and `lib/` does |
 | `scripts/README.md` | developers | what each script in `scripts/` does and how to run it |
@@ -517,3 +516,37 @@ practical:
   problem that makes the layer `invalid`. It is part of `processing`, so
   in `build_sha256`: a change makes the layer stale, and a map config can
   override it.
+
+## Settled in the one pop-up (#124)
+
+- `display.popup` is the only click display; `modal`, the old pop-up's
+  `stats` and `charts`, and their schema definitions are gone. A pop-up
+  has a `title` and an optional `subtitle` (templates), `size` (`small`,
+  the default, or `dialog`), `layout` (`tabs`, the default, or `scroll`;
+  a dialog only) and `sections` of blocks: `attributes`, `table`,
+  `chart`, `text` and `list`.
+- A `small` pop-up has one section, shown in a MapLibre pop-up at the
+  click, with an optional heading and no tab. In a `dialog` every section
+  has a heading. The pipeline also checks what the schema cannot: unique
+  tab labels, a value per table column and per chart category, one series
+  in a pie or doughnut and a colour per slice.
+- Charts are `bar`, `line`, `pie` or `doughnut` in either size; `bar` and
+  `line` take several series.
+- Number formats are `number` (decimals as the value has them, up to 3),
+  `integer` (none) and `percent` (1 decimal and `%`), all with thousands
+  separators in the map's locale; a format object without a `preset` is
+  `number`. Units go in `suffix` (`hectares` is `{preset: integer,
+  suffix: ha}`, `km` is `{decimals: 1, suffix: km}`); `count`,
+  `hectares` and `km` are gone. A template placeholder takes a preset
+  name, such as `{area_ha:integer} ha`.
+- One builder (`web/src/popup/content.ts`) fills both sizes and one set of
+  block components (`web/src/popup/Sections.tsx`) draws them; the small
+  pop-up (`FeaturePopup`) and the dialog (`modal/FeatureModal.tsx`, its
+  tabs, focus and keyboard handling) only frame them.
+- The converted layers look as before, with one difference: a small
+  pop-up hides a value the feature does not have, as the dialog did,
+  where it used to show "Not available". The `sample` chart keeps its
+  colour with a series `color`.
+- A `style.json` written before this keeps the old pop-up or modal until
+  the layer's display is applied again (`--status` shows `restyle`); the
+  app leaves such a pop-up out, so the layer is not clickable until then.

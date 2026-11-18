@@ -254,7 +254,7 @@ level_sum() {
   before=$(sha256sum "$COG")
 
   # A pop-up on a raster layer.
-  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.display.popup = {"title": {"attribute": "x"}, "stats": []}'
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.display.popup = {"title": "{x}", "sections": [{"description": "x"}]}'
   run "$RUN" cover
   [ "$status" -eq 1 ]
   [[ $output == *"cover.yaml: at '/display/popup'"* ]]

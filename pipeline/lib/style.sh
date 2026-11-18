@@ -12,7 +12,7 @@
 #       "erap:locale": "en-CA",                  (map config; else absent)
 #       "erap:layers": { "<layer>": { "title": ..., "type": "vector",
 #           "order": 10, "visible": true, "legend": {...},
-#           "themes": [...], "popup": {...}, "modal": {...} } } },
+#           "themes": [...], "popup": {...} } } },
 #     "center": [lon, lat], "zoom": 3,           (map config's view)
 #     "glyphs": "...",                           (only for text labels)
 #     "sources": { "<layer>": { "type": "vector",
@@ -24,8 +24,8 @@
 # `erap:layers` holds what MapLibre does not know about, from the layer
 # file: `title`, `order` (default 0), `visible` (default false), the
 # build's `type` (vector or raster) and display's `legend`, `themes` (as in
-# the layer file: the first theme is what the style layers draw), `popup`
-# and `modal`, those set. The style layers are the layer file's
+# the layer file: the first theme is what the style layers draw) and
+# `popup`, those set. The style layers are the layer file's
 # `display.layers` with a prefixed id, the source, the source layer (vector
 # only), `visibility` from `visible` and `erap:layer` naming the layer.
 # Sources are relative to the output dir: pmtiles:// for a vector layer,
@@ -98,7 +98,7 @@ write_style() {
     def fresh($c): . as $e | ($e.type // "vector") as $type
       | {name: $e.name,
          meta: ({title: $c.title, type: $type, order: ($c.order // 0), visible: ($c.visible // false)}
-           + ($c.display | with_entries(select(.key | IN("legend", "themes", "popup", "modal"))))),
+           + ($c.display | with_entries(select(.key | IN("legend", "themes", "popup"))))),
          source: source,
          layers: [$c.display.layers[]
            | . + {id: "\($e.name)-\(.id)", source: $e.name}

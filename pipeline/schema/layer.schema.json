@@ -26,7 +26,7 @@
   },
   "allOf": [
     {
-      "description": "A raster layer: no attributes, no pop-up or modal, no vector settings.",
+      "description": "A raster layer: no attributes, no pop-up, no vector settings.",
       "if": {
         "required": ["processing"],
         "properties": { "processing": { "required": ["profile"], "properties": { "profile": { "const": "raster" } } } }
@@ -46,7 +46,7 @@
               "tippecanoe": false
             }
           },
-          "display": { "properties": { "popup": false, "modal": false } }
+          "display": { "properties": { "popup": false } }
         }
       },
       "else": {
@@ -256,14 +256,9 @@
           "description": "An explicit legend, for when the one the app builds from the colour expression is not enough. Not with `themes`, which have their own.",
           "$ref": "#/$defs/legend"
         },
-        "popup": { "$ref": "#/$defs/popup" },
-        "modal": { "$ref": "#/$defs/modal" }
+        "popup": { "$ref": "#/$defs/popup" }
       },
       "allOf": [
-        {
-          "description": "A pop-up or a modal, not both.",
-          "not": { "required": ["popup", "modal"] }
-        },
         {
           "description": "Themes carry their own legends.",
           "if": { "required": ["themes"] },
@@ -406,18 +401,18 @@
       ]
     },
     "formatPreset": {
-      "description": "A named number format: `number` and `count` (0 decimals, thousands separators), `percent` (a value 0 to 100: 1 decimal and %), `hectares` (0 decimals, ha), `km` (1 decimal, km).",
-      "enum": ["number", "count", "percent", "hectares", "km"]
+      "description": "A named number format, in the map's locale with thousands separators: `number` (decimals as the value has them, up to 3), `integer` (0 decimals), `percent` (a value 0 to 100: 1 decimal and %). Units go in `suffix`.",
+      "enum": ["number", "integer", "percent"]
     },
     "numberFormat": {
-      "description": "A number format: an optional `preset`, changed by `decimals`, `grouping` and `suffix`.",
+      "description": "A number format: a `preset` (default `number`), changed by `decimals`, `grouping` and `suffix`.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "preset": { "$ref": "#/$defs/formatPreset" },
-        "decimals": { "description": "Decimal places.", "type": "integer", "minimum": 0, "maximum": 20 },
+        "decimals": { "description": "Decimal places, always shown.", "type": "integer", "minimum": 0, "maximum": 20 },
         "grouping": { "description": "Thousands separators.", "type": "boolean" },
-        "suffix": { "description": "Unit after the number, after a space.", "type": "string" }
+        "suffix": { "description": "Unit after the number, after a space (`%` directly), such as `ha` or `km`.", "type": "string" }
       }
     },
     "format": {
@@ -433,42 +428,6 @@
         "label": { "description": "Its label.", "type": "string", "minLength": 1 },
         "value": { "$ref": "#/$defs/valueSource" },
         "format": { "$ref": "#/$defs/format" }
-      }
-    },
-    "popupChart": {
-      "description": "A small bar or line chart, one point per attribute.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["type", "title", "valueLabel", "points"],
-      "properties": {
-        "type": { "description": "Chart type.", "enum": ["bar", "line"] },
-        "title": { "description": "Heading above the chart.", "type": "string", "minLength": 1 },
-        "valueLabel": { "description": "What the values are, for the accessible summary.", "type": "string", "minLength": 1 },
-        "points": {
-          "description": "The points, in order.",
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["label", "attribute"],
-            "properties": {
-              "label": { "description": "Axis label.", "type": "string" },
-              "attribute": { "$ref": "#/$defs/attribute" }
-            }
-          }
-        }
-      }
-    },
-    "popup": {
-      "description": "A small pop-up on click: a title, stats and charts. Without a pop-up or a modal the layer is not clickable.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["title", "stats"],
-      "properties": {
-        "title": { "$ref": "#/$defs/valueSource" },
-        "stats": { "description": "Labelled values.", "type": "array", "items": { "$ref": "#/$defs/stat" } },
-        "charts": { "description": "Charts under the stats.", "type": "array", "items": { "$ref": "#/$defs/popupChart" } }
       }
     },
     "template": {
@@ -535,18 +494,18 @@
       }
     },
     "chartBlock": {
-      "description": "A Chart.js chart over `categories`. `bar` takes one or more series (several make a grouped bar chart); `pie` and `doughnut` exactly one. Each series gives one attribute per category. Hidden with no values.",
+      "description": "A Chart.js chart over `categories`. `bar` and `line` take one or more series (several make a grouped bar chart or several lines, with a legend); `pie` and `doughnut` exactly one. Each series gives one attribute per category. Hidden with no values.",
       "type": "object",
       "additionalProperties": false,
       "required": ["type", "chart", "title", "valueLabel", "categories", "series"],
       "properties": {
         "type": { "const": "chart" },
-        "chart": { "description": "Chart type.", "enum": ["bar", "pie", "doughnut"] },
+        "chart": { "description": "Chart type.", "enum": ["bar", "line", "pie", "doughnut"] },
         "title": { "description": "Heading above the chart.", "type": "string", "minLength": 1 },
         "valueLabel": { "description": "What the values are, for the accessible summary.", "type": "string", "minLength": 1 },
         "format": { "$ref": "#/$defs/format" },
         "categories": {
-          "description": "Bar or slice labels.",
+          "description": "Bar, point or slice labels.",
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 }
@@ -613,8 +572,8 @@
         "empty": { "description": "Shown when no item applies.", "type": "string", "minLength": 1 }
       }
     },
-    "modalBlock": {
-      "description": "One block of a modal section.",
+    "block": {
+      "description": "One block of a pop-up section.",
       "type": "object",
       "required": ["type"],
       "properties": { "type": { "enum": ["attributes", "table", "chart", "text", "list"] } },
@@ -626,32 +585,49 @@
         { "if": { "properties": { "type": { "const": "list" } } }, "then": { "$ref": "#/$defs/listBlock" } }
       ]
     },
-    "modalSection": {
-      "description": "A heading, an optional description, then blocks. Hidden when every block is.",
+    "section": {
+      "description": "An optional heading and description, then blocks. Hidden when every block is.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["heading"],
       "anyOf": [{ "required": ["description"] }, { "required": ["blocks"] }],
       "properties": {
-        "heading": { "description": "Section heading.", "type": "string", "minLength": 1 },
-        "tab": { "description": "A shorter tab label; default the heading. Tab labels are unique.", "type": "string", "minLength": 1 },
+        "heading": { "description": "Section heading; required in a dialog.", "type": "string", "minLength": 1 },
+        "tab": { "description": "A shorter tab label in a dialog; default the heading. Tab labels are unique.", "type": "string", "minLength": 1 },
         "description": { "$ref": "#/$defs/template" },
-        "blocks": { "description": "The blocks, in order.", "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/modalBlock" } }
+        "blocks": { "description": "The blocks, in order.", "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/block" } }
       }
     },
-    "modal": {
-      "description": "Click details in a dialog, filled from the clicked feature's attributes.",
+    "popupSize": {
+      "description": "`small` (default): one section in a pop-up at the click; `dialog`: sections in a dialog over the map.",
+      "enum": ["small", "dialog"]
+    },
+    "popupLayout": {
+      "description": "How a dialog shows its sections: `tabs` (default), one at a time; `scroll`, all in one scrolling dialog.",
+      "enum": ["tabs", "scroll"]
+    },
+    "popup": {
+      "description": "What a click on a feature shows, filled from its attributes: a small pop-up at the click or a dialog. Without one the layer is not clickable.",
       "type": "object",
       "additionalProperties": false,
       "required": ["title", "sections"],
       "properties": {
         "title": { "description": "The heading; the layer title when a placeholder has no value.", "$ref": "#/$defs/template" },
         "subtitle": { "description": "A line under the heading; hidden when a placeholder has no value.", "$ref": "#/$defs/template" },
-        "layout": {
-          "description": "`tabs` (default): one section at a time; `scroll`: all sections in one scrolling dialog.",
-          "enum": ["tabs", "scroll"]
-        },
-        "sections": { "description": "The sections, in order.", "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/modalSection" } }
+        "size": { "$ref": "#/$defs/popupSize" },
+        "layout": { "$ref": "#/$defs/popupLayout" },
+        "sections": { "description": "The sections, in order.", "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/section" } }
+      },
+      "if": { "required": ["size"], "properties": { "size": { "const": "dialog" } } },
+      "then": {
+        "description": "A dialog: every section has a heading.",
+        "properties": { "sections": { "items": { "required": ["heading"] } } }
+      },
+      "else": {
+        "description": "A small pop-up: one section, no layout or tabs.",
+        "properties": {
+          "layout": false,
+          "sections": { "maxItems": 1, "items": { "properties": { "tab": false } } }
+        }
       }
     }
   }

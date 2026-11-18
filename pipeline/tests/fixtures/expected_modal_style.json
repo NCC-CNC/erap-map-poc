@@ -145,14 +145,15 @@
             }
           }
         ],
-        "modal": {
+        "popup": {
           "title": "{name}",
+          "size": "dialog",
           "subtitle": "Sample feature {$id}",
           "sections": [
             {
               "heading": "Summary of the feature",
               "tab": "Summary",
-              "description": "A made-up feature of {area_ha:hectares}.",
+              "description": "A made-up feature of {area_ha:integer} ha.",
               "blocks": [
                 {
                   "type": "attributes",
@@ -168,7 +169,10 @@
                       "value": {
                         "attribute": "area_ha"
                       },
-                      "format": "hectares"
+                      "format": {
+                        "preset": "integer",
+                        "suffix": "ha"
+                      }
                     },
                     {
                       "label": "Score",
@@ -193,7 +197,7 @@
                   "columns": [
                     {
                       "label": "Value",
-                      "format": "count"
+                      "format": "integer"
                     },
                     {
                       "label": "Score",
@@ -229,7 +233,7 @@
                   "chart": "bar",
                   "title": "Values, early and late",
                   "valueLabel": "Value",
-                  "format": "count",
+                  "format": "integer",
                   "categories": [
                     "First",
                     "Second"
@@ -265,6 +269,32 @@
                       "label": "Value",
                       "attributes": [
                         "v2020",
+                        "v2024"
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "chart",
+                  "chart": "line",
+                  "title": "Value by year",
+                  "valueLabel": "Value",
+                  "format": "integer",
+                  "categories": [
+                    "2020",
+                    "2021",
+                    "2022",
+                    "2023",
+                    "2024"
+                  ],
+                  "series": [
+                    {
+                      "label": "Value",
+                      "attributes": [
+                        "v2020",
+                        "v2021",
+                        "v2022",
+                        "v2023",
                         "v2024"
                       ]
                     }

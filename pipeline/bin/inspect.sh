@@ -386,10 +386,12 @@ starter() {
             items: [{color: $c.color, label: $title}]
           },
           popup: {
-            title: ([$keep[] | select(.type == "String") | {attribute: .out}] | first // {featureId: true}),
-            stats: ([{label: "ID", value: {featureId: true}}]
-              + [$keep[] | {label: (.out | nice), value: {attribute: .out}}
-                  + (if .type | test("^(Integer|Integer64|Real)$") then {format: {}} else {} end)])
+            title: ([$keep[] | select(.type == "String") | "{\(.out)}"] | first // "{$id}"),
+            sections: [{blocks: [{type: "attributes",
+              items: ([{label: "ID", value: {featureId: true}}]
+                + [$keep[] | {label: (.out | nice), value: {attribute: .out}}
+                    + (if .type | test("^Integer(64)?$") then {format: "integer"}
+                       elif .type == "Real" then {format: "number"} else {} end)])}]}]
           }
         }
       }' <<<"$1") || die "cannot write a starter layer file"
@@ -424,7 +426,7 @@ starter() {
       | .processing.profile line_comment = strenv(PROFILE_NOTE)
       | .processing.maxzoom line_comment = strenv(ZOOM_NOTE)
       | .display.layers head_comment = "One colour: colour by an attribute with a MapLibre expression."
-      | (.display.legend.items[], .display.popup.stats[],
+      | (.display.legend.items[], .display.popup.sections[0].blocks[0].items[],
          (.display.layers[] | select(has("filter")) | .filter)) style = "flow"
       | (.. | select(tag == "!!str" and test("^#"))) style = "double"
     ' <<<"$layer_file"

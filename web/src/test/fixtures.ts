@@ -9,9 +9,9 @@
  *   this same file (`pipeline/tests/style.bats`), so the app is tested
  *   against what the pipeline really produces.
  * - `expectedModalStyle`: the same for the `sample` layer with colour
- *   themes and a click modal (`pipeline/tests/fixtures/sample_modal.yaml`,
+ *   themes and a dialog pop-up (`pipeline/tests/fixtures/sample_modal.yaml`,
  *   ADR 0012).
- * - `ecoregionsExample`: the themes and modal of the committed `ecoregions`
+ * - `ecoregionsExample`: the themes and pop-up of the committed `ecoregions`
  *   layer file (`pipeline/tests/style.bats` checks they agree).
  * - `mapConfigSchema`: the map config's schema, for the basemap names.
  */
@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseStyle } from '../layers/style';
-import type { LayerDefinition, ModalDefinition, ThemeConfig } from '../layers/types';
+import type { LayerDefinition, PopupDefinition, ThemeConfig } from '../layers/types';
 
 // A path, not `new URL(..., import.meta.url)`: in a jsdom test Vite would
 // turn that into asset imports of the whole repo.
@@ -40,7 +40,7 @@ export function expectedStyle(): Record<string, unknown> {
   return readJson('pipeline/tests/fixtures/expected_style.json') as Record<string, unknown>;
 }
 
-/** A fresh copy of the style.json of the sample layer with themes and a modal. */
+/** A fresh copy of the style.json of the sample layer with themes and a dialog. */
 export function expectedModalStyle(): Record<string, unknown> {
   return readJson('pipeline/tests/fixtures/expected_modal_style.json') as Record<string, unknown>;
 }
@@ -55,15 +55,15 @@ export const samplePoints = byId(parsed, 'sample_points');
 /** The raster layer `cover` as the app reads it. */
 export const raster = byId(parsed, 'cover');
 
-/** The sample layer with colour themes and a click modal, as the app reads it. */
+/** The sample layer with colour themes and a dialog pop-up, as the app reads it. */
 export const sampleModal = byId(parseStyle(expectedModalStyle(), TILES).layers, 'sample');
 
 /**
- * The themes and modal of the committed ecoregion layer
- * (`pipeline/layers/ecoregions.yaml`): its modal and themes read
+ * The themes and dialog pop-up of the committed ecoregion layer
+ * (`pipeline/layers/ecoregions.yaml`): its pop-up and themes read
  * calculated fields, such as the action recommendations (ADR 0012).
  */
 export const ecoregionsExample = readJson('pipeline/tests/fixtures/ecoregions_display.json') as {
-  modal: ModalDefinition;
+  popup: PopupDefinition;
   themes: ThemeConfig[];
 };

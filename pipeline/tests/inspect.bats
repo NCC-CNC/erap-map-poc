@@ -193,11 +193,11 @@ set_starter() {
   starter_of sample "${FIXTURES}/sample.geojson"
   run yq -o json -I0 '[.source, .fields.keep[0], .processing.profile,
     [.display.layers[] | .type], .display.legend.items[0].label,
-    .display.popup.title, .display.popup.stats[1]]' "$STARTER"
-  [ "$output" = "[{\"path\":\"${FIXTURES}/sample.geojson\",\"layer\":\"sample\",\"id\":\"id\"},{\"NAME_EN\":\"name_en\"},\"default\",[\"fill\",\"line\"],\"Sample\",{\"attribute\":\"name_en\"},{\"label\":\"Name en\",\"value\":{\"attribute\":\"name_en\"}}]" ]
+    .display.popup.title, .display.popup.sections[0].blocks[0].items[1]]' "$STARTER"
+  [ "$output" = "[{\"path\":\"${FIXTURES}/sample.geojson\",\"layer\":\"sample\",\"id\":\"id\"},{\"NAME_EN\":\"name_en\"},\"default\",[\"fill\",\"line\"],\"Sample\",\"{name_en}\",{\"label\":\"Name en\",\"value\":{\"attribute\":\"name_en\"}}]" ]
   # Every field but the id, numbers with a number format.
-  run yq -o json -I0 '[.fields.keep | length, (.display.popup.stats[] | select(.value.attribute == "score") | has("format"))]' "$STARTER"
-  [ "$output" = '[9,true]' ]
+  run yq -o json -I0 '[.fields.keep | length, (.display.popup.sections[0].blocks[0].items[] | select(.value.attribute == "score") | .format)]' "$STARTER"
+  [ "$output" = '[9,"integer"]' ]
   # The warnings and notes are comments.
   run cat "$STARTER"
   [[ ${lines[0]} == "# yaml-language-server: \$schema=../schema/layer.schema.json" ]]

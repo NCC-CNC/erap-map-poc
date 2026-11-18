@@ -47,8 +47,11 @@ display:
       - { color: "#d55e00", label: Gamma }
       - { color: "#9e9e9e", label: Other }
   popup:
-    title: { attribute: name }
-    stats:
-      - { label: ID, value: { featureId: true } }
-      - { label: Category, value: { attribute: category } }
-      - { label: Count, value: { attribute: count }, format: {} }
+    title: "{name}"
+    sections:
+      - blocks:
+          - type: attributes
+            items:
+              - { label: ID, value: { featureId: true } }
+              - { label: Category, value: { attribute: category } }
+              - { label: Count, value: { attribute: count }, format: integer }
