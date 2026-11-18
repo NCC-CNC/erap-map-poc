@@ -151,9 +151,6 @@ build_vector_layer() {
   count=${count//[[:space:]]/}
   ((count > 0)) || die "no features after normalising $LAYER_INPUT"
   log_info "$count features"
-  if [[ -f "${normalised}.joins.json" ]]; then
-    log_info "$(join_summary "${normalised}.joins.json" "$count")"
-  fi
 
   # Calculated fields (lib/calculated.sh), added to the normalised data and
   # then tiled like the rest.

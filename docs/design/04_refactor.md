@@ -448,8 +448,10 @@ practical:
   zeros, and must be text in the source too) and an empty one as NULL.
 - One-to-many is an error: a key in more than one row fails the layer,
   naming the key. A joined name that the source or another join already
-  has fails it too. A feature with no row is kept, without that table's
-  attributes; a join that matches no feature logs a warning.
+  has fails it too, as does a key or attribute missing from the table or
+  the source (the first problem found, #139). A feature with no row is
+  kept, without that table's attributes; a join that matches no feature
+  logs a warning.
 - A missing table is like missing source data: `--status` says `source
   missing` ("join table not found"), a full build skips the layer, a
   named one fails.

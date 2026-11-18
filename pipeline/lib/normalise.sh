@@ -42,8 +42,7 @@ gdal_input_path() {
 # With joins (LAYER_JOINS, a JSON array set by load_layer; lib/joins.sh),
 # a FIELD may also be an attribute a join adds: the tables are read next
 # to OUTPUT first, the source is read with each join's key, and the rows
-# are added after. The joins, with their row and matched counts, go to
-# OUTPUT.joins.json.
+# are added after, logging each join's rows and features matched.
 normalise() {
   local input=$1 src_layer=$2 src_srs=$3 encoding=$4 output=$5
   shift 5
@@ -59,31 +58,28 @@ normalise() {
   [[ -z $src_srs ]] || opts+=(-s_srs "$src_srs")
 
   # Joins: read the tables and check them against the source.
-  local joins=${LAYER_JOINS:-[]} prepared="" n=0 target=$output
+  local joins=${LAYER_JOINS:-[]} tables="" target=$output
   if [[ $joins != "[]" ]]; then
-    local dir=${output%/*}
-    [[ $dir != "$output" ]] || dir=.
-    prepared="${output}.joins.prepared.json"
+    tables="${output}.joins.json"
     target="${output}.unjoined"
-    prepare_joins "$joins" "$dir" "$prepared"
-    n=$(jq 'length' "$prepared")
-    join_check "$prepared" "$(ogrinfo -json -so "${open[@]}" "$dataset" "$src_layer" \
-      | jq -r '.layers[0].fields[].name')"
+    prepare_joins "$joins" "$(ogrinfo -json -so "${open[@]}" "$dataset" "$src_layer" \
+      | jq -r '.layers[0].fields[].name')" "$tables"
   fi
 
-  local field src dest owner cols=() joined=() i
+  local field src cols=() joined=() i
   for field in "$@"; do
     src=${field%%:*}
-    dest=${field#*:}
-    if [[ -n $prepared ]] && owner=$(join_owner "$prepared" "$src") && [[ -n $owner ]]; then
-      joined+=("${owner}:${src}:${dest}")
-      continue
+    if [[ -n $tables && -n ${_JOIN_ADDED[$src]+x} ]]; then
+      joined+=("${src}:${field#*:}")
+    else
+      cols+=("$(ogr_quote "$src") AS $(ogr_quote "${field#*:}")")
     fi
-    cols+=("$(ogr_quote "$src") AS $(ogr_quote "$dest")")
   done
-  for ((i = 0; i < n; i++)); do
-    cols+=("$(ogr_quote "$(jq -r --argjson i "$i" '.[$i].on' "$prepared")") AS \"_join_key${i}\"")
-  done
+  if [[ -n $tables ]]; then
+    for i in "${!_JOIN_ONS[@]}"; do
+      cols+=("$(ogr_quote "${_JOIN_ONS[i]}") AS \"_join_key${i}\"")
+    done
+  fi
   local select
   select=$(printf '%s, ' "${cols[@]}")
   local sql
@@ -94,9 +90,8 @@ normalise() {
     -sql "$sql" "$target" "$dataset" \
     || die "ogr2ogr failed for $input"
 
-  if [[ -n $prepared ]]; then
-    log_info "joining $(jq -r 'map(.path) | join(", ")' "$prepared")"
-    join_rows "$prepared" "$target" "$output" "${output}.joins.json" "${joined[@]}"
-    rm -f -- "$target" "$prepared" "${dir}"/join[0-9]*.json
+  if [[ -n $tables ]]; then
+    join_rows "$tables" "$target" "$output" "${joined[@]}"
+    rm -f -- "$target" "$tables"
   fi
 }

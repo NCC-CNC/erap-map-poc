@@ -133,6 +133,13 @@ state_of() {
   [ "$status" -eq 1 ]
   [[ $output == *"source.joins[0] (tables/stats.csv): score is also a source attribute; rename it in its fields"* ]]
 
+  # Two joins adding region.
+  demo '.source.joins += [{"path": "tables/stats.csv", "on": "id", "fields": ["region"]}]' \
+    '.fields.keep = ["region"]'
+  run "$RUN" demo
+  [ "$status" -eq 1 ]
+  [[ $output == *"source.joins[1] (tables/stats.csv): region is also added by source.joins[0] (tables/stats.csv); rename it in its fields"* ]]
+
   # The key is in the table but not the source.
   printf 'code,x\n007,1\n' >"${PIPELINE_INPUT_DIR}/tables/codes.csv"
   demo '.source.joins = [{"path": "tables/codes.csv", "on": "code"}]' '.fields.keep = ["x"]'
