@@ -107,29 +107,28 @@ yaml_json() {
   [ "$output" = true ]
 }
 
-@test "a display change reaches style.json through a build or --style-only only" {
+@test "every run writes style.json from the layer files as they are now" {
   cp "${PIPELINE_ROOT}"/tests/layers/*.yaml "$PIPELINE_LAYERS_DIR"
   run "$RUN"
   [ "$status" -eq 0 ]
 
-  # Building another layer keeps sample's part as it was.
+  # Building another layer applies sample's display change too.
   set_layer "${PIPELINE_LAYERS_DIR}/sample.yaml" '.title = "Renamed"'
   run "$RUN" sample_points
   [ "$status" -eq 0 ]
-  [ "$(jq -r '.metadata["erap:layers"].sample.title' "$STYLE")" = "Sample polygons" ]
-  run "$RUN" --status --json
-  [ "$(jq -r '.layers[] | select(.name == "sample") | .state' <<<"$output")" = restyle ]
-
-  # A layer file with problems does not stop another layer's --style-only,
-  # and keeps its own part.
-  set_layer "${PIPELINE_LAYERS_DIR}/sample_points.yaml" '.display.layers[0].id = "-bad"'
-  run "$RUN" --style-only sample
-  [ "$status" -eq 0 ]
   [ "$(jq -r '.metadata["erap:layers"].sample.title' "$STYLE")" = "Renamed" ]
-  [ "$(jq -r '.sources | keys | join(",")' "$STYLE")" = "sample,sample_points" ]
-  [ "$(jq '[.layers[] | select(.metadata["erap:layer"] == "sample_points")] | length' "$STYLE")" -eq 1 ]
-  run "$RUN" --status --json
-  [ "$(jq -r '.layers[] | select(.name == "sample") | .state' <<<"$output")" = current ]
+
+  # A layer file with problems fails the run and is left out of style.json;
+  # the others are written.
+  set_layer "${PIPELINE_LAYERS_DIR}/sample_points.yaml" '.display.layers[0].id = "-bad"'
+  set_layer "${PIPELINE_LAYERS_DIR}/sample.yaml" '.title = "Again"'
+  run "$RUN" --style-only
+  [ "$status" -eq 1 ]
+  [[ $output == *"sample_points.yaml: "* ]]
+  [[ $output == *"layer sample_points: left out of style.json until sample_points.yaml is fixed"* ]]
+  [ "$(jq -r '.metadata["erap:layers"].sample.title' "$STYLE")" = "Again" ]
+  [ "$(jq -r '.sources | keys | join(",")' "$STYLE")" = "sample" ]
+  [ "$(jq '[.layers[] | select(.metadata["erap:layer"] == "sample_points")] | length' "$STYLE")" -eq 0 ]
 }
 
 @test "a layer left out by the map config leaves style.json" {

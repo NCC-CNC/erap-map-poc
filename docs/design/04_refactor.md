@@ -163,7 +163,8 @@ Commands stay: `run.sh [layer ...]`, `--style-only` (rewrites
 `style.json` only, no re-tiling), `--status` and `--remove`, reading
 `build.json`. Stale detection compares the hash of the layer file's
 `source`, `fields` and `processing` sections and the source file with the
-hashes in `build.json`; a change to `display` alone is `restyle`.
+hashes in `build.json`; a change to `display` alone needs only the
+next run (#135).
 
 Tests: bats covers every pipeline step and command, kept and adapted where
 the code stays, new for layer file reading and checking, joins, calculated
@@ -567,3 +568,15 @@ practical:
 - Skills: `restyle-layer` and `edit-popup` are now `edit-layer`, and
   `layer-status` is part of `build-layers`; nine in all, each linking to
   its `guide.md` section.
+
+## Settled in style.json written fresh (#135)
+
+- Every run (a build, `--style-only` or `--remove`) writes `style.json`
+  from the layer files of every built, enabled layer; nothing is kept
+  from the old `style.json`. `--style-only` only rewrites it (named
+  layers are checked, not singled out).
+- A layer file with problems, or a layer built as another type, is left
+  out of `style.json` with its problems logged, and the run fails.
+- `display_sha256`, `display_updated_at`, `build_set_display` and the
+  `restyle` state are gone; the step 2 and 3 notes above describe them
+  as they were.

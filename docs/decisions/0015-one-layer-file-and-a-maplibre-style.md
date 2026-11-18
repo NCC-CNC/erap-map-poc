@@ -62,8 +62,11 @@ Node, and the app read a custom `manifest.json`.
   `basemap`, `title`, `locale`, `layers`, `overrides` (of `source` and
   `processing` only) and `require`.
 - **Staleness is by hash**: `build.json` keeps a hash of each layer's
-  `source`, `fields` and `processing` and one of its display; a change to
-  the display alone is `restyle`, applied with `--style-only`.
+  `source`, `fields` and `processing`. The display has none: every run
+  (a build, `--style-only` or `--remove`) writes `style.json` from the
+  layer files of every built, enabled layer, and a layer file with
+  problems fails the run (#135; it first kept a display hash and a
+  `restyle` state).
 
 ## Consequences
 

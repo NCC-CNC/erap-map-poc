@@ -35,56 +35,45 @@
 # Fonts for symbol layers with text, as the web app's basemaps use.
 GLYPHS_URL='https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf'
 
-# write_style OUT_DIR [LAYER...]: write OUT_DIR/style.json from
-# OUT_DIR/build.json and the layer set (LAYERS_JSON): every built layer the
-# map config enables. The named layers (built or restyled in this run), and
-# any not in style.json yet, take their display from their layer file; the
-# others keep their part of the style.json there was, so a display change
-# reaches the map only through a build or --style-only (and --status shows
-# it as restyle until then). A layer whose layer file has problems keeps
-# its old part, or is left out with a warning if it has none. The view,
-# basemap, title and locale come from the map config. Each layer taken from its layer file
-# has its display hash recorded in build.json (build_set_display). Atomic,
+# write_style OUT_DIR: write OUT_DIR/style.json from OUT_DIR/build.json
+# and the layer set (LAYERS_JSON): every built layer the map config
+# enables, its display from its layer file as it is now. The view,
+# basemap, title and locale come from the map config. A layer whose layer
+# file has problems, or that was built as another type, is left out with
+# an error and the function returns 1 once style.json is written. Atomic,
 # like the archives. Nothing to do without a build.json.
 write_style() {
   local out_dir=$1
-  shift
   local style="${out_dir}/style.json"
   [[ -s "${out_dir}/build.json" ]] || return 0
 
-  local entries old='{}' configs='{}' shas='{}' enabled map name config wanted n
-  local -A named=()
-  for n in "$@"; do named[$n]=1; done
+  local entries configs='{}' map name built config type problem status=0
   entries=$(build_entries "$out_dir")
-  if [[ -s $style ]] && jq -e '.version == 8' "$style" >/dev/null 2>&1; then
-    old=$(jq -c '.' "$style")
-  fi
-  enabled=$(jq -c '[.layers[] | select(.enabled) | .name]' "$LAYERS_JSON") \
-    || die "cannot read $LAYERS_JSON"
   map=$(jq -c '.map // {}' "$LAYERS_JSON") || die "cannot read $LAYERS_JSON"
 
-  while IFS= read -r name; do
+  while IFS=$'\t' read -r name built; do
     [[ -n $name ]] || continue
-    wanted=${named[$name]:-0}
-    if ! jq -e --arg n "$name" '.metadata["erap:layers"][$n] != null' <<<"$old" >/dev/null; then
-      wanted=1
-    fi
-    ((wanted)) || continue
     config=$(layer_get "$name" config)
+    type=$(layer_get "$name" type)
     if [[ -z $config ]]; then
-      log_warn "${name}.yaml has problems: its style is kept as it was"
-      continue
+      while IFS= read -r problem; do log_error "${name}.yaml: $problem"; done < <(jq -r \
+        --arg n "$name" 'first(.layers[] | select(.name == $n)) | .problems[]' "$LAYERS_JSON")
+      log_error "layer $name: left out of style.json until ${name}.yaml is fixed"
+      status=1
+    elif [[ $type != "$built" ]]; then
+      log_error "layer $name: left out of style.json: built as a $built layer, but ${name}.yaml is a $type layer now: rebuild it"
+      status=1
+    else
+      configs=$(jq -c --arg n "$name" --slurpfile c "$config" '.[$n] = $c[0]' <<<"$configs") \
+        || die "cannot read $config"
     fi
-    configs=$(jq -c --arg n "$name" --slurpfile c "$config" '.[$n] = $c[0]' <<<"$configs") \
-      || die "cannot read $config"
-    shas=$(jq -c --arg n "$name" --arg s "$(layer_get "$name" display_sha256)" \
-      '.[$n] = $s' <<<"$shas") || die "cannot read the display hash of $name"
-  done < <(jq -r --argjson enabled "$enabled" \
-    '.[] | .name | select(. as $n | $enabled | index($n))' <<<"$entries")
+  done < <(jq -r --slurpfile set "$LAYERS_JSON" \
+    '([$set[0].layers[] | select(.enabled) | .name]) as $enabled
+     | .[] | select(.name as $n | $enabled | index($n)) | "\(.name)\t\(.type // "vector")"' <<<"$entries")
 
   local tmp="${style}.$$.tmp"
-  jq -n --argjson entries "$entries" --argjson old "$old" --argjson configs "$configs" \
-    --argjson enabled "$enabled" --argjson map "$map" --arg glyphs "$GLYPHS_URL" '
+  jq -n --argjson entries "$entries" --argjson configs "$configs" \
+    --argjson map "$map" --arg glyphs "$GLYPHS_URL" '
     def source: if (.type // "vector") != "raster" then {type: "vector", url: "pmtiles://\(.file)"}
       else {type: "raster-dem", tileSize: 256, url: "cog://\(.file)#dem"} end;
     # fresh(config): a built layer (the input) from its layer file.
@@ -98,14 +87,7 @@ write_style() {
            + (if $type == "raster" then {} else {"source-layer": $e.name} end)
            + {layout: ((.layout // {}) + {visibility: (if $c.visible then "visible" else "none" end)}),
               metadata: ((.metadata // {}) + {"erap:layer": $e.name})}]};
-    # kept: a built layer (the input) as the old style.json had it, or null.
-    def kept: .name as $n
-      | if $old.metadata["erap:layers"][$n] == null then null
-        else {name: $n, meta: $old.metadata["erap:layers"][$n], source: $old.sources[$n],
-              layers: [$old.layers[] | select(.metadata["erap:layer"] == $n)]} end;
-    [$entries[] | select(.name as $n | $enabled | index($n))
-      | if $configs[.name] then fresh($configs[.name]) else kept end
-      | select(. != null)]
+    [$entries[] | select($configs[.name]) | fresh($configs[.name])]
     | sort_by(.meta.order, .name) as $parts
     | ($parts | map(.layers[])) as $layers
     | {version: 8, name: "ERAP Map data layers",
@@ -126,5 +108,5 @@ write_style() {
     }
   mv -f "$tmp" "$style"
   log_info "updated $style"
-  build_set_display "$out_dir" "$shas"
+  return "$status"
 }

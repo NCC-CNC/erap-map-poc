@@ -7,18 +7,13 @@
 # raster one) is listed, in one of these states:
 #
 #   current    built from the layer file's source, fields and processing
-#              as they are now, after its source data last changed, and its
-#              display updated from the layer file's display as it is now.
+#              as they are now, after its source data last changed.
 #   stale      built, but the layer file's `source`, `fields` or
 #              `processing` (or the map config's overrides of them) differ
 #              from the build's (the hash in the entry's provenance), its
 #              source data or a join table has changed since (file
 #              modification time against build.json's built_at), or its
 #              archive is missing. Rebuild it.
-#   restyle    built and not stale, but the layer file's `display`,
-#              `title`, `visible` or `order` differ from the display last
-#              written (by a build or by `run.sh --style-only`, which
-#              updates it, no tiling).
 #   not built  configured, but not built yet (or every build failed).
 #   source missing
 #              configured, but its source data or a join table is not
@@ -39,8 +34,7 @@
 #       "configured": true, "enabled": true, "origin": "committed",
 #       "built": true, "type": "vector", "format": "mvt",
 #       "input": "...",
-#       "built_at": "2026-01-01T00:00:00Z",
-#       "display_updated_at": "2026-01-01T00:00:00Z", "archive_bytes": 12345,
+#       "built_at": "2026-01-01T00:00:00Z", "archive_bytes": 12345,
 #       "minzoom": 0, "maxzoom": 8, "feature_count": 15, "width": null,
 #       "height": null,
 #       "max_tile_bytes": 1234,
@@ -123,7 +117,7 @@ _layer_status() {
   local name=$1 out_dir=$2 entries=$3
   local archive=""
   local entry layer built_at=0 configured=false built=false state input="" type=""
-  local notes=() restyle="" enabled=true
+  local notes=() enabled=true
 
   entry=$(jq -c --arg n "$name" 'first(.[] | select(.name == $n)) // null' <<<"$entries")
   if [[ $entry != null ]]; then
@@ -183,27 +177,16 @@ _layer_status() {
       state="not built"
       if [[ -n $archive && -f $archive ]]; then notes+=("archive with no build.json entry"); fi
     else
-      local recorded_build recorded_display current_build current_display
-      read -r recorded_build recorded_display < <(jq -r \
-        '"\(.provenance.build_sha256 // "-") \(.provenance.display_sha256 // "-")"' <<<"$entry")
-      read -r current_build current_display < <(jq -r '"\(.build_sha256) \(.display_sha256)"' <<<"$layer")
+      local recorded_build current_build
+      recorded_build=$(jq -r '.provenance.build_sha256 // "-"' <<<"$entry")
+      current_build=$(jq -r '.build_sha256' <<<"$layer")
       [[ -f $archive ]] || notes+=("archive missing")
       if [[ $recorded_build != "$current_build" ]]; then
         notes+=("source, fields or processing changed since the build (${name}.yaml or the map config's overrides)")
       fi
       if ((${src:-0} > built_at)); then notes+=("source data changed since the build"); fi
       if ((${joined:-0} > built_at)); then notes+=("join table changed since the build"); fi
-      if [[ $recorded_display != "$current_display" ]]; then
-        restyle="display changed since it was last updated (${name}.yaml; --style-only updates it)"
-      fi
-      if ((${#notes[@]} > 0)); then
-        state=stale
-      elif [[ -n $restyle ]]; then
-        state=restyle
-      else
-        state=current
-      fi
-      if [[ -n $restyle ]]; then notes+=("$restyle"); fi
+      if ((${#notes[@]} > 0)); then state=stale; else state=current; fi
     fi
   fi
 
@@ -225,7 +208,6 @@ _layer_status() {
       format: $entry.format,
       input: (if $input == "" then null else $input end),
       built_at: $entry.built_at,
-      display_updated_at: ($entry.display_updated_at // $entry.built_at),
       archive_bytes: (if $bytes == "" then null else ($bytes | tonumber) end),
       minzoom: $entry.minzoom, maxzoom: $entry.maxzoom,
       feature_count: $entry.feature_count,

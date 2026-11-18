@@ -23,18 +23,18 @@
 #                nothing could be built), unless the map config's `require`
 #                names it: then nothing is built. A named layer with no
 #                source data fails.
-#   --style-only update the named layers' display from their layer file, or
-#                every built and enabled layer's, without re-tiling: rewrite
-#                their part of style.json (build.json keeps the build
-#                report and records the display hash). For a change to a
-#                layer file's `display`, `title`, `visible` or `order` (of a
-#                vector or raster layer), or to the map config's layer
-#                selection or view.
+#   --style-only rewrite style.json from the layer files for every built
+#                and enabled layer, without re-tiling (named layers are
+#                only checked: built, with a layer file, enabled). For a
+#                change to a layer file's `display`, `title`, `visible` or
+#                `order` (of a vector or raster layer), or to the map
+#                config's layer selection or view. Every run, a build or
+#                --remove too, rewrites style.json the same way; a layer
+#                file with problems is left out and fails the run.
 #   --status     list every configured or built layer (or the named ones)
 #                with its state: current, stale (the layer file's source,
 #                fields or processing, the map config's overrides of them,
-#                or the source data changed since the build), restyle (only
-#                the display changed: --style-only is enough), not built,
+#                or the source data changed since the build), not built,
 #                source missing (a full build skips it), invalid (the layer
 #                file has problems), disabled (left out by the map config)
 #                or orphan (built, layer file gone), plus build time,
@@ -66,10 +66,10 @@
 #                                                      (default /data/work)
 #   TMPDIR               parent of the scratch dir     (default /tmp)
 #
-# A build or style-only run attempts every layer; the exit status is 1 if
-# any layer failed (or anything else went wrong), 2 for a usage error
-# (including a layer with no layer file, a problem in the map config,
-# nothing built to restyle or remove), 0 otherwise.
+# A build run attempts every layer; the exit status is 1 if any layer
+# failed or was left out of style.json (or anything else went wrong), 2
+# for a usage error (including a layer with no layer file, a problem in
+# the map config, nothing built to restyle or remove), 0 otherwise.
 set -euo pipefail
 
 PIPELINE_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -206,66 +206,26 @@ check_layer_tiles() {
     "$LAYER_MIN_VISIBLE_PX" "$stats"
 }
 
-# restyle_layer NAME: the --style-only checks for one built layer, in a
-# subshell like build_layer: its layer file has no problems and the build
-# is of the same type. style.json then takes its display from the layer
-# file (write_style). The archive is not touched; a layer that fails keeps
-# its part of style.json as it was.
-restyle_layer() {
-  local name=$1
-  PIPELINE_LOG_PREFIX=$name
-  layer_check "$name"
-  local report="${PIPELINE_OUTPUT_DIR}/build.json" built type
-  built=$(jq -er --arg n "$name" 'first(.layers[] | select(.name == $n)) | .type // "vector"' \
-    "$report") || die "no entry for $name in $report"
-  type=$(layer_get "$name" type)
-  [[ $built == "$type" ]] \
-    || die "built as a $built layer, but ${name}.yaml is a $type layer now: rebuild it"
-}
-
-# finish_style [LAYER...]: rewrite style.json (lib/style.sh) from build.json
-# and the map config, the named layers' display from their layer files.
-# Returns 1 if it fails.
+# finish_style: rewrite style.json (lib/style.sh) from build.json, the
+# layer files and the map config. Returns 1 if it fails.
 finish_style() {
   set +e
-  (write_style "$PIPELINE_OUTPUT_DIR" "$@")
+  (write_style "$PIPELINE_OUTPUT_DIR")
   local status=$?
   set -e
   return "$status"
 }
 
-# style_only_main LAYER...: the --style-only mode. With no names, every
-# enabled layer in build.json whose archive and layer file exist. Every
-# named layer is checked before any is updated; then each is attempted, as
-# in a build, and style.json is rewritten with the ones that passed.
+# style_only_main LAYER...: the --style-only mode: rewrite style.json for
+# every built and enabled layer, no tiling. Named layers are only checked:
+# each must be built, have a layer file and be enabled.
 style_only_main() {
-  local report="${PIPELINE_OUTPUT_DIR}/build.json" layers=("$@") name
-  if ((${#layers[@]} == 0)); then
-    if [[ ! -s $report ]]; then
-      log_error "no layers built in $PIPELINE_OUTPUT_DIR: build them first"
-      return 2
-    fi
-    local built
-    built=$(jq -r '.layers[]?.name' "$report") || die "cannot read $report"
-    while IFS= read -r name; do
-      [[ -n $name ]] || continue
-      if ! layer_archive "$PIPELINE_OUTPUT_DIR" "$name" >/dev/null; then
-        log_warn "skipping $name: archive missing (rebuild it)"
-      elif ! layer_known "$name"; then
-        log_warn "skipping $name: no ${name}.yaml in $(layer_dirs)"
-      elif ! layer_enabled "$name"; then
-        log_info "skipping $name: not enabled in the map config"
-      else
-        layers+=("$name")
-      fi
-    done <<<"$built"
-    if ((${#layers[@]} == 0)); then
-      log_error "no built layers with a layer file to update"
-      return 2
-    fi
+  local name
+  if [[ ! -s "${PIPELINE_OUTPUT_DIR}/build.json" ]]; then
+    log_error "no layers built in $PIPELINE_OUTPUT_DIR: build them first"
+    return 2
   fi
-
-  for name in "${layers[@]}"; do
+  for name in "$@"; do
     if ! layer_name_valid "$name"; then
       log_error "invalid layer name: $name"
       return 2
@@ -285,33 +245,8 @@ style_only_main() {
     fi
   done
   [[ -w $PIPELINE_OUTPUT_DIR ]] || die "output dir not writable: $PIPELINE_OUTPUT_DIR"
-
-  local failed=() restyled=() status
-  for name in "${layers[@]}"; do
-    set +e
-    (restyle_layer "$name")
-    status=$?
-    set -e
-    if ((status == 0)); then
-      restyled+=("$name")
-    else
-      log_error "layer $name: display not updated (exit $status)"
-      failed+=("$name")
-    fi
-  done
-
-  local style_status=0
-  finish_style "${restyled[@]}" || style_status=$?
-  if ((style_status == 0)); then
-    for name in "${restyled[@]}"; do log_info "layer $name: display updated"; done
-  fi
-
-  if ((${#failed[@]} > 0)); then
-    log_error "${#failed[@]} of ${#layers[@]} layer(s) failed: ${failed[*]}"
-    return 1
-  fi
-  ((style_status == 0)) || return 1
-  log_info "display updated for ${#layers[@]} layer(s), no tiles rebuilt"
+  finish_style || return 1
+  log_info "style.json rewritten from the layer files, no tiles rebuilt"
 }
 
 # require_tools TOOL...: fail unless every TOOL is on the PATH.
@@ -477,7 +412,7 @@ build_main() {
 
   log_info "input $PIPELINE_INPUT_DIR, output $PIPELINE_OUTPUT_DIR, layers: ${layers[*]:-none}"
 
-  local failed=() built=() status
+  local failed=() status
   for name in "${layers[@]}"; do
     log_info "layer $name: start"
     # set +e around the subshell rather than `if ! (...)`: in a tested
@@ -488,7 +423,6 @@ build_main() {
     set -e
     if ((status == 0)); then
       log_info "layer $name: done"
-      built+=("$name")
     else
       log_error "layer $name: failed (exit $status)"
       failed+=("$name")
@@ -498,7 +432,7 @@ build_main() {
   # The style follows build.json, including layers kept from earlier runs,
   # so it is rewritten even when a layer failed.
   local style_status=0
-  finish_style "${built[@]}" || style_status=$?
+  finish_style || style_status=$?
 
   if ((${#skipped[@]} > 0)); then
     log_warn "${#skipped[@]} layer(s) skipped, source data not found: ${skipped[*]}"
