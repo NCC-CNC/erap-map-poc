@@ -15,7 +15,6 @@ setup() {
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
   export PIPELINE_WORK_DIR=""
-  BUILD="${PIPELINE_OUTPUT_DIR}/build.json"
   ARCHIVE="${PIPELINE_OUTPUT_DIR}/demo.pmtiles"
   LAYER="${PIPELINE_LAYERS_DIR}/demo.yaml"
   mkdir -p "$PIPELINE_INPUT_DIR/tables" "$PIPELINE_LAYERS_DIR"
@@ -68,11 +67,6 @@ state_of() {
   run bash -c "tippecanoe-decode '$ARCHIVE' 0 0 0 | jq '[.features[].features[]] | length'"
   [ "$output" = 15 ]
 
-  # The build report.
-  run jq -c '.layers[0].joins' "$BUILD"
-  [ "$output" = '[{"path":"tables/stats.csv","layer":"stats","on":"id","fields":["region","budget","code"],"rows":5,"matched":4}]' ]
-  run jq -r '.layers[0].provenance.joins[0].path' "$BUILD"
-  [ "$output" = tables/stats.csv ]
   [ "$(state_of demo)" = current ]
   assert_no_temp_files
 }
@@ -86,8 +80,6 @@ state_of() {
   [ "$status" -eq 0 ]
   run props 2
   [ "$output" = '{"double_money":160,"money":80}' ]
-  run jq -c '.layers[0].joins[0].fields' "$BUILD"
-  [ "$output" = '["money"]' ]
 }
 
 @test "keys match as text: a quoted key, or a whole real, matches an integer; two joins" {

@@ -73,16 +73,6 @@ source_mtime() {
   xargs -d '\n' stat -c %Y <<<"$files" | sort -n | tail -n 1
 }
 
-# source_bytes INPUT: the total size in bytes of a layer's source data, the
-# same files as source_mtime. Prints nothing for a /vsi path; returns 1 if
-# the data is not found.
-source_bytes() {
-  local files
-  files=$(_source_files "$1") || return 1
-  [[ -n $files ]] || return 0
-  xargs -d '\n' stat -c %s <<<"$files" | awk '{ s += $1 } END { printf "%d\n", s }'
-}
-
 # _source_files INPUT: the files of a layer's source data, one per line (see
 # source_mtime). Nothing for a /vsi path or an empty directory; returns 1
 # if the data is not found.

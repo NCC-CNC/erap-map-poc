@@ -356,36 +356,14 @@ layer_check() {
 
 # layer_provenance NAME INPUT: NAME's `provenance` for its build.json entry, as
 # compact JSON: where the layer comes from (`origin`: committed, the layers
-# dir, or local, layers.local/), its source data (INPUT, the resolved source path: path relative to
-# the input dir, total size of its files, newest modification time; null
-# fields for a /vsi path), the same for each join table (`joins`, only
-# for a layer with joins), the map config's overrides as applied (null for
-# none) and the hashes of what it was built from, which --status compares
+# dir, or local, layers.local/), its source path (INPUT, resolved, relative
+# to the input dir), the map config's overrides as applied (null for none)
+# and the hash of what it was built from, which --status compares
 # (lib/status.sh).
 layer_provenance() {
-  local name=$1 input=$2 path files=()
-  while IFS= read -r path; do
-    files+=("$(_provenance_file "$path")")
-  done < <(printf '%s\n' "$input"; layer_joins "$name")
-  jq -c --arg n "$name" --args \
+  jq -c --arg n "$1" --arg path "${2#"${PIPELINE_INPUT_DIR}"/}" \
     'first(.layers[] | select(.name == $n))
-     | ($ARGS.positional | map(fromjson)) as $files
-     | {origin, source: $files[0]}
-       + (if ($files | length) > 1 then {joins: $files[1:]} else {} end)
-       + {overrides, build_sha256}' "${files[@]}" <"$LAYERS_JSON"
-}
-
-# _provenance_file PATH: PATH (resolved) as {path, bytes, modified_at}, the
-# path relative to the input dir; null fields for a /vsi path.
-_provenance_file() {
-  local input=$1 bytes="" mtime=""
-  if mtime=$(source_mtime "$input") && [[ -n $mtime ]]; then
-    bytes=$(source_bytes "$input")
-  fi
-  jq -n -c --arg input "${input#"${PIPELINE_INPUT_DIR}"/}" --arg bytes "$bytes" --arg mtime "$mtime" \
-    '{path: $input,
-      bytes: (if $bytes == "" then null else ($bytes | tonumber) end),
-      modified_at: (if $mtime == "" then null else ($mtime | tonumber | todate) end)}'
+     | {origin, source: {path: $path}, overrides, build_sha256}' <"$LAYERS_JSON"
 }
 
 # load_layer NAME: set the LAYER_* variables from NAME's effective layer

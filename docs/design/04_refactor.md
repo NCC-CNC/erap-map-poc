@@ -455,9 +455,9 @@ practical:
   named one fails.
 - Staleness: the join settings are in `source`, so in `build_sha256`; a
   table modified after the build makes the layer stale ("join table
-  changed since the build"). The build report in `build.json` has
-  `joins` (path, layer, key, attributes, rows, features matched) and
-  `provenance.joins` (each table's path, size and modification time).
+  changed since the build"). The build log gives each table's rows and
+  features matched (#137 dropped them, and the tables' sizes and times,
+  from `build.json`).
 
 ## Settled in step 6
 
