@@ -114,3 +114,29 @@ generator_options() {
   run jq -c '[.layers[] | [.name, .profile, .min_visible_px, .minzoom]]' "$BUILD"
   [ "$output" = '[["coverage","coverage",1,0],["default","default",1,0],["none","default",1,0],["points","points",1,0]]' ]
 }
+
+@test "processing.tippecanoe: added after the preset's flags, a change is stale" {
+  layer_file "${PIPELINE_LAYERS_DIR}/extra.yaml" \
+    '.processing.tippecanoe = ["--drop-densest-as-needed", "--buffer=8"]'
+  run "$RUN" extra
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [[ $output == *"extra: building tiles z0-z4 with --simplify-only-low-zooms --drop-densest-as-needed --buffer=8"* ]]
+  run generator_options extra
+  [[ $output == *"--drop-densest-as-needed"*"--buffer=8"* ]]
+
+  run "$RUN" --status --json
+  [ "$(jq -r '.layers[0].state' <<<"$output")" = current ]
+  set_layer "${PIPELINE_LAYERS_DIR}/extra.yaml" '.processing.tippecanoe = ["--buffer=8"]'
+  run "$RUN" --status --json
+  [ "$(jq -r '.layers[0].state' <<<"$output")" = stale ]
+}
+
+@test "processing.tippecanoe cannot set what the pipeline sets" {
+  layer_file "${PIPELINE_LAYERS_DIR}/reserved.yaml" \
+    '.processing.tippecanoe = ["--maximum-zoom=14", "--layer=x", "--buffer=8"]'
+  run "$RUN" --status --json
+  [ "$status" -eq 0 ]
+  run jq -r '.layers[0] | "\(.state)|\(.notes | join(";"))"' <<<"$output"
+  [ "$output" = "invalid|reserved.yaml: processing.tippecanoe: --maximum-zoom is set by the pipeline;reserved.yaml: processing.tippecanoe: --layer is set by the pipeline" ]
+}

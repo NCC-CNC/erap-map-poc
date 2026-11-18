@@ -226,6 +226,12 @@ export interface Processing {
    * Raster only: how many evenly spaced shares of cover (0 to 255) the COG keeps, 2 to 256. Fewer compress better. Default 256.
    */
   grey_levels?: number;
+  /**
+   * Advanced, vector only: extra tippecanoe arguments, added after the preset's, for layers the presets do not fit (dense points, detailed lines, large polygon sets), such as `--drop-densest-as-needed`. Each is one argument starting with `--`, its value after `=`. A change makes the layer stale.
+   *
+   * @minItems 1
+   */
+  tippecanoe?: string[];
 }
 /**
  * How the layer is drawn and what a click shows.
@@ -740,6 +746,12 @@ export interface ProcessingSettings {
    * Raster only: how many evenly spaced shares of cover (0 to 255) the COG keeps, 2 to 256. Fewer compress better. Default 256.
    */
   grey_levels?: number;
+  /**
+   * Advanced, vector only: extra tippecanoe arguments, added after the preset's, for layers the presets do not fit (dense points, detailed lines, large polygon sets), such as `--drop-densest-as-needed`. Each is one argument starting with `--`, its value after `=`. A change makes the layer stale.
+   *
+   * @minItems 1
+   */
+  tippecanoe?: string[];
 }
 /**
  * The processing settings, none required (a map config override sets only some).
@@ -776,4 +788,10 @@ export interface Processing1 {
    * Raster only: how many evenly spaced shares of cover (0 to 255) the COG keeps, 2 to 256. Fewer compress better. Default 256.
    */
   grey_levels?: number;
+  /**
+   * Advanced, vector only: extra tippecanoe arguments, added after the preset's, for layers the presets do not fit (dense points, detailed lines, large polygon sets), such as `--drop-densest-as-needed`. Each is one argument starting with `--`, its value after `=`. A change makes the layer stale.
+   *
+   * @minItems 1
+   */
+  tippecanoe?: string[];
 }

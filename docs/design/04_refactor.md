@@ -334,7 +334,7 @@ practical:
   `coverage` adds `--no-simplification-of-shared-nodes
   --drop-smallest-as-needed` and generalises every zoom from `minzoom` to
   `maxzoom - 1`; `points` adds `--drop-rate=1`. `raster` is the GDAL
-  path. There is no way to pass other tippecanoe flags (#122).
+  path. Other tippecanoe flags go in `processing.tippecanoe` (#122).
 - `source.id` is read into an internal attribute, `_feature_id`, which
   tippecanoe writes as the feature id and drops from the attributes.
 - Calculated fields are one nested query, each field a level, so a field
@@ -489,3 +489,31 @@ practical:
   no other JSON config support or old schema left to remove.
   `scripts/check-tiles-cache.sh` checks `style.json` and `build.json` in
   place of `manifest.json`.
+
+## Settled in the starter layer file (#122)
+
+- `inspect.sh --starter INPUT` prints a starter `<layer>.yaml` (not with
+  `--json` or `--config`), valid against `layer.schema.json` and the
+  pipeline's own checks as printed. `source` has the path (relative to
+  `RAW_DIR` when under it), the layer and an id: a unique non-null
+  integer field, `id`, `objectid` or `fid` first; with none, the first
+  integer field and a comment to check it. `fields.keep` has every other
+  scalar field, renamed to lower case snake case where needed
+  (`OwnerType: owner_type`, `2020 Value: f_2020_value`; a clash gets
+  `_2`).
+- The profile is `points` for points, `coverage` for polygons the coverage
+  check finds coverage-like, else `default` (with a comment when the check
+  was skipped). The max zoom is the zoom where the extent fills one tile
+  plus 10, kept to 8 to 14 (12 for Canada); 12 without an extent.
+- `display` is one colour per geometry type (fill and outline, line or
+  circle; all four with `geometry-type` filters for mixed data), a
+  `single` legend with the title, and a pop-up: the first text field as
+  title, the feature id, then every kept field (numbers with a number
+  format). `inspect.sh`'s warnings are comments at the top.
+- `processing.tippecanoe` (advanced, vector only): extra tippecanoe
+  arguments, one per item, each starting with `--` (a value after `=`),
+  added after the preset's. Options the pipeline sets itself (`--output`,
+  `--layer`, `--name`, the zooms, `--use-attribute-for-id`, ...) are a
+  problem that makes the layer `invalid`. It is part of `processing`, so
+  in `build_sha256`: a change makes the layer stale, and a map config can
+  override it.

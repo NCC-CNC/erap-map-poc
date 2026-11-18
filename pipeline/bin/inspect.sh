@@ -5,7 +5,7 @@
 # stats, feature id candidates and, for polygons, geometry and coverage
 # checks. Read only; GDAL/OGR based.
 #
-# Usage: inspect.sh [-h|--help] [--json] [--layer NAME] [--no-checks]
+# Usage: inspect.sh [-h|--help] [--json | --starter] [--layer NAME] [--no-checks]
 #                   [--gap-width METRES] INPUT
 #        inspect.sh [-h|--help] [--json] [--no-checks] [--gap-width METRES]
 #                   --config LAYER
@@ -15,6 +15,11 @@
 #                `.zip`, or a file inside one (`data.zip/dir/file.shp`), is
 #                read in place.
 #   --json       print JSON instead of the human-readable summary.
+#   --starter    print a starter layer file (<layer>.yaml) for the dataset
+#                instead: source, every field (renamed to lower case where
+#                needed), a profile and zooms from the geometry and extent,
+#                one colour and a pop-up listing the fields. It is valid as
+#                printed; check every value before building.
 #   --layer      layer inside the dataset (default: the first one).
 #   --no-checks  skip the geometry and coverage checks (slow on big data).
 #   --gap-width  narrowest gap between neighbours that is not flagged by
@@ -297,6 +302,134 @@ with_config() {
         | if $e then . + {calculated: $e} else . end)' <<<"$summary"
 }
 
+# starter JSON: a starter layer file (YAML) from the summary JSON, valid
+# against schema/layer.schema.json as printed. `source` with the path
+# (relative to PIPELINE_INPUT_DIR when under it), the layer and an id (a
+# unique integer field, preferring id, objectid or fid); `fields.keep` with
+# every other scalar field, renamed to a lower case output name where
+# needed (OwnerType: owner_type); the profile from the geometry type (and
+# the coverage check), the max zoom from the extent (z where the extent
+# fills one tile, plus 10, kept to 8 to 14: 12 for Canada); one style
+# layer per geometry type with a one-colour legend and a pop-up listing the
+# fields.
+starter() {
+  local layer_file
+  layer_file=$(jq --arg dir "${PIPELINE_INPUT_DIR%/}/" '
+    def snake:
+      gsub("(?<a>[a-z0-9])(?<b>[A-Z])"; "\(.a)_\(.b)")
+      | gsub("(?<a>[A-Z])(?<b>[A-Z][a-z])"; "\(.a)_\(.b)")
+      | ascii_downcase | gsub("[^a-z0-9]+"; "_") | gsub("^_+|_+$"; "")
+      | if . == "" then "field" elif test("^[0-9]") then "f_" + . else . end;
+    def nice: gsub("_"; " ") | (.[0:1] | ascii_upcase) + .[1:];
+    def scalar: .type | test("^(Integer|Integer64|Real|String|Date|DateTime|Time)$");
+
+    (.layer | nice) as $title
+    | (.geometry_type // "None") as $g
+    | (if $g | test("Point") then "point" elif $g | test("Line|Curve") then "line"
+       elif $g | test("Polygon|Surface") then "polygon" else "mixed" end) as $kind
+    | ([.id_candidates[] | select(test("^(id|objectid|fid)$"; "i"))] + .id_candidates
+       + [.fields[] | select(.type | test("^Integer")) | .name]
+       + [.fields[] | select(scalar) | .name] | first) as $id
+    # Output names unique: a later clash gets _2, _3, ...
+    | (reduce (.fields[] | select(scalar and .name != $id)) as $f ([];
+         [.[].out] as $used | ($f.name | snake) as $n
+         | . + [$f + {out: (first(range(1; 1000)
+             | if . == 1 then $n else "\($n)_\(.)" end
+             | select(. as $c | $used | index($c) | not)))}])) as $keep
+    | (.extent_wgs84 // null) as $e
+    | (if $e == null then 12
+       else ([($e[2] - $e[0]), ($e[3] - $e[1])] | max) as $span
+         | if $span <= 0 then 14
+           else ((360 / $span | log2 | floor) + 10) | if . < 8 then 8 elif . > 14 then 14 else . end
+           end
+       end) as $maxzoom
+    | {color: "#3182bd", dark: "#08519c"} as $c
+    | {
+        title: $title,
+        visible: true,
+        order: 0,
+        source: ({path: (if .input | startswith($dir) then .input[($dir | length):] else .input end),
+                  layer: .layer}
+                 + (if $id then {id: $id} else {} end)),
+      }
+      + (if ($keep | length) > 0 then
+          {fields: {keep: [$keep[] | if .out == .name then .name else {(.name): .out} end]}}
+         else {} end)
+      + {
+        processing: {
+          profile: (if $kind == "point" then "points"
+                    elif $kind == "polygon" and .coverage_like == true then "coverage"
+                    else "default" end),
+          minzoom: 0,
+          maxzoom: $maxzoom
+        },
+        display: {
+          layers: (
+            [ {id: "fill", type: "fill", geom: ["Polygon", "MultiPolygon"],
+               paint: {"fill-color": $c.color, "fill-opacity": 0.6}},
+              {id: "outline", type: "line", geom: ["Polygon", "MultiPolygon"],
+               paint: {"line-color": $c.dark, "line-width": 0.5}},
+              {id: "line", type: "line", geom: ["LineString", "MultiLineString"],
+               paint: {"line-color": $c.color, "line-width": 1.5}},
+              {id: "circle", type: "circle", geom: ["Point", "MultiPoint"],
+               paint: {"circle-color": $c.color, "circle-radius": 5,
+                       "circle-stroke-color": "#ffffff", "circle-stroke-width": 1}} ]
+            | map(select(.id as $l
+                | {polygon: ["fill", "outline"], line: ["line"], point: ["circle"],
+                   mixed: ["fill", "outline", "line", "circle"]}[$kind] | index($l)))
+            | map((if $kind == "mixed" then
+                    {id, type, filter: ["match", ["geometry-type"], .geom, true, false], paint}
+                   else {id, type, paint} end))),
+          legend: {
+            kind: "single",
+            shape: ({polygon: "square", line: "line", point: "circle", mixed: "square"}[$kind]),
+            items: [{color: $c.color, label: $title}]
+          },
+          popup: {
+            title: ([$keep[] | select(.type == "String") | {attribute: .out}] | first // {featureId: true}),
+            stats: ([{label: "ID", value: {featureId: true}}]
+              + [$keep[] | {label: (.out | nice), value: {attribute: .out}}
+                  + (if .type | test("^(Integer|Integer64|Real)$") then {format: {}} else {} end)])
+          }
+        }
+      }' <<<"$1") || die "cannot write a starter layer file"
+  [[ $(jq -r '.source.id // ""' <<<"$layer_file") != "" ]] \
+    || die "no attribute for source.id (the feature id): a vector layer needs a unique integer field"
+
+  # Comments: how it was made and what to check, the summary's warnings,
+  # and notes on the settings that are guesses.
+  local name
+  name=$(jq -r '.layer | ascii_downcase | gsub("[^a-z0-9_-]+"; "_")' <<<"$1")
+  printf '%s\n' "# yaml-language-server: \$schema=../schema/layer.schema.json" "#" \
+    "# A starter layer file printed by inspect.sh --starter: check every value" \
+    "# (title, id, fields, zooms, colours, pop-up). Save it as" \
+    "# pipeline/layers/${name}.yaml, or pipeline/layers.local/ for your own map."
+  jq -r 'if (.warnings | length) > 0 then "#", "# inspect.sh warnings:", (.warnings[] | "# - \(.)") else empty end' <<<"$1"
+  printf '\n'
+  local id_note profile_note zoom_note
+  id_note=$(jq -r 'if (.id_candidates | length) == 0
+    then "not unique and non-null in every feature: check, or add an id to the source"
+    else "" end' <<<"$1")
+  profile_note=$(jq -r '
+    if .geometry_type == null or (.geometry_type | test("Point|Line|Curve|Polygon|Surface") | not)
+      then "mixed or unknown geometry: one style layer per geometry type"
+    elif (.geometry_type | test("Polygon|Surface")) and .coverage_like == null
+      then "coverage not checked (--no-checks): use coverage if the polygons tile the land"
+    else "" end' <<<"$1")
+  zoom_note=$(jq -r 'if .extent_wgs84 == null then "no extent in EPSG:4326 (no CRS?): check" else "from the extent: lower it for a large or dense layer" end' <<<"$1")
+  ID_NOTE=$id_note PROFILE_NOTE=$profile_note ZOOM_NOTE=$zoom_note \
+    yq -p json -o yaml '
+      ... style = ""
+      | .source.id line_comment = strenv(ID_NOTE)
+      | .processing.profile line_comment = strenv(PROFILE_NOTE)
+      | .processing.maxzoom line_comment = strenv(ZOOM_NOTE)
+      | .display.layers head_comment = "One colour: colour by an attribute with a MapLibre expression."
+      | (.display.legend.items[], .display.popup.stats[],
+         (.display.layers[] | select(has("filter")) | .filter)) style = "flow"
+      | (.. | select(tag == "!!str" and test("^#"))) style = "double"
+    ' <<<"$layer_file"
+}
+
 # human JSON: the summary as text.
 human() {
   jq -r '
@@ -334,7 +467,7 @@ human() {
 }
 
 main() {
-  local json=0 layer="" checks=1 gap=100 input="" config=""
+  local json=0 starter=0 layer="" checks=1 gap=100 input="" config=""
   while (($# > 0)); do
     case $1 in
       -h | --help)
@@ -342,6 +475,7 @@ main() {
         return 0
         ;;
       --json) json=1 ;;
+      --starter) starter=1 ;;
       --no-checks) checks=0 ;;
       --layer | --gap-width | --config)
         if (($# < 2)); then
@@ -370,6 +504,14 @@ main() {
     esac
     shift
   done
+  if ((json && starter)); then
+    log_error "--json and --starter: give one"
+    return 2
+  fi
+  if [[ -n $config ]] && ((starter)); then
+    log_error "--starter is for a dataset, not --config: the layer already has a file"
+    return 2
+  fi
   if [[ -n $config && ( -n $input || -n $layer ) ]]; then
     log_error "--config takes the input and layer from the layer's config: give no INPUT or --layer"
     return 2
@@ -399,7 +541,9 @@ main() {
     dataset=$(gdal_input_path "$input") || return 1
     summary=$(inspect "$dataset" "$input" "$layer" "$checks" "$gap")
   fi
-  if ((json)); then
+  if ((starter)); then
+    starter "$summary"
+  elif ((json)); then
     printf '%s\n' "$summary"
   else
     human <<<"$summary"

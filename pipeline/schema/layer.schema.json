@@ -42,7 +42,8 @@
               "maxzoom": { "maximum": 14 },
               "min_part_px": false,
               "simplify_px": false,
-              "min_visible_px": false
+              "min_visible_px": false,
+              "tippecanoe": false
             }
           },
           "display": { "properties": { "popup": false, "modal": false } }
@@ -224,6 +225,12 @@
           "type": "integer",
           "minimum": 2,
           "maximum": 256
+        },
+        "tippecanoe": {
+          "description": "Advanced, vector only: extra tippecanoe arguments, added after the preset's, for layers the presets do not fit (dense points, detailed lines, large polygon sets), such as `--drop-densest-as-needed`. Each is one argument starting with `--`, its value after `=`. A change makes the layer stale.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^--[a-z0-9]" }
         }
       }
     },
