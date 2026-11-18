@@ -15,7 +15,6 @@ setup() {
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
   export PIPELINE_WORK_DIR=""
-  BUILD="${PIPELINE_OUTPUT_DIR}/build.json"
   ARCHIVE="${PIPELINE_OUTPUT_DIR}/demo.pmtiles"
   LAYER="${PIPELINE_LAYERS_DIR}/demo.yaml"
   mkdir -p "$PIPELINE_INPUT_DIR/tables" "$PIPELINE_LAYERS_DIR"
