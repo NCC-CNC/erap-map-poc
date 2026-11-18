@@ -100,8 +100,9 @@ fields:
   attributes (their output names), run by `ogr2ogr -dialect SQLite`. A
   field can use the ones above it. A comparison gives 1 or 0 (NULL when
   an attribute is NULL, hence `coalesce`), which is how an action
-  recommendation is written. `inspect.sh --config <layer>` shows the
-  values before a build.
+  recommendation is written. Build that one layer (`docker compose run
+  --rm pipeline <layer>`) to check them: the log names a failing
+  expression, and `--status` lists the calculated fields.
 
 ## processing
 

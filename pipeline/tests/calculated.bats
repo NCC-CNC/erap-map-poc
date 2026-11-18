@@ -10,7 +10,6 @@ load helpers
 setup() {
   PIPELINE_ROOT=$(cd "${BATS_TEST_DIRNAME}/.." && pwd)
   RUN="${PIPELINE_ROOT}/bin/run.sh"
-  INSPECT="${PIPELINE_ROOT}/bin/inspect.sh"
   export PIPELINE_INPUT_DIR="${BATS_TEST_TMPDIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
@@ -141,32 +140,4 @@ props() {
   [[ $output == *"generalising z0-z3"* ]]
   run props 3
   [ "$(jq -c '[.score_gap, .low_count]' <<<"$output")" = '[90,1]' ]
-}
-
-@test "inspect.sh --config shows the calculated fields before a build" {
-  demo
-  local json
-  json=$("$INSPECT" --json --no-checks --config demo 2>/dev/null)
-  run jq -c '.config | [.layer, .input, [.calculated_fields[].name]]' <<<"$json"
-  [ "$output" = '["demo","sample.geojson",["score_gap","low_score","half_gap","low_count"]]' ]
-  run jq -c '.fields[] | select(.name == "score_gap") | [.calculated, .min, .max]' <<<"$json"
-  [ "$output" = '["100 - score",6,97]' ]
-  run jq -r '[.fields[].name] | join(",")' <<<"$json"
-  [ "$output" = "_feature_id,name,area_ha,score,v2020,v2021,v2022,v2023,v2024,score_gap,low_score,half_gap,low_count" ]
-
-  run "$INSPECT" --no-checks --config demo
-  [ "$status" -eq 0 ]
-  [[ $output == *"Config:     layer demo"* ]]
-  [[ $output == *"    calculated: 100 - score"* ]]
-
-  run "$INSPECT" --config demo sample.geojson
-  [ "$status" -eq 2 ]
-  run "$INSPECT" --config nope
-  [ "$status" -eq 1 ]
-  [[ $output == *"no layer named nope"* ]]
-
-  demo '.fields.calculated.bad = "score +"'
-  run "$INSPECT" --no-checks --config demo
-  [ "$status" -eq 1 ]
-  [[ $output == *"fields.calculated.bad: score +: near"* ]]
 }

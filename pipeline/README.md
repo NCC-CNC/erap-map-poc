@@ -31,8 +31,7 @@ In the image the pipeline is at `/opt/pipeline`; compose mounts
   environment variables and exit codes.
 - `inspect.sh`: summarises a source dataset (fields, CRS, extent, id
   candidates, polygon validity and coverage checks); `--starter` prints a
-  starter layer file for it and `--config <layer>` shows a layer's data
-  as its build sees it, calculated fields included. Read only.
+  starter layer file for it. Read only.
   `inspect.sh --help` has the options.
 
 ## lib/

@@ -37,8 +37,8 @@ repo root in Git Bash.
      `processing.tippecanoe`;
    - a field or table not found: the data changed (update-layer-data
      skill);
-   - a calculated field: `docker compose run --rm --entrypoint
-     inspect.sh pipeline --config <layer>` names the failing expression;
+   - a calculated field: the log of `docker compose run --rm pipeline
+     <layer>` names the failing expression;
    - source missing for a named layer: check `RAW_DIR` in `.env`.
 
    Keys are in `docs/layer-file.md`. Then offer to open the map (run-map
