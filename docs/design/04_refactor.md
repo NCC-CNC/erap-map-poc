@@ -372,8 +372,8 @@ practical:
 - `build.json` is the manifest without `display`, `enabled` and `map`:
   `{updated_at, layers: [...]}`, one entry per built layer with the build
   report, `provenance` and `display_updated_at` (set when the display hash
-  changes). A leftover `manifest.json` is deleted when `style.json` is
-  written.
+  changes). A leftover `manifest.json` was deleted when `style.json` was
+  written, until #134 dropped support for older builds.
 - `scripts/publish-pages.sh` reads `build.json` and uploads it with
   `style.json` and the archives (until step 6); `scripts/screenshot.sh`
   waits for `style.json`.
@@ -483,9 +483,9 @@ practical:
   `["erap:locale"]`. The app formats every number it shows (pop-ups,
   modals, legends, chart axes) in that locale, set when `style.json` is
   read (`web/src/locale.ts`). The app's own text stays in English.
-- The old `map.config.json` is still only named in a warning when it is
-  found next to the map config, to say it is no longer read. There was
-  no other JSON config support or old schema left to remove.
+- The old `map.config.json` was named in a warning when found next to
+  the map config, until #134 removed it. There was no other JSON config
+  support or old schema left to remove.
   `scripts/check-tiles-cache.sh` checks `style.json` and `build.json` in
   place of `manifest.json`.
 

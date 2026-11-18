@@ -66,19 +66,6 @@ notes_of() {
   [ "$status" -eq 0 ]
 }
 
-@test "the old map.config.json is not read, and says so" {
-  add_layer alpha
-  echo '{"disabled": ["alpha"]}' >"${BATS_TEST_TMPDIR}/repo/map.config.json"
-  run "$RUN" --status
-  [ "$status" -eq 0 ]
-  [[ $output == *"map.config.json is no longer read: write your map config as map.config.yaml (see map.config.example.yaml)"* ]]
-
-  # Named as the map config, it stops every mode.
-  PIPELINE_MAP_CONFIG="${BATS_TEST_TMPDIR}/repo/map.config.json" run "$RUN" --status
-  [ "$status" -eq 2 ]
-  [[ $output == *"is in the old JSON format, which is no longer read"* ]]
-}
-
 @test "layers selects the layers to build; the others are disabled" {
   add_layer alpha beta gamma
   config 'layers: [alpha, gamma]'

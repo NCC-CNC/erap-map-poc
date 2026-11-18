@@ -138,19 +138,6 @@ build_layer() {
   build_update "$PIPELINE_OUTPUT_DIR" "$name" "$LAYER_TYPE" \
     "$(jq -c '.' "$report")" "$((SECONDS - started))" \
     "$(layer_provenance "$name" "$LAYER_INPUT")" "$header_json"
-  remove_other_archives "$name" "$(layer_archive_file "$name" "$LAYER_TYPE")"
-}
-
-# remove_other_archives NAME KEEP: delete NAME's archives other than KEEP
-# (a file name in the output dir), such as a raster layer's .pmtiles from
-# before COGs (ADR 0010), once build.json no longer names them.
-remove_other_archives() {
-  local name=$1 keep=$2 path
-  while IFS= read -r path; do
-    [[ -n $path && ${path##*/} != "$keep" ]] || continue
-    rm -f -- "$path"
-    log_info "removed the old archive ${path##*/}"
-  done < <(layer_archives "$PIPELINE_OUTPUT_DIR" "$name" || true)
 }
 
 # build_vector_layer: the vector steps of build_layer, whose locals (name,
@@ -368,7 +355,7 @@ remove_main() {
     log_error "--remove needs at least one layer name"
     return 2
   fi
-  local name file
+  local name file path
   for name in "$@"; do
     if ! layer_name_valid "$name"; then
       log_error "invalid layer name: $name"
@@ -384,7 +371,9 @@ remove_main() {
 
   for name in "$@"; do
     build_remove "$PIPELINE_OUTPUT_DIR" "$name"
-    remove_other_archives "$name" ""
+    while IFS= read -r path; do
+      rm -f -- "$path"
+    done < <(layer_archives "$PIPELINE_OUTPUT_DIR" "$name" || true)
     log_info "removed layer $name"
     if layer_enabled "$name"; then
       file=$(layer_get "$name" file)

@@ -22,10 +22,9 @@
 #
 # `type` is `raster` for a layer with the raster profile, else `vector`.
 # `file` is the archive: `<layer>.pmtiles` for a vector layer,
-# `<layer>.cog.tif` for a raster one (ADR 0010; a raster built before that
-# is a `.pmtiles` of PNG tiles until rebuilt). `format` is the tile type:
-# from the PMTiles header for a vector layer (`mvt`), `cog` for a raster
-# (`png` for an older raster build), whose zooms, bounds and center come
+# `<layer>.cog.tif` for a raster one (ADR 0010). `format` is the tile type:
+# from the PMTiles header for a vector layer (`mvt`), `cog` for a raster,
+# whose zooms, bounds and center come
 # from the build (raster_header). `display_updated_at` is when the layer's
 # part of style.json was last written from its layer file: by a build or
 # by `run.sh --style-only` (build_set_display, which changes nothing else
@@ -55,15 +54,13 @@
 #           "max_zoom_values": "near" (how the max zoom's 0/255 values
 #           are made: "near" from the source as is, with -r near;
 #           "majority" with -r average: 255 where at least half is
-#           covered; absent in a build from before, which is then stale
-#           if averaged),
+#           covered),
 #           "grey_levels": 256 (processing.grey_levels: the grey levels
 #           the COG holds, 256 for the full share; only in the overviews
 #           when "majority"; lib/raster.sh),
 #           "overview_count": 10,
 #           "zooms": [ { "zoom": 12, "width": 447240, "height": 290531 }, ... ]
-#           (the COG's levels, max zoom first; lib/raster.sh). An older
-#           raster build has "tile_count" and "max_tile_bytes" instead.
+#           (the COG's levels, max zoom first; lib/raster.sh).
 #
 # Updating one layer keeps the other entries. Written via a temp file and
 # `mv`, like the tiles.

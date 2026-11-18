@@ -123,7 +123,7 @@ touch_later() {
   [ "${lines[3]}" = "  - display changed since it was last updated (beta.yaml; --style-only updates it)" ]
 }
 
-@test "--status: a build from before layer files is stale" {
+@test "--status: a build without a build hash is stale" {
   add_layer alpha
   run "$RUN" alpha
   [ "$status" -eq 0 ]
@@ -131,7 +131,7 @@ touch_later() {
     "$BUILD" >"${BUILD}.new"
   mv "${BUILD}.new" "$BUILD"
   [ "$(state_of alpha)" = stale ]
-  [[ "$(notes_of alpha)" == "built before layer files (.yaml): rebuild it;"* ]]
+  [[ "$(notes_of alpha)" == "source, fields or processing changed since the build"* ]]
 }
 
 @test "--status checks every file of a shapefile and the zip of a zipped input" {
@@ -289,11 +289,11 @@ add_raster() {
     (.layers[] | select(.name == "cover")
       | .state == "current" and .type == "raster" and .format == "cog"
         and .archive_bytes > 0 and .width > 0 and .height > 0
-        and .tile_count == null and .feature_count == null
+        and .feature_count == null
         and .minzoom == 3 and .maxzoom == 6)
     and (.layers[] | select(.name == "alpha")
       | .type == "vector" and .format == "mvt" and .feature_count == 15
-        and .tile_count == null and .width == null)' <<<"$output"
+        and .width == null)' <<<"$output"
   [ "$status" -eq 0 ]
   run "$RUN" --status
   [ "$status" -eq 0 ]
@@ -315,55 +315,6 @@ add_raster() {
   [ "$output" = alpha ]
   run jq -r '[.sources | keys[]] | join(",")' "${PIPELINE_OUTPUT_DIR}/style.json"
   [ "$output" = alpha ]
-}
-
-@test "--status: a raster built before averaging is stale only if its max zoom is coarser than its source" {
-  add_raster cover
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  [ "$(state_of cover)" = current ]
-
-  # An entry from before the resampling was recorded was warped with near;
-  # z6 (about 1500 m on the ground) over the 1 km source now averages.
-  jq '.layers |= map(del(.resampling))' "$BUILD" >"${BUILD}.new"
-  mv "${BUILD}.new" "$BUILD"
-  [ "$(state_of cover)" = stale ]
-  [[ "$(notes_of cover)" == *"rebuild it to average"* ]]
-
-  # z8 (about 375 m) is finer than the source: near either way.
-  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.processing.maxzoom = 8'
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  jq '.layers |= map(del(.resampling))' "$BUILD" >"${BUILD}.new"
-  mv "${BUILD}.new" "$BUILD"
-  [ "$(state_of cover)" = current ]
-}
-
-@test "--status: a raster averaged at its max zoom before the majority is stale" {
-  add_raster cover
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  [ "$(jq -r '.layers[0] | "\(.resampling) \(.max_zoom_values)"' "$BUILD")" = "average majority" ]
-  [ "$(state_of cover)" = current ]
-
-  # An entry from before max_zoom_values was recorded, averaged at z6:
-  # grey levels at its max zoom, now binary by majority.
-  jq '.layers |= map(del(.max_zoom_values))' "$BUILD" >"${BUILD}.new"
-  mv "${BUILD}.new" "$BUILD"
-  [ "$(state_of cover)" = stale ]
-  [[ "$(notes_of cover)" == *"rebuild it for a binary max zoom by majority"* ]]
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  [ "$(state_of cover)" = current ]
-
-  # Warped with near (z8, finer than the source): unchanged, so current.
-  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.processing.maxzoom = 8'
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  [ "$(jq -r '.layers[0].max_zoom_values' "$BUILD")" = near ]
-  jq '.layers |= map(del(.max_zoom_values))' "$BUILD" >"${BUILD}.new"
-  mv "${BUILD}.new" "$BUILD"
-  [ "$(state_of cover)" = current ]
 }
 
 @test "--status: a raster is stale when grey_levels changes in the map config" {
