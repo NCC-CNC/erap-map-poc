@@ -74,8 +74,8 @@ notes_of() {
   [[ $output == *"map config: ${CONFIG}"* ]]
   [ -s "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles" ]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/beta.pmtiles" ]
-  [ "$(state_of beta)" = disabled ]
-  [ "$(notes_of beta)" = "not in the map config's layers" ]
+  [ "$(state_of beta)" = "not built" ]
+  [ "$(notes_of beta)" = "not in the map config's layers: hidden from the map, and a full build skips it" ]
 
   run "$RUN" beta
   [ "$status" -eq 2 ]
@@ -95,8 +95,8 @@ notes_of() {
   [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}"/*.pmtiles)" = "$tiles" ]
   run jq -r '[.sources | keys[]] | join(",")' "$STYLE"
   [ "$output" = alpha ]
-  [ "$(state_of beta)" = disabled ]
-  [[ "$(notes_of beta)" == *"built before: hidden from the map, --remove removes it"* ]]
+  [ "$(state_of beta)" = current ]
+  [ "$(notes_of beta)" = "not in the map config's layers: hidden from the map, and a full build skips it" ]
 
   rm "$CONFIG"
   run "$RUN" --style-only

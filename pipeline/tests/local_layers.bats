@@ -60,7 +60,7 @@ status_of() {
   run "$RUN"
   [ "$status" -eq 0 ]
   [ "$(jq -c '[.layers[] | [.name, .maxzoom]]' "$BUILD")" = '[["mine",2]]' ]
-  [ "$(status_of alpha)" = "disabled committed" ]
+  [ "$(status_of alpha)" = "not built committed" ]
 }
 
 @test "a local layer with the name of a committed one is an error, in every mode" {

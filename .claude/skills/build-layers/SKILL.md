@@ -16,10 +16,9 @@ repo root in Git Bash.
 
    Summarise per layer: `current`, `stale` (source, fields, processing
    or the data changed: rebuild), `not built`, `source missing` (not
-   in `RAW_DIR`),
-   `invalid` (quote the problems in the layer file), `disabled` (left
-   out by `map.config.yaml`) or `orphan` (layer file gone: remove-layer
-   skill). If the user only asked what there is, stop here.
+   in `RAW_DIR`) or `invalid` (quote the problems in the layer file; if
+   it is gone, remove-layer skill), and the notes, such as a layer left
+   out by `map.config.yaml`. If the user only asked what there is, stop here.
 2. Build what is needed. Say first how long it may take: seconds to
    minutes per vector layer, about 10 minutes per Canada-wide raster the
    first time (less once `data/work/raster/` has its source); run long

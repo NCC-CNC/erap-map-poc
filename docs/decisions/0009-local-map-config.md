@@ -62,7 +62,7 @@ shared files in `pipeline/layers/` or opening a pull request (issue #59).
 - **Missing sources**: a full build skips a layer whose source data is
   not found, with a warning and a summary, and fails only if nothing could
   be built; a layer named on the command line still fails. `--status`
-  shows the new state `source missing`, and `disabled` for a layer the
+  shows the new state `source missing`, and a note for a layer the
   config leaves out.
 - **Manifest** (the runtime contract of 0007): top-level `map` (the opening
   view and basemap); per entry `enabled` (false for a layer built before

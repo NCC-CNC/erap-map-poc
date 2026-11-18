@@ -36,8 +36,7 @@
 #                fields or processing, the map config's overrides of them,
 #                or the source data changed since the build), not built,
 #                source missing (a full build skips it), invalid (the layer
-#                file has problems), disabled (left out by the map config)
-#                or orphan (built, layer file gone), plus build time,
+#                file has problems or is gone), plus build time,
 #                archive size, zooms, feature count (size in pixels for a
 #                raster layer) and largest tile. Read only. --list is the
 #                same.

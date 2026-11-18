@@ -580,3 +580,13 @@ practical:
 - `display_sha256`, `display_updated_at`, `build_set_display` and the
   `restyle` state are gone; the step 2 and 3 notes above describe them
   as they were.
+- A built layer whose archive is missing is left out of `style.json`
+  with a warning (`--status` shows it `stale`).
+
+## Settled in fewer status states (#136)
+
+- `--status` has five states: `current`, `stale`, `not built`, `source
+  missing` and `invalid`. A build whose layer file is gone (was `orphan`)
+  is `invalid`, with a note that `run.sh --remove` removes it. A layer
+  the map config leaves out (was `disabled`) gets its usual state plus a
+  note; `enabled` in the JSON says the same.

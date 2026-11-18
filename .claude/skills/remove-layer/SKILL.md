@@ -9,7 +9,7 @@ Guide: `docs/guide.md`, Remove a layer. From the repo root in Git Bash.
 
 1. Look: `docker compose run --rm pipeline --status <name>` and
    `ls pipeline/layers/<name>.yaml pipeline/layers.local/<name>.yaml`.
-   An `orphan` is a build whose layer file is already gone.
+   A build whose layer file is already gone is `invalid`, with a note.
 2. **Confirm with the user, always**, saying exactly what goes: the
    layer file (committed or local), `data/tiles/<name>.pmtiles` or
    `.cog.tif`, its `build.json` entry and its part of `style.json`. The
