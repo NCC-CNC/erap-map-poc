@@ -391,8 +391,8 @@ PIPELINE_LAYERS_DIR=/opt/pipeline/tests/layers pipeline`.
 - Tests also use `pipeline/tests/fixtures/sample_modal.style.json`: the
   same layer with three colour themes (score in classes, score as a
   gradient, area as a gradient over the data's range) and a click modal
-  with every block type. The pipeline's resolved display for it is
-  `expected_modal_display.json`, which the web tests read too.
+  with every block type. Built alone, its style.json is
+  `expected_modal_style.json`, which the web tests read too.
 
 ### `sample_points`
 

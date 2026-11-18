@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=../../schema/layer.schema.json
 #
 # The raster layer of tests/raster.bats: a binary GeoTIFF made at test time
-# (make_raster.sh), z3 to z8. Its display block is
-# expected_raster_display.json, which the web app's tests read too.
+# (make_raster.sh), z3 to z8. Built as `cover` with the test layers, it is
+# part of expected_style.json, which the web app's tests read too.
 
 title: Test raster
 visible: true

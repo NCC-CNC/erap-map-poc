@@ -160,12 +160,12 @@ touch_later() {
 }
 
 @test "--status reports invalid layer files, missing source data and orphaned builds" {
-  add_layer alpha broken nolegend nodata
+  add_layer alpha broken dupid nodata
   run "$RUN" alpha
   [ "$status" -eq 0 ]
   rm "${PIPELINE_LAYERS_DIR}/alpha.yaml"
   set_layer "${PIPELINE_LAYERS_DIR}/broken.yaml" '.processing.minzoom = "x"'
-  set_layer "${PIPELINE_LAYERS_DIR}/nolegend.yaml" 'del(.display.legend)'
+  set_layer "${PIPELINE_LAYERS_DIR}/dupid.yaml" '.display.layers[1].id = "fill"'
   set_layer "${PIPELINE_LAYERS_DIR}/nodata.yaml" '.source.path = "missing.gpkg"'
 
   run "$RUN" --status --json
@@ -173,8 +173,8 @@ touch_later() {
   run jq -r '.layers[] | "\(.name)|\(.state)|\(.notes | join(";"))"' <<<"$output"
   [ "${lines[0]}" = "alpha|orphan|no alpha.yaml: remove the build with --remove" ]
   [[ ${lines[1]} == "broken|invalid|broken.yaml: at '/processing/minzoom': "* ]]
-  [ "${lines[2]}" = "nodata|source missing|source data not found: missing.gpkg" ]
-  [ "${lines[3]}" = "nolegend|invalid|nolegend.yaml: display.legend: needed, with kind, shape, border and opacity (the map does not build legends yet)" ]
+  [ "${lines[3]}" = "nodata|source missing|source data not found: missing.gpkg" ]
+  [ "${lines[2]}" = "dupid|invalid|dupid.yaml: display.layers: id fill is used twice" ]
   [ "${#lines[@]}" -eq 4 ]
 }
 

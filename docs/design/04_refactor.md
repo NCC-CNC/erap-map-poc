@@ -379,3 +379,50 @@ practical:
   fixtures (`pipeline/tests/fixtures/expected_*display.json`,
   `ecoregions_display.json`) are no longer checked against it; step 4
   removes them with the app's manifest reader.
+
+## Settled in step 4
+
+- The app fetches `tiles/style.json` (`web/src/layers/style.ts`), checks
+  it is a version 8 style with `sources` and `layers`, groups the style
+  layers by `erap:layer` (draw order as in the style) and adds each map
+  layer's sources and style layers over the basemap. A style layer
+  without `erap:layer` is left out with a console warning; a map layer
+  missing from `erap:layers` gets its name as title, order 0, hidden.
+- Sources are resolved against the tiles URL: `pmtiles://x.pmtiles`
+  becomes `pmtiles://<tiles URL>x.pmtiles`, `cog://x.cog.tif#dem` keeps
+  its fragment; an absolute archive is kept.
+- There is no archive check: a source or style layer MapLibre will not
+  add, or a source whose archive it cannot read, comes back as an error
+  event, and the layer panel shows that layer disabled ("Not available:
+  the layer could not be loaded."). The others still draw.
+- Themes: the first theme is the style layers as written; the app fills
+  in its paint (the style layers' own values) for every property another
+  theme sets, so any theme switches back cleanly.
+- Legends (`web/src/layers/legend.ts`) come from the first fill,
+  fill-extrusion, circle, line or color-relief layer's colour: a constant
+  (`single`, labelled with the layer or theme title), `match`
+  (`categories`), `step` (`ramp`, "Below a", "a to b", "b or more") or
+  `interpolate` (`gradient`), also inside a `case` guard, whose fallback
+  has no label and is left out. An explicit `legend` is used as it is,
+  its missing `kind`, `shape`, `border` and `opacity` from the derived
+  one. A layer with neither shows no legend. The pipeline no longer
+  requires a legend.
+- The committed layers keep their explicit legends: each has a label the
+  expression does not give ("No data", "30 to 100", a raster's name).
+  The `area` theme of `sample_modal.yaml` drops its legend, as the
+  derived one is the same.
+- Types: `web/src/layers/layer.generated.ts` is generated from
+  `layer.schema.json` with json-schema-to-typescript (`npm run
+  layer-types`, `web/vite/layerTypes.ts`, which drops the conditional
+  parts of the schema first); a test fails when it is out of date.
+  `types.ts` stays as a short file of the app's names for those types and
+  of what the app builds from them (`LayerDefinition`, resolved `Legend`
+  and `Theme`).
+- Fixtures: `pipeline/tests/fixtures/expected_style.json` (the two test
+  layers and the synthetic raster) and `expected_modal_style.json`
+  (`sample_modal.yaml`) are what the pipeline writes, checked in
+  `style.bats`; the web tests read them and check them with the MapLibre
+  style validator. `ecoregions_display.json` is the themes and modal of
+  `ecoregions.yaml`, also checked in `style.bats`. The old
+  `expected_*display.json` and `web/src/test/layer-style.schema.json`
+  are gone.

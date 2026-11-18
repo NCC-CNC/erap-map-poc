@@ -83,11 +83,10 @@ resolve_input() {
 # layer_problems: the problems in a layer (effective JSON on stdin) that
 # the schema cannot express, one per line: zooms in order, attribute names
 # unique, style layer and theme ids unique, theme paint on a style layer of
-# the layer, and, for the current web app (until it builds legends itself,
-# design note 04 step 4), a full legend.
+# the layer. A legend is optional: the web app builds one from the colour
+# expression (design note 04).
 layer_problems() {
   jq -r --arg fid "$FEATURE_ID_ATTRIBUTE" '
-    def legend_ok: type == "object" and has("kind") and has("shape") and has("border") and has("opacity");
     ((.processing.minzoom // 0) as $min | .processing.maxzoom as $max
       | if $min > $max then "processing: minzoom (\($min)) is above maxzoom (\($max))" else empty end),
     ([(.fields.keep // [])[] | if type == "string" then . else to_entries[0].value end]
@@ -102,13 +101,7 @@ layer_problems() {
           | select(. as $id | $ids | index($id) | not)
           | "display.themes[\($i)].paint: \(.) is not an id in display.layers")),
     ((.display.themes // []) | [.[].id] | group_by(.) | map(select(length > 1) | .[0])[]
-      | "display.themes: id \(.) is used twice"),
-    (if .display.themes then
-       (.display.themes | to_entries[] | select(.value.legend | legend_ok | not)
-         | "display.themes[\(.key)].legend: needed, with kind, shape, border and opacity (the map does not build legends yet)")
-     elif (.display.legend | legend_ok | not) then
-       "display.legend: needed, with kind, shape, border and opacity (the map does not build legends yet)"
-     else empty end)'
+      | "display.themes: id \(.) is used twice")'
 }
 
 # _map_config OUT: check the map config, if any, and write it as JSON to

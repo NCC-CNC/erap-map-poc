@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=../../schema/layer.schema.json
 #
 # The `sample` test layer with colour themes and a click modal (ADR 0012).
-# Its display block is expected_modal_display.json, which the web app's
-# tests read too (tests/style.bats checks they agree).
+# Built alone, its style.json is expected_modal_style.json, which the web
+# app's tests read too (tests/style.bats checks they agree).
 
 title: Sample polygons
 visible: true
@@ -83,14 +83,7 @@ display:
             [case, ["==", [typeof, [get, area_ha]], number],
              [interpolate, [linear], [get, area_ha], 3947.5, "#eff3ff", 48514.5, "#08519c"],
              "#9e9e9e"]
-      legend:
-        kind: gradient
-        shape: square
-        border: "#ffffff"
-        opacity: 0.7
-        items:
-          - { color: "#eff3ff", label: "3,948", position: 0 }
-          - { color: "#08519c", label: "48,515", position: 1 }
+      # No legend: the map derives it from the interpolate (3,948 to 48,515).
   modal:
     title: "{name}"
     subtitle: Sample feature {$id}

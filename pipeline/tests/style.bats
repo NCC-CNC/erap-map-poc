@@ -83,6 +83,31 @@ yaml_json() {
   [ "$status" -eq 0 ]
 }
 
+# The web app's tests read these fixtures as the pipeline's style.json
+# (web/src/test/fixtures.ts), so they must be what it writes.
+@test "style.json of the test layers is expected_style.json and expected_modal_style.json" {
+  cp "${PIPELINE_ROOT}"/tests/layers/*.yaml "$PIPELINE_LAYERS_DIR"
+  "${FIXTURES}/make_raster.sh" byte "${PIPELINE_INPUT_DIR}/cover.tif"
+  cp "${FIXTURES}/raster.yaml" "${PIPELINE_LAYERS_DIR}/cover.yaml"
+  PIPELINE_WORK_DIR="${BATS_TEST_TMPDIR}/work" run "$RUN"
+  [ "$status" -eq 0 ]
+  run jq -n --slurpfile a "$STYLE" --slurpfile b "${FIXTURES}/expected_style.json" '$a == $b'  [ "$output" = true ]
+
+  rm -r "$PIPELINE_LAYERS_DIR" "$PIPELINE_OUTPUT_DIR"
+  mkdir -p "$PIPELINE_LAYERS_DIR"
+  cp "${FIXTURES}/sample_modal.yaml" "${PIPELINE_LAYERS_DIR}/sample.yaml"
+  run "$RUN" sample
+  [ "$status" -eq 0 ]
+  run jq -n --slurpfile a "$STYLE" --slurpfile b "${FIXTURES}/expected_modal_style.json" '$a == $b'
+  [ "$output" = true ]
+}
+
+@test "ecoregions_display.json is the themes and modal of ecoregions.yaml" {
+  run jq -n --argjson a "$(yq -o json -I 0 '.display | {"themes": .themes, "modal": .modal}' \
+    "${PIPELINE_ROOT}/layers/ecoregions.yaml")" --slurpfile b "${FIXTURES}/ecoregions_display.json" '$a == $b[0]'
+  [ "$output" = true ]
+}
+
 @test "a display change reaches style.json through a build or --style-only only" {
   cp "${PIPELINE_ROOT}"/tests/layers/*.yaml "$PIPELINE_LAYERS_DIR"
   run "$RUN"
@@ -128,14 +153,13 @@ yaml_json() {
   [ "$(jq -r '.sources | keys | join(",")' "$STYLE")" = "sample,sample_points" ]
 }
 
-@test "display checks: legend, unique ids and theme paint on a style layer" {
+@test "display checks: unique ids and theme paint on a style layer; a legend is optional" {
   cp "${PIPELINE_ROOT}/tests/layers/sample.yaml" "$PIPELINE_LAYERS_DIR"
   local file="${PIPELINE_LAYERS_DIR}/sample.yaml"
 
-  set_layer "$file" 'del(.display.legend.kind)'
-  run "$RUN" sample
-  [ "$status" -eq 1 ]
-  [[ $output == *"sample.yaml: display.legend: needed, with kind, shape, border and opacity"* ]]
+  set_layer "$file" 'del(.display.legend)'
+  run "$RUN" --status --json
+  [ "$(jq -r '.layers[0].state' <<<"$output")" != invalid ]
 
   cp "${PIPELINE_ROOT}/tests/layers/sample.yaml" "$file"
   set_layer "$file" '.display.layers[1].id = "fill"'
@@ -144,11 +168,10 @@ yaml_json() {
   [[ $output == *"sample.yaml: display.layers: id fill is used twice"* ]]
 
   cp "${FIXTURES}/sample_modal.yaml" "$file"
-  set_layer "$file" '.display.themes[1].paint.halo = {"line-width": 1}' 'del(.display.themes[2].legend)'
+  set_layer "$file" '.display.themes[1].paint.halo = {"line-width": 1}'
   run "$RUN" sample
   [ "$status" -eq 1 ]
   [[ $output == *"sample.yaml: display.themes[1].paint: halo is not an id in display.layers"* ]]
-  [[ $output == *"sample.yaml: display.themes[2].legend: needed"* ]]
   [ ! -e "$BUILD" ]
   [ ! -e "$STYLE" ]
 }

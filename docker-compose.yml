@@ -122,9 +122,10 @@ services:
       - web-dev-node-modules:/repo/web/node_modules
       # Same layout as the repo, so vite.config.ts finds ../data/tiles.
       - ./data/tiles:/repo/data/tiles:ro
-      # The web tests read the display blocks the pipeline writes (the
-      # expected display fixtures, vector, raster and the ecoregions) and
-      # the map config schema from ../pipeline (web/src/test/fixtures.ts).
+      # The web tests read the style.json the pipeline writes for the test
+      # layers (pipeline/tests/fixtures), the ecoregions themes and modal,
+      # and the schemas (the layer file types, web/vite/layerTypes.ts) from
+      # ../pipeline (web/src/test/fixtures.ts).
       - ./pipeline/schema:/repo/pipeline/schema:ro
       - ./pipeline/tests/fixtures:/repo/pipeline/tests/fixtures:ro
 

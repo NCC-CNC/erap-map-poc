@@ -1,7 +1,227 @@
 {
-  "title": "ERAP ecoregions",
-  "defaultVisible": true,
-  "order": 40,
+  "themes": [
+    {
+      "id": "protected",
+      "label": "Protected (%)",
+      "legend": {
+        "kind": "ramp",
+        "shape": "square",
+        "border": "#08306b",
+        "opacity": 0.6,
+        "items": [
+          {
+            "color": "#deebf7",
+            "label": "0 to 10"
+          },
+          {
+            "color": "#9ecae1",
+            "label": "10 to 17"
+          },
+          {
+            "color": "#4292c6",
+            "label": "17 to 30"
+          },
+          {
+            "color": "#08519c",
+            "label": "30 to 100"
+          },
+          {
+            "color": "#bdbdbd",
+            "label": "No data"
+          }
+        ]
+      }
+    },
+    {
+      "id": "wtw",
+      "label": "Where To Work (%)",
+      "paint": {
+        "fill": {
+          "fill-color": [
+            "case",
+            [
+              "==",
+              [
+                "typeof",
+                [
+                  "get",
+                  "wtw_percent"
+                ]
+              ],
+              "number"
+            ],
+            [
+              "step",
+              [
+                "get",
+                "wtw_percent"
+              ],
+              "#deebf7",
+              5,
+              "#9ecae1",
+              20,
+              "#4292c6",
+              40,
+              "#08519c"
+            ],
+            "#bdbdbd"
+          ]
+        }
+      },
+      "legend": {
+        "kind": "ramp",
+        "shape": "square",
+        "border": "#08306b",
+        "opacity": 0.6,
+        "items": [
+          {
+            "color": "#deebf7",
+            "label": "0 to 5"
+          },
+          {
+            "color": "#9ecae1",
+            "label": "5 to 20"
+          },
+          {
+            "color": "#4292c6",
+            "label": "20 to 40"
+          },
+          {
+            "color": "#08519c",
+            "label": "40 to 100"
+          },
+          {
+            "color": "#bdbdbd",
+            "label": "No data"
+          }
+        ]
+      }
+    },
+    {
+      "id": "wtw_area",
+      "label": "Where To Work (total area, ha)",
+      "paint": {
+        "fill": {
+          "fill-color": [
+            "case",
+            [
+              "==",
+              [
+                "typeof",
+                [
+                  "get",
+                  "wtw_area_ha"
+                ]
+              ],
+              "number"
+            ],
+            [
+              "step",
+              [
+                "get",
+                "wtw_area_ha"
+              ],
+              "#deebf7",
+              100000,
+              "#9ecae1",
+              500000,
+              "#4292c6",
+              1000000,
+              "#08519c"
+            ],
+            "#bdbdbd"
+          ]
+        }
+      },
+      "legend": {
+        "kind": "ramp",
+        "shape": "square",
+        "border": "#08306b",
+        "opacity": 0.6,
+        "items": [
+          {
+            "color": "#deebf7",
+            "label": "0 to 100,000"
+          },
+          {
+            "color": "#9ecae1",
+            "label": "100,000 to 500,000"
+          },
+          {
+            "color": "#4292c6",
+            "label": "500,000 to 1,000,000"
+          },
+          {
+            "color": "#08519c",
+            "label": "1,000,000 to 2,500,000"
+          },
+          {
+            "color": "#bdbdbd",
+            "label": "No data"
+          }
+        ]
+      }
+    },
+    {
+      "id": "area_based_actions",
+      "label": "Action recommendations: area-based conservation",
+      "paint": {
+        "fill": {
+          "fill-color": [
+            "case",
+            [
+              "==",
+              [
+                "typeof",
+                [
+                  "get",
+                  "actions_area_based_conservation_count"
+                ]
+              ],
+              "number"
+            ],
+            [
+              "step",
+              [
+                "get",
+                "actions_area_based_conservation_count"
+              ],
+              "#deebf7",
+              1,
+              "#6baed6",
+              2,
+              "#08519c"
+            ],
+            "#bdbdbd"
+          ]
+        }
+      },
+      "legend": {
+        "kind": "ramp",
+        "shape": "square",
+        "border": "#08306b",
+        "opacity": 0.6,
+        "items": [
+          {
+            "color": "#deebf7",
+            "label": "None recommended"
+          },
+          {
+            "color": "#6baed6",
+            "label": "1 recommended"
+          },
+          {
+            "color": "#08519c",
+            "label": "2 or more recommended"
+          },
+          {
+            "color": "#bdbdbd",
+            "label": "No data"
+          }
+        ]
+      }
+    }
+  ],
   "modal": {
     "title": "{name}",
     "subtitle": "{ecozone} ecozone",
@@ -319,350 +539,5 @@
         ]
       }
     ]
-  },
-  "layers": [
-    {
-      "id": "fill",
-      "type": "fill",
-      "paint": {
-        "fill-color": [
-          "case",
-          [
-            "==",
-            [
-              "typeof",
-              [
-                "get",
-                "protected_pcnt"
-              ]
-            ],
-            "number"
-          ],
-          [
-            "step",
-            [
-              "get",
-              "protected_pcnt"
-            ],
-            "#deebf7",
-            10,
-            "#9ecae1",
-            17,
-            "#4292c6",
-            30,
-            "#08519c"
-          ],
-          "#bdbdbd"
-        ],
-        "fill-opacity": 0.6
-      }
-    },
-    {
-      "id": "outline",
-      "type": "line",
-      "paint": {
-        "line-color": "#08306b",
-        "line-width": [
-          "interpolate",
-          [
-            "linear"
-          ],
-          [
-            "zoom"
-          ],
-          0,
-          0.3,
-          8,
-          0.6,
-          14,
-          1
-        ]
-      }
-    }
-  ],
-  "legend": {
-    "kind": "ramp",
-    "shape": "square",
-    "border": "#08306b",
-    "opacity": 0.6,
-    "items": [
-      {
-        "color": "#deebf7",
-        "label": "0 to 10"
-      },
-      {
-        "color": "#9ecae1",
-        "label": "10 to 17"
-      },
-      {
-        "color": "#4292c6",
-        "label": "17 to 30"
-      },
-      {
-        "color": "#08519c",
-        "label": "30 to 100"
-      },
-      {
-        "color": "#bdbdbd",
-        "label": "No data"
-      }
-    ]
-  },
-  "themes": [
-    {
-      "id": "protected",
-      "label": "Protected (%)",
-      "paint": {
-        "fill": {
-          "fill-color": [
-            "case",
-            [
-              "==",
-              [
-                "typeof",
-                [
-                  "get",
-                  "protected_pcnt"
-                ]
-              ],
-              "number"
-            ],
-            [
-              "step",
-              [
-                "get",
-                "protected_pcnt"
-              ],
-              "#deebf7",
-              10,
-              "#9ecae1",
-              17,
-              "#4292c6",
-              30,
-              "#08519c"
-            ],
-            "#bdbdbd"
-          ]
-        }
-      },
-      "legend": {
-        "kind": "ramp",
-        "shape": "square",
-        "border": "#08306b",
-        "opacity": 0.6,
-        "items": [
-          {
-            "color": "#deebf7",
-            "label": "0 to 10"
-          },
-          {
-            "color": "#9ecae1",
-            "label": "10 to 17"
-          },
-          {
-            "color": "#4292c6",
-            "label": "17 to 30"
-          },
-          {
-            "color": "#08519c",
-            "label": "30 to 100"
-          },
-          {
-            "color": "#bdbdbd",
-            "label": "No data"
-          }
-        ]
-      }
-    },
-    {
-      "id": "wtw",
-      "label": "Where To Work (%)",
-      "paint": {
-        "fill": {
-          "fill-color": [
-            "case",
-            [
-              "==",
-              [
-                "typeof",
-                [
-                  "get",
-                  "wtw_percent"
-                ]
-              ],
-              "number"
-            ],
-            [
-              "step",
-              [
-                "get",
-                "wtw_percent"
-              ],
-              "#deebf7",
-              5,
-              "#9ecae1",
-              20,
-              "#4292c6",
-              40,
-              "#08519c"
-            ],
-            "#bdbdbd"
-          ]
-        }
-      },
-      "legend": {
-        "kind": "ramp",
-        "shape": "square",
-        "border": "#08306b",
-        "opacity": 0.6,
-        "items": [
-          {
-            "color": "#deebf7",
-            "label": "0 to 5"
-          },
-          {
-            "color": "#9ecae1",
-            "label": "5 to 20"
-          },
-          {
-            "color": "#4292c6",
-            "label": "20 to 40"
-          },
-          {
-            "color": "#08519c",
-            "label": "40 to 100"
-          },
-          {
-            "color": "#bdbdbd",
-            "label": "No data"
-          }
-        ]
-      }
-    },
-    {
-      "id": "wtw_area",
-      "label": "Where To Work (total area, ha)",
-      "paint": {
-        "fill": {
-          "fill-color": [
-            "case",
-            [
-              "==",
-              [
-                "typeof",
-                [
-                  "get",
-                  "wtw_area_ha"
-                ]
-              ],
-              "number"
-            ],
-            [
-              "step",
-              [
-                "get",
-                "wtw_area_ha"
-              ],
-              "#deebf7",
-              100000,
-              "#9ecae1",
-              500000,
-              "#4292c6",
-              1000000,
-              "#08519c"
-            ],
-            "#bdbdbd"
-          ]
-        }
-      },
-      "legend": {
-        "kind": "ramp",
-        "shape": "square",
-        "border": "#08306b",
-        "opacity": 0.6,
-        "items": [
-          {
-            "color": "#deebf7",
-            "label": "0 to 100,000"
-          },
-          {
-            "color": "#9ecae1",
-            "label": "100,000 to 500,000"
-          },
-          {
-            "color": "#4292c6",
-            "label": "500,000 to 1,000,000"
-          },
-          {
-            "color": "#08519c",
-            "label": "1,000,000 to 2,500,000"
-          },
-          {
-            "color": "#bdbdbd",
-            "label": "No data"
-          }
-        ]
-      }
-    },
-    {
-      "id": "area_based_actions",
-      "label": "Action recommendations: area-based conservation",
-      "paint": {
-        "fill": {
-          "fill-color": [
-            "case",
-            [
-              "==",
-              [
-                "typeof",
-                [
-                  "get",
-                  "actions_area_based_conservation_count"
-                ]
-              ],
-              "number"
-            ],
-            [
-              "step",
-              [
-                "get",
-                "actions_area_based_conservation_count"
-              ],
-              "#deebf7",
-              1,
-              "#6baed6",
-              2,
-              "#08519c"
-            ],
-            "#bdbdbd"
-          ]
-        }
-      },
-      "legend": {
-        "kind": "ramp",
-        "shape": "square",
-        "border": "#08306b",
-        "opacity": 0.6,
-        "items": [
-          {
-            "color": "#deebf7",
-            "label": "None recommended"
-          },
-          {
-            "color": "#6baed6",
-            "label": "1 recommended"
-          },
-          {
-            "color": "#08519c",
-            "label": "2 or more recommended"
-          },
-          {
-            "color": "#bdbdbd",
-            "label": "No data"
-          }
-        ]
-      }
-    }
-  ],
-  "defaultTheme": "protected"
+  }
 }

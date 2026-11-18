@@ -4,8 +4,8 @@ import { BASEMAP_GROUND } from './basemap';
 import { gradientCss, swatchColor } from './legend';
 
 /**
- * A layer's inline legend, as the pipeline resolved it (derived from its
- * style, or given explicitly in its display config): one swatch and label
+ * A layer's inline legend (derived from its colour expression, or given
+ * in its layer file, see `../layers/legend.ts`): one swatch and label
  * per item, or, for a `gradient` legend, a colour bar with the stop values
  * under it, then any items without a position (such as no data) as
  * swatches. A swatch shows its colour at the layer's opacity over `ground`
