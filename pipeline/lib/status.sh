@@ -12,18 +12,19 @@
 #   stale      built, but the layer file's `source`, `fields` or
 #              `processing` (or the map config's overrides of them) differ
 #              from the build's (the hash in the entry's provenance), its
-#              source data has changed since (file modification time
-#              against build.json's built_at), it was built before layer
-#              files (no hash), or its archive is missing. Rebuild it.
+#              source data or a join table has changed since (file
+#              modification time against build.json's built_at), it was
+#              built before layer files (no hash), or its archive is
+#              missing. Rebuild it.
 #   restyle    built and not stale, but the layer file's `display`,
 #              `title`, `visible` or `order` differ from the display last
 #              written (by a build or by `run.sh --style-only`, which
 #              updates it, no tiling).
 #   not built  configured, but not built yet (or every build failed).
 #   source missing
-#              configured, but its source data is not found (for example
-#              RAW_DIR not set). A full build skips it. A previous build, if
-#              any, is still served.
+#              configured, but its source data or a join table is not
+#              found (for example RAW_DIR not set). A full build skips it.
+#              A previous build, if any, is still served.
 #   invalid    the layer file has problems (its schema, or the checks in
 #              lib/layerfile.sh). A previous build, if any, is still
 #              served.
@@ -195,10 +196,19 @@ _layer_status() {
     local problems=()
     mapfile -t problems < <(jq -r '.problems[]' <<<"$layer")
 
-    local src="" missing=""
+    # The modification times of the source data and of its newest join table.
+    local src="" joined="" missing="" join join_mtime
     if [[ -n $input ]] && ! src=$(source_mtime "$input"); then
       missing="source data not found: ${input#"${PIPELINE_INPUT_DIR}"/}"
     fi
+    while IFS= read -r join; do
+      [[ -z $missing && -n $join ]] || continue
+      if ! join_mtime=$(source_mtime "$join"); then
+        missing="join table not found: ${join#"${PIPELINE_INPUT_DIR}"/}"
+      elif ((${join_mtime:-0} > ${joined:-0})); then
+        joined=$join_mtime
+      fi
+    done < <(jq -r '(.joins // [])[]' <<<"$layer")
 
     if ((${#problems[@]} > 0)); then
       state=invalid
@@ -229,6 +239,7 @@ _layer_status() {
         notes+=("source, fields or processing changed since the build (${name}.yaml or the map config's overrides)")
       fi
       if ((${src:-0} > built_at)); then notes+=("source data changed since the build"); fi
+      if ((${joined:-0} > built_at)); then notes+=("join table changed since the build"); fi
       if [[ $recorded_display != "$current_display" ]]; then
         restyle="display changed since it was last updated (${name}.yaml; --style-only updates it)"
       fi

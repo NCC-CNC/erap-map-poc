@@ -48,6 +48,8 @@ source "${PIPELINE_ROOT}/lib/normalise.sh"
 # For --config: the layer files and the calculated fields.
 # shellcheck source=lib/layerfile.sh
 source "${PIPELINE_ROOT}/lib/layerfile.sh"
+# shellcheck source=lib/joins.sh
+source "${PIPELINE_ROOT}/lib/joins.sh"
 # shellcheck source=lib/calculated.sh
 source "${PIPELINE_ROOT}/lib/calculated.sh"
 

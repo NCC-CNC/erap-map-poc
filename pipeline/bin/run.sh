@@ -81,6 +81,8 @@ source "${PIPELINE_ROOT}/lib/log.sh"
 source "${PIPELINE_ROOT}/lib/layerfile.sh"
 # shellcheck source=lib/normalise.sh
 source "${PIPELINE_ROOT}/lib/normalise.sh"
+# shellcheck source=lib/joins.sh
+source "${PIPELINE_ROOT}/lib/joins.sh"
 # shellcheck source=lib/calculated.sh
 source "${PIPELINE_ROOT}/lib/calculated.sh"
 # shellcheck source=lib/tiles.sh
@@ -163,6 +165,9 @@ build_vector_layer() {
   count=${count//[[:space:]]/}
   ((count > 0)) || die "no features after normalising $LAYER_INPUT"
   log_info "$count features"
+  if [[ -f "${normalised}.joins.json" ]]; then
+    log_info "$(join_summary "${normalised}.joins.json" "$count")"
+  fi
 
   # Calculated fields (lib/calculated.sh), added to the normalised data and
   # then tiled like the rest.
@@ -198,6 +203,11 @@ build_vector_layer() {
   vector_report "$count" "$stats" "$LAYER_PROFILE" "$LAYER_MIN_VISIBLE_PX" >"$report"
   if [[ -n $calculated ]]; then
     jq -c --slurpfile c "$calculated" '. + {calculated_fields: $c[0]}' "$report" >"${report}.tmp"
+    mv -- "${report}.tmp" "$report"
+  fi
+  if [[ -f "${normalised}.joins.json" ]]; then
+    jq -c --slurpfile j "${normalised}.joins.json" \
+      '. + {joins: ($j[0] | map({path, layer, on, fields, rows, matched}))}' "$report" >"${report}.tmp"
     mv -- "${report}.tmp" "$report"
   fi
 }
@@ -388,11 +398,20 @@ remove_main() {
 # nothing (and return 1) if it is there or the layer file has problems
 # (the build then reports those).
 missing_source() {
-  local input
+  local input join
   input=$(layer_get "$1" input)
   [[ -n $input ]] || return 1
-  ! source_mtime "$input" >/dev/null || return 1
-  printf 'source data not found: %s\n' "${input#"${PIPELINE_INPUT_DIR}"/}"
+  if ! source_mtime "$input" >/dev/null; then
+    printf 'source data not found: %s\n' "${input#"${PIPELINE_INPUT_DIR}"/}"
+    return 0
+  fi
+  while IFS= read -r join; do
+    if ! source_mtime "$join" >/dev/null; then
+      printf 'join table not found: %s\n' "${join#"${PIPELINE_INPUT_DIR}"/}"
+      return 0
+    fi
+  done < <(layer_joins "$1")
+  return 1
 }
 
 # check_required: the map config's `require`, before a build: every layer it
