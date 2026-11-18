@@ -211,7 +211,7 @@ notes_of() {
   [ "$status" -eq 0 ]
   [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles")" = "$tiles" ]
   run jq -e --argjson f "$(yq -o json -I 0 . "${PIPELINE_LAYERS_DIR}/alpha.yaml")" \
-    '.metadata["erap:layers"].alpha | .themes == .display.themes and .popup == .display.popup' "$STYLE"
+    '.metadata["erap:layers"].alpha | .themes == $f.display.themes and .popup == $f.display.popup' "$STYLE"
   [ "$status" -eq 0 ]
 
   # The first theme is what the style layers draw.
