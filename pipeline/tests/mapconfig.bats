@@ -227,15 +227,13 @@ notes_of() {
   [[ $output == *"require names layer 'alpha', which its layers list leaves out"* ]]
 }
 
-@test "provenance records the source data, the overrides and the hashes" {
+@test "provenance records the source path, the overrides and the build hash" {
   add_layer alpha
   config 'overrides: { alpha: { processing: { min_visible_px: 2 } } }'
   run "$RUN"
   [ "$status" -eq 0 ]
-  local src="${PIPELINE_INPUT_DIR}/sample.geojson" mtime
-  mtime=$(date -u -d "@$(stat -c %Y "$src")" +%Y-%m-%dT%H:%M:%SZ)
-  run entry alpha '.provenance | [.origin, .source.path, .source.bytes, .source.modified_at, .overrides]'
-  [ "$output" = "[\"committed\",\"sample.geojson\",$(stat -c %s "$src"),\"${mtime}\",{\"processing\":{\"min_visible_px\":2}}]" ]
+  run entry alpha '.provenance | [.origin, .source.path, .overrides]'
+  [ "$output" = "[\"committed\",\"sample.geojson\",{\"processing\":{\"min_visible_px\":2}}]" ]
   run entry alpha '.provenance.build_sha256 | test("^[0-9a-f]{64}$")'
   [ "$output" = true ]
   # The build hash is of the effective source, fields and processing.

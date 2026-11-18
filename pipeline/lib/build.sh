@@ -28,8 +28,7 @@
 # what the layer was built from (lib/layerfile.sh, layer_provenance):
 #
 #   "provenance": { "origin": "committed",
-#     "source": { "path": "sample.geojson", "bytes": 12345,
-#                 "modified_at": "2026-01-01T00:00:00Z" },
+#     "source": { "path": "sample.geojson" },
 #     "overrides": { "source": ..., "processing": ... } or null,
 #     "build_sha256": "..." }
 #

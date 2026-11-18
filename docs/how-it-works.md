@@ -58,7 +58,8 @@ For each layer:
    Mercator COG, whose pixels are the share covered (0 to 255), with an
    overview per zoom. The prepared source is cached in `data/work/`.
 5. **Record** the build in `build.json` (counts, sizes, drops, zooms,
-   the hashes and source file times used to spot stale builds).
+   the source path, and the build hash and time that `--status` compares
+   with the layer file and the source files' times to spot stale builds).
 6. **Write `style.json`** from every built layer's `display`.
 
 Each file is written to a temporary name and moved into place, so the

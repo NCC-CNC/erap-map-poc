@@ -132,10 +132,10 @@ assert_sample_bounds() {
   [[ $output == *"normalising /vsizip/${BATS_TEST_TMPDIR}/sample.zip/sample.geojson"* ]]
 
   # build.json records a path under the input dir relative to it, and
-  # any other as it is; a /vsi path has no size or time.
-  run jq -r '.layers[] | "\(.name) \(.provenance.source.path) \(.provenance.source.bytes != null) \(.feature_count)"' \
+  # any other as it is.
+  run jq -r '.layers[] | "\(.name) \(.provenance.source.path) \(.feature_count)"' \
     "${PIPELINE_OUTPUT_DIR}/build.json"
-  [ "${lines[0]}" = "absolute ${SAMPLE} true 15" ]
-  [ "${lines[1]}" = "relative sub/sample.geojson true 15" ]
-  [ "${lines[2]}" = "vsi /vsizip/${BATS_TEST_TMPDIR}/sample.zip/sample.geojson false 15" ]
+  [ "${lines[0]}" = "absolute ${SAMPLE} 15" ]
+  [ "${lines[1]}" = "relative sub/sample.geojson 15" ]
+  [ "${lines[2]}" = "vsi /vsizip/${BATS_TEST_TMPDIR}/sample.zip/sample.geojson 15" ]
 }

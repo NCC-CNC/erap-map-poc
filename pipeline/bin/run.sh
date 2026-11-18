@@ -191,11 +191,6 @@ build_vector_layer() {
     jq -c --slurpfile c "$calculated" '. + {calculated_fields: $c[0]}' "$report" >"${report}.tmp"
     mv -- "${report}.tmp" "$report"
   fi
-  if [[ -f "${normalised}.joins.json" ]]; then
-    jq -c --slurpfile j "${normalised}.joins.json" \
-      '. + {joins: ($j[0] | map({path, layer, on, fields, rows, matched}))}' "$report" >"${report}.tmp"
-    mv -- "${report}.tmp" "$report"
-  fi
 }
 
 # check_layer_tiles ARCHIVE: the drop guard, run by build_tiles from inside
