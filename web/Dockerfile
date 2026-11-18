@@ -3,9 +3,8 @@
 # Web image: builds the app with Node, serves it with nginx (ADR 0003,
 # ADR 0004). Base images are pinned by tag and digest (multi-arch index)
 # in literal `FROM` lines so Dependabot can propose updates; it does not
-# resolve `ARG` values in `FROM`. Note upgrades in CHANGELOG.md. Keep Node
-# on the same version as pipeline/Dockerfile and the web-dev compose
-# service.
+# resolve `ARG` values in `FROM`. Keep Node on the same version as the
+# web-dev compose service and the CI web job.
 #
 # Runtime contract:
 #   - listens on 8080

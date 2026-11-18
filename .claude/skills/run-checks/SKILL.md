@@ -8,43 +8,25 @@ description: Run the CI gates locally in Docker before pushing - shellcheck, had
 The commands are in `CONTRIBUTING.md` (Checks), one block per CI job,
 with the same tools and versions as `.github/workflows/ci.yml`. Read that
 section and run its commands from the repo root in Git Bash; do not
-retype them from memory. Only Docker is needed.
+retype them from memory.
 
-## 1. Pick the jobs
+1. Pick the jobs from `git status` and `git diff --name-only <base>...`:
+   - only `docs/` or `*.md`: repo-hygiene only (all CI runs);
+   - `pipeline/`, `scripts/*.sh` or a Dockerfile: the pipeline job;
+   - `web/`, `pipeline/schema/` or `pipeline/tests/fixtures/` (the web
+     tests read them): the web job. A schema change also needs `npm run
+     layer-types`;
+   - `docker-compose.yml` or `.env.example`: the compose job;
+   - `pipeline/layers/*.yaml`: also `docker compose run --rm pipeline
+     --status`, which lists any problem in a layer file.
 
-From `git status` and `git diff --name-only main...`:
-
-- Only `docs/` or `*.md` changed: the repo-hygiene job only (that is all
-  CI runs).
-- `pipeline/`, `scripts/*.sh` or a Dockerfile: the pipeline job.
-- `web/`, or `pipeline/schema/` or `pipeline/tests/fixtures/` (the web
-  tests read them): the web job. A change to
-  `pipeline/layers/ecoregions.yaml` also changes
-  `pipeline/tests/fixtures/ecoregions_display.json` (the pipeline tests
-  check they agree).
-- `docker-compose.yml` or `.env.example`: the compose job.
-- `pipeline/layers/*.yaml`: also `docker compose run --rm pipeline
-  --status`, which lists any problem in a layer file.
-
-When unsure, or before marking a PR ready, run all four jobs.
-
-## 2. Run
-
-Start with `export MSYS_NO_PATHCONV=1` and the `repo=...` line from the
-block. Run each command on its own so a failure is easy to place; keep
-going after a failure so the report is complete. Timings: the first
-pipeline image build takes about 4 minutes (tippecanoe compiles), then
-seconds; the web checks take about 15 seconds after the first `npm ci`.
-
-The block's `docker compose build pipeline` and `docker compose build
-web` refresh the local images that compose runs, which is wanted here.
-Create no other image tags, and leave no containers behind (every
-command uses `--rm`).
-
-## 3. Report
-
-A short table: job, check, pass or fail. For each failure, the file and
-line and the message (shellcheck code, ESLint rule, failing test name,
-markdownlint rule, em dash location) and the fix. Fix only when asked,
-or when the fix is mechanical and in files the current change already
-touches; rerun the failed check after a fix. Say when everything passes.
+   When unsure, or before marking a PR ready, run all four.
+2. Start with `export MSYS_NO_PATHCONV=1` and the `repo=...` line. Run
+   each command on its own and keep going after a failure. The first
+   pipeline image build takes about 4 minutes, then seconds; the web
+   checks about 15 seconds. Create no other image tags; every container
+   uses `--rm`.
+3. Report a short table: job, check, pass or fail. For each failure the
+   file, line, message and fix. Fix only when asked, or when the fix is
+   mechanical and in files the change already touches; then rerun that
+   check.

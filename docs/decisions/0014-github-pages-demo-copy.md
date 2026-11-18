@@ -4,7 +4,9 @@
 
 Accepted. Extends 0004-docker-compose-and-static-pmtiles.md (another static
 host for the same files) and 0009-local-map-config.md (a committed map
-config, and a `requiredInputs` guard in the schema).
+config, and a `requiredInputs` guard in the schema). Since ADR 0015 the
+config is `map.pages.yaml`, `LAYER_*` settings are `processing` keys and
+`requiredInputs` is `require`.
 
 ## Context
 

@@ -1,80 +1,32 @@
 ---
 name: remove-layer
-description: Remove a map layer - delete its configs in pipeline/layers/, its built archive (.pmtiles for a vector layer, .cog.tif for a raster layer) and its build.json entry, regenerate style.json, and open a draft PR. Always confirms with the user first. Use when asked to remove, delete, drop or retire a layer, or to clean up an orphaned build.
+description: Remove a map layer - delete its layer file (pipeline/layers/<name>.yaml or pipeline/layers.local/<name>.yaml), its built archive (.pmtiles or .cog.tif) and its build.json entry, rewrite style.json, and open a draft PR for a committed layer. Always confirms with the user first. Use when asked to remove, delete, drop or retire a layer, or to clean up an orphaned build.
 ---
 
 # Remove a layer
 
-> **Layer files changed (design note 04, #115).** A layer is now one file,
-> `pipeline/layers/<layer>.yaml` (schema `pipeline/schema/layer.schema.json`),
-> and your map config is `map.config.yaml`. Where this skill says
-> `<layer>.env`, read the layer file's `source`, `fields` and `processing`
-> (a `profile` preset: `default`, `coverage`, `points` or `raster`);
-> `.style.json`, its `title`, `visible`, `order` and `display` (plain
-> MapLibre style layers, `themes`, `legend`, `popup`, `modal`);
-> `LAYER_CALCULATED` and `.rules.json`, `fields.calculated` (SQLite
-> expressions). `docker compose run --rm pipeline --status` lists any
-> problem in a layer file. This skill is rewritten in #120.
+Guide: `docs/guide.md`, Remove a layer. From the repo root in Git Bash.
 
-Destructive: always confirm before deleting anything. Commands run from
-the repo root in Git Bash. A layer is two configs in git
-(`pipeline/layers/<name>.env` and `<name>.style.json`) plus its build in
-`data/tiles/` (`<name>.pmtiles` for a vector layer, `<name>.cog.tif` for
-a raster layer, and an entry in `build.json`; `style.json`
-is rewritten without it). The source data in `data/raw/` (or `RAW_DIR`) is left alone;
-say so, and that the user can delete it by hand. So is a raster's
-prepared source in `data/work/raster/` (a cache, up to about 0.7 GB per
-source): `--remove` does not touch it, and the user can delete that
-folder to reclaim the space (other raster layers then prepare theirs
-again on their next build).
+1. Look: `docker compose run --rm pipeline --status <name>` and
+   `ls pipeline/layers/<name>.yaml pipeline/layers.local/<name>.yaml`.
+   An `orphan` is a build whose layer file is already gone.
+2. **Confirm with the user, always**, saying exactly what goes: the
+   layer file (committed or local), `data/tiles/<name>.pmtiles` or
+   `.cog.tif`, its `build.json` entry and its part of `style.json`. The
+   source data and `data/work/raster/` stay (offer to delete the latter
+   to reclaim space). For a committed layer, ask whether it goes for
+   everyone (a PR) or only from this user's map: then leave it out of
+   `layers` in their `map.config.yaml`, run `docker compose run --rm
+   pipeline --style-only`, and stop.
+3. Remove:
 
-## 1. Check and confirm
+   ```sh
+   git rm pipeline/layers/<name>.yaml          # or rm pipeline/layers.local/<name>.yaml
+   docker compose run --rm pipeline --remove <name>
+   ```
 
-```sh
-docker compose run --rm --build pipeline --status <name>
-git log --oneline -3 -- pipeline/layers/<name>.env
-```
-
-Tell the user exactly what will go: the two config files (if present),
-the archive and its size, and the build.json entry, and that the layer
-disappears from the map on the next reload. Ask for an explicit yes. Do
-not continue without one. An `orphan` (config already gone) needs only
-step 3.
-
-## 2. Remove the configs
-
-Branch from `main` (`chore/remove-layer-<name>`), then:
-
-```sh
-git rm pipeline/layers/<name>.env pipeline/layers/<name>.style.json
-```
-
-Search for other mentions of the layer (`git grep -n <name>`, for example
-in docs) and update them.
-
-## 3. Remove the build
-
-```sh
-docker compose run --rm --build pipeline --remove <name>
-```
-
-It drops the build.json entry (atomically), deletes the archive (the
-`.cog.tif` of a raster layer, and any `.pmtiles` left from a raster built
-before COGs) and rewrites `style.json`; the other layers are untouched. Exit 2 means
-nothing was built for that name. Then check:
-
-```sh
-docker compose run --rm --build pipeline --status
-```
-
-The layer is no longer listed; the others keep their state.
-
-## 4. Draft PR
-
-If configs were removed, commit only those deletions (and any doc
-updates), for example `chore(layers): remove <name>`, push, and open a
-DRAFT PR saying why the layer goes and that its local build was removed.
-Others with a local build run the same `--remove` command after pulling
-(or `--status` shows it as `orphan`). Never mark the PR ready: ready PRs
-merge themselves. Check `git status` first: nothing under `data/` or
-`tmp/` is staged.
+4. For a committed layer: a branch, a `feat: remove <name> layer` commit
+   with the layer file only (check `git status`: no data), and a draft
+   PR. Remove the layer from any `map.pages.yaml` override or `require`
+   in the same PR.
+5. Confirm with `--status` that it is gone.

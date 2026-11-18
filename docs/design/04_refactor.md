@@ -550,3 +550,20 @@ practical:
 - A `style.json` written before this keeps the old pop-up or modal until
   the layer's display is applied again (`--status` shows `restyle`); the
   app leaves such a pop-up out, so the layer is not clickable until then.
+
+## Settled in step 7
+
+- New docs as in the table above: `docs/how-it-works.md`, `docs/guide.md`,
+  `docs/layer-file.md` and READMEs in `pipeline/`, `scripts/` and `web/`;
+  README, CONTRIBUTING and CLAUDE.md rewritten for the new format.
+- `01_architecture.md` and `02_data_layers_and_popups.md` are removed:
+  the reference is in `layer-file.md`, the coverage and drop guard
+  decisions in ADR 0016, the #14 decisions, deferred items and open
+  questions in `03_milestones.md`, and per-layer notes stay as comments
+  in the layer files.
+- ADR 0015 records the refactor and supersedes 0007, 0009, 0011 and 0012;
+  0002, 0003, 0008, 0010, 0013 and 0014 say which of their settings
+  changed. `CHANGELOG.md` and `docs/handoffs/` are gone.
+- Skills: `restyle-layer` and `edit-popup` are now `edit-layer`, and
+  `layer-status` is part of `build-layers`; nine in all, each linking to
+  its `guide.md` section.

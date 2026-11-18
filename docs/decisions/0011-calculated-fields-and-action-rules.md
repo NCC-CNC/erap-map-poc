@@ -2,9 +2,10 @@
 
 ## Status
 
-Accepted. Extends 0002-bash-gdal-tippecanoe-pipeline.md (a new build step),
-0007-data-driven-layer-styles.md (a new optional per-layer file) and
-0009-local-map-config.md (two new override keys).
+Superseded by 0015-one-layer-file-and-a-maplibre-style.md: calculated
+fields stay in the pipeline, as SQLite expressions in the layer file
+(`fields.calculated`); an action recommendation is a calculated field,
+and there is no rules file.
 
 ## Context
 

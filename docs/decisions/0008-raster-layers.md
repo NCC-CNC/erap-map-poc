@@ -8,7 +8,8 @@ Superseded in part by 0010-raster-layers-as-cogs.md: a raster layer is now
 stored as one Cloud Optimized GeoTIFF, not PNG tiles in a `.pmtiles`
 archive, and built faster. The rest stands: binary rasters only, the share
 covered as a grey level, coloured in the map by a `color-relief` layer on
-a `raster-dem` source, display only.
+a `raster-dem` source, display only. The `LAYER_*` settings below are now
+the layer file's `processing.profile: raster` and its keys (ADR 0015).
 
 ## Context
 
