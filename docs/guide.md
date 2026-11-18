@@ -136,8 +136,9 @@ docker compose run --rm pipeline --status --json    # with every detail
 
 `--status` gives each layer a state: `current`, `stale` (its source,
 fields, processing or source data changed: rebuild it), `not built`, `source
-missing`, `invalid` (with the problems in its file), `disabled` (left out
-by the map config) or `orphan` (built, but its layer file is gone). It
+missing` or `invalid` (with the problems in its file, or built but its
+layer file is gone), with notes, such as for a layer the map config
+leaves out. It
 also shows build time, archive size, zooms, feature count and the
 largest tile.
 
@@ -220,7 +221,7 @@ docker compose run --rm pipeline --remove <layer>      # its archive, build.json
 The source data is left alone, and so is a raster's prepared source in
 `data/work/raster/` (delete it to reclaim the space). After pulling a
 change that removed a layer, `--status` shows your build of it as
-`orphan`; the same `--remove` clears it.
+`invalid` (no layer file); the same `--remove` clears it.
 
 ## Your own map and layers
 

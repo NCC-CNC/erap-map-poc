@@ -160,6 +160,18 @@ notes_of() {
   [ "$(sha256sum "$BUILD")" = "$before" ]
 }
 
+@test "style.json leaves out a built layer whose archive is missing, with a warning" {
+  add_layer alpha beta
+  run "$RUN"
+  [ "$status" -eq 0 ]
+  rm "${PIPELINE_OUTPUT_DIR}/beta.pmtiles"
+  run "$RUN" --style-only alpha
+  [ "$status" -eq 0 ]
+  [[ $output == *"layer beta: left out of style.json: its archive beta.pmtiles is missing: rebuild it"* ]]
+  run jq -r '[.sources | keys[]] | join(",")' "$STYLE"
+  [ "$output" = alpha ]
+}
+
 @test "--style-only recolours a raster layer, leaving the archive byte-identical" {
   add_layer alpha
   add_raster cover

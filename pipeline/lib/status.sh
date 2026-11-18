@@ -20,15 +20,13 @@
 #              found (for example RAW_DIR not set). A full build skips it.
 #              A previous build, if any, is still served.
 #   invalid    the layer file has problems (its schema, or the checks in
-#              lib/layerfile.sh). A previous build, if any, is still
-#              served.
-#   disabled   configured, but left out by the map config's `layers`: not
-#              built, and hidden from the map if built before.
-#   orphan     built, but its layer file is gone. `run.sh --remove`
-#              removes it.
+#              lib/layerfile.sh), or is gone (`run.sh --remove` removes
+#              the build). A previous build, if any, is still served.
 #
-# `notes` says why. A change to the pipeline itself does not make a layer
-# stale. The JSON (layer_status_json) is:
+# `notes` says why. A layer the map config's `layers` leaves out gets a
+# note: it is hidden from the map, and a full build skips it. A change
+# to the pipeline itself does not make a layer stale.
+# The JSON (layer_status_json) is:
 #
 #   { "layers": [ { "name": "sample", "state": "current", "notes": [],
 #       "configured": true, "enabled": true, "origin": "committed",
@@ -115,40 +113,26 @@ _source_files() {
 # build.json's layers array; the layer set is LAYERS_JSON.
 _layer_status() {
   local name=$1 out_dir=$2 entries=$3
-  local archive=""
-  local entry layer built_at=0 configured=false built=false state input="" type=""
-  local notes=() enabled=true
+  local entry layer archive built_at state input="" type="" notes=()
 
+  # The archive the build.json entry names, or the one found.
   entry=$(jq -c --arg n "$name" 'first(.[] | select(.name == $n)) // null' <<<"$entries")
-  if [[ $entry != null ]]; then
-    built=true
-    # The archive the entry names.
-    archive=$(jq -r '.file // ""' <<<"$entry")
-    if [[ -n $archive ]]; then
-      archive="${out_dir}/${archive}"
-    else
-      archive=$(layer_archives "$out_dir" "$name" | head -n 1) || archive=""
-    fi
-    built_at=$(jq -r '(.built_at | fromdateiso8601?) // 0' <<<"$entry")
+  archive=$(jq -r '.file // ""' <<<"$entry")
+  if [[ -n $archive ]]; then
+    archive="${out_dir}/${archive}"
   else
     archive=$(layer_archives "$out_dir" "$name" | head -n 1) || archive=""
   fi
+  built_at=$(jq -r '(.built_at | fromdateiso8601?) // 0' <<<"$entry")
   layer=$(jq -c --arg n "$name" 'first(.layers[] | select(.name == $n)) // null' "$LAYERS_JSON")
   if [[ $layer != null ]]; then
-    configured=true
-    enabled=$(jq -r '.enabled' <<<"$layer")
     input=$(jq -r '.input // ""' <<<"$layer")
     type=$(jq -r '.type // ""' <<<"$layer")
   fi
 
-  if [[ $configured == false ]]; then
-    state=orphan
-    notes+=("no ${name}.yaml: remove the build with --remove")
-    if [[ $built == false ]]; then notes+=("archive with no build.json entry"); fi
-  elif [[ $enabled == false ]]; then
-    state=disabled
-    notes+=("not in the map config's layers")
-    if [[ $built == true ]]; then notes+=("built before: hidden from the map, --remove removes it"); fi
+  if [[ $layer == null ]]; then
+    state=invalid
+    notes+=("no ${name}.yaml: run.sh --remove removes the build")
   else
     local problems=()
     mapfile -t problems < <(jq -r '.problems[]' <<<"$layer")
@@ -173,9 +157,8 @@ _layer_status() {
     elif [[ -n $missing ]]; then
       state="source missing"
       notes=("$missing")
-    elif [[ $built == false ]]; then
+    elif [[ $entry == null ]]; then
       state="not built"
-      if [[ -n $archive && -f $archive ]]; then notes+=("archive with no build.json entry"); fi
     else
       local recorded_build current_build
       recorded_build=$(jq -r '.provenance.build_sha256 // "-"' <<<"$entry")
@@ -188,21 +171,26 @@ _layer_status() {
       if ((${joined:-0} > built_at)); then notes+=("join table changed since the build"); fi
       if ((${#notes[@]} > 0)); then state=stale; else state=current; fi
     fi
+    if [[ $(jq -r '.enabled' <<<"$layer") == false ]]; then
+      notes+=("not in the map config's layers: hidden from the map, and a full build skips it")
+    fi
   fi
 
   local bytes=""
-  if [[ -n $archive && -f $archive ]]; then bytes=$(stat -c %s "$archive"); fi
+  if [[ -n $archive && -f $archive ]]; then
+    bytes=$(stat -c %s "$archive")
+    if [[ $entry == null ]]; then notes+=("archive with no build.json entry"); fi
+  fi
   if [[ -n $input ]]; then input=${input#"${PIPELINE_INPUT_DIR}"/}; fi
 
   jq -n -c \
     --arg name "$name" --arg state "$state" \
-    --argjson configured "$configured" --argjson built "$built" \
     --arg input "$input" --arg bytes "$bytes" --argjson entry "$entry" \
     --arg type "$type" --argjson layer "$layer" \
     '{name: $name, state: $state, notes: $ARGS.positional,
-      configured: $configured, enabled: $layer.enabled,
+      configured: ($layer != null), enabled: $layer.enabled,
       origin: (if $layer == null then null else ($layer.origin // "committed") end),
-      built: $built,
+      built: ($entry != null),
       type: (if $entry != null then ($entry.type // "vector")
              elif $type != "" then $type else null end),
       format: $entry.format,

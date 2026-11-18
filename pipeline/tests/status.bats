@@ -167,7 +167,7 @@ touch_later() {
   run "$RUN" --status --json
   [ "$status" -eq 0 ]
   run jq -r '.layers[] | "\(.name)|\(.state)|\(.notes | join(";"))"' <<<"$output"
-  [ "${lines[0]}" = "alpha|orphan|no alpha.yaml: remove the build with --remove" ]
+  [ "${lines[0]}" = "alpha|invalid|no alpha.yaml: run.sh --remove removes the build" ]
   [[ ${lines[1]} == "broken|invalid|broken.yaml: at '/processing/minzoom': "* ]]
   [ "${lines[3]}" = "nodata|source missing|source data not found: missing.gpkg" ]
   [ "${lines[2]}" = "dupid|invalid|dupid.yaml: display.layers: id fill is used twice" ]

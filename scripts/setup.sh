@@ -699,10 +699,12 @@ configure_env() {
 }
 
 # layer_states: one "NAME<TAB>STATE" line per configured layer, from the
-# pipeline's --status (which also builds the pipeline image when needed).
+# pipeline's --status (which also builds the pipeline image when needed);
+# STATE is "disabled" for a layer the map config leaves out.
 layer_states() {
   docker compose run --rm --build -T --entrypoint sh pipeline -c \
-    'run.sh --status --json | jq -r ".layers[] | select(.configured) | [.name, .state] | @tsv"'
+    'run.sh --status --json | jq -r ".layers[] | select(.configured)
+      | [.name, (if .enabled then .state else \"disabled\" end)] | @tsv"'
 }
 
 # join_names NAME...: "a, b and c".

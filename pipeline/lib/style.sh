@@ -40,19 +40,24 @@ GLYPHS_URL='https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf'
 # enables, its display from its layer file as it is now. The view,
 # basemap, title and locale come from the map config. A layer whose layer
 # file has problems, or that was built as another type, is left out with
-# an error and the function returns 1 once style.json is written. Atomic,
+# an error and the function returns 1 once style.json is written; one
+# whose archive is missing is left out with a warning (it is stale). Atomic,
 # like the archives. Nothing to do without a build.json.
 write_style() {
   local out_dir=$1
   local style="${out_dir}/style.json"
   [[ -s "${out_dir}/build.json" ]] || return 0
 
-  local entries configs='{}' map name built config type problem status=0
+  local entries configs='{}' map name built file config type problem status=0
   entries=$(build_entries "$out_dir")
   map=$(jq -c '.map // {}' "$LAYERS_JSON") || die "cannot read $LAYERS_JSON"
 
-  while IFS=$'\t' read -r name built; do
+  while IFS=$'\t' read -r name built file; do
     [[ -n $name ]] || continue
+    if [[ ! -f "${out_dir}/${file}" ]]; then
+      log_warn "layer $name: left out of style.json: its archive $file is missing: rebuild it"
+      continue
+    fi
     config=$(layer_get "$name" config)
     type=$(layer_get "$name" type)
     if [[ -z $config ]]; then
@@ -69,7 +74,7 @@ write_style() {
     fi
   done < <(jq -r --slurpfile set "$LAYERS_JSON" \
     '([$set[0].layers[] | select(.enabled) | .name]) as $enabled
-     | .[] | select(.name as $n | $enabled | index($n)) | "\(.name)\t\(.type // "vector")"' <<<"$entries")
+     | .[] | select(.name as $n | $enabled | index($n)) | "\(.name)\t\(.type // "vector")\t\(.file)"' <<<"$entries")
 
   local tmp="${style}.$$.tmp"
   jq -n --argjson entries "$entries" --argjson configs "$configs" \
