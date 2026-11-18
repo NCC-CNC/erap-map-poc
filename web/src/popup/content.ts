@@ -8,6 +8,7 @@ import {
   type PopupDefinition,
   type ValueSource,
 } from '../layers';
+import { numberLocale } from '../locale';
 
 /**
  * The parts of a clicked feature that pop-ups read. A MapLibre feature
@@ -22,9 +23,6 @@ export interface PopupFeature {
 
 /** Shown in place of a value the feature does not have. */
 export const MISSING = 'Not available';
-
-/** Fixed locale, so numbers look the same for every viewer and in tests. */
-const LOCALE = 'en-CA';
 
 /** A stat ready to show: the label and the formatted value. */
 export interface StatContent {
@@ -90,7 +88,7 @@ export function resolveFormat(format: Format = {}): NumberFormat {
  */
 export function formatNumber(value: number, format: Format = {}): string {
   const { decimals = 0, grouping = true, suffix } = resolveFormat(format);
-  const text = new Intl.NumberFormat(LOCALE, {
+  const text = new Intl.NumberFormat(numberLocale(), {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
     useGrouping: grouping,

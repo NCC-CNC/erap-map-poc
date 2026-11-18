@@ -72,7 +72,8 @@ with tests, and documented for people.
    step 1).
 9. **One map config format, two files.** Your git-ignored, optional
    `map.config.yaml` and the committed `map.pages.yaml` share one schema
-   with five keys: `view`, `basemap`, `layers` (which layers to build;
+   with these keys: `view` (and its zoom limits and bounds), `basemap`,
+   `title`, `locale` (see Settled in step 6), `layers` (which layers to build;
    default all), `overrides` (per layer, `source` and `processing` only)
    and `require` (fail if a layer's source is missing). Display and field
    overrides go, and so does provenance tracking. See Map config.
@@ -196,8 +197,10 @@ overrides:
 require: [protected_areas]
 ```
 
-- The pipeline writes `view` and `basemap` into `style.json` (`center`,
-  `zoom`, `metadata["erap:basemap"]`); the app needs nothing else.
+- The pipeline writes `view`, `basemap`, `title` and `locale` into
+  `style.json` (`center`, `zoom`, `metadata["erap:view"]`,
+  `["erap:basemap"]`, `["erap:title"]`, `["erap:locale"]`); the app needs
+  nothing else.
 - Compose keeps its services: `pipeline` reads `map.config.yaml` when it
   exists (`MAP_CONFIG` in `.env` picks another file); `pipeline-pages`
   reads `map.pages.yaml` and writes `data/pages/`; `web-pages` is
@@ -426,3 +429,34 @@ practical:
   `ecoregions.yaml`, also checked in `style.bats`. The old
   `expected_*display.json` and `web/src/test/layer-style.schema.json`
   are gone.
+
+## Settled in step 6
+
+- Your own layers go in `pipeline/layers.local/` (git-ignored), read
+  after `pipeline/layers/` (`PIPELINE_LOCAL_LAYERS_DIR`; under compose
+  `/repo/pipeline/layers.local`, in the read-only repo mount, so a missing
+  folder is no layers). A local layer is built, picked, overridden and
+  required like a committed one; `build.json` and `--status` give its
+  `origin` as `local`. A local file with the name of a committed layer
+  stops every mode (exit 2), naming both files.
+- `pipeline-pages` sets `PIPELINE_LOCAL_LAYERS_DIR` empty, so the Pages
+  copy never has your layers, and `publish-pages.sh` still refuses any
+  layer whose origin is not `committed`. It already worked on
+  `build.json` and `style.json` (step 3); nothing else changed there.
+- `view` has optional `minzoom`, `maxzoom` and `bounds` ([west, south,
+  east, north]); `center` and `zoom` are no longer required, so a view
+  can set limits only. The pipeline checks the limits are in order and
+  writes those set into `metadata["erap:view"]`; the app applies them with
+  `setMinZoom`, `setMaxZoom` and `setMaxBounds` once `style.json` is read,
+  whatever view the URL holds (MapLibre moves it inside).
+- The map config has optional `title` (the page title; `ERAP Map` in
+  `web/index.html` stays the default) and `locale` (a BCP 47 tag such as
+  `fr-CA`; default `en-CA`), in `metadata["erap:title"]` and
+  `["erap:locale"]`. The app formats every number it shows (pop-ups,
+  modals, legends, chart axes) in that locale, set when `style.json` is
+  read (`web/src/locale.ts`). The app's own text stays in English.
+- The old `map.config.json` is still only named in a warning when it is
+  found next to the map config, to say it is no longer read. There was
+  no other JSON config support or old schema left to remove.
+  `scripts/check-tiles-cache.sh` checks `style.json` and `build.json` in
+  place of `manifest.json`.

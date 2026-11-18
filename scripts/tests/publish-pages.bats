@@ -221,7 +221,7 @@ changes() {
   [ ! -s "$STUB_LOG" ]
 }
 
-@test "refuses local-only layers from a map config" {
+@test "refuses personal layers (layers.local/) and any other layer not committed" {
   pages_build
   set_entry forest '.provenance.origin = "local"'
   set_entry ecoregions '.provenance.origin = "config"'
@@ -271,4 +271,10 @@ changes() {
   want="protected_areas=$(yq -r '.overrides.protected_areas.source.path' "$SRC/map.pages.yaml")"
   got=$(bash -c "source <(sed -n '/^REQUIRED_SOURCES=(/,/^)/p' '$SRC/scripts/publish-pages.sh'); printf '%s\n' \"\${REQUIRED_SOURCES[@]}\"" | sort)
   [ "$want" = "$got" ]
+}
+
+@test "pipeline-pages builds from map.pages.yaml without your own layers or map config" {
+  run yq -r '.services["pipeline-pages"].environment
+    | [.PIPELINE_MAP_CONFIG, (.PIPELINE_LOCAL_LAYERS_DIR | tostring)] | join(",")' "$SRC/docker-compose.yml"
+  [ "$output" = "/repo/map.pages.yaml," ]
 }

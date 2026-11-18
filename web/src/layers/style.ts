@@ -1,4 +1,5 @@
 import type { LayerSpecification, SourceSpecification } from '@maplibre/maplibre-gl-style-spec';
+import { canonicalLocale, setNumberLocale } from '../locale';
 import { resolveLegend } from './legend';
 import { resolveSourceUrl, styleLayerId } from './spec';
 import type {
@@ -19,7 +20,10 @@ import type {
  * what MapLibre does not know about (title, order, visibility, legend,
  * themes, pop-up, modal), the layer file's `display` as it is
  * (`./layer.generated.ts`). The style's `center`, `zoom` and
- * `metadata["erap:basemap"]` are the opening view. A problem in one style
+ * `metadata["erap:basemap"]` are the opening view; `erap:view` (zoom
+ * limits and bounds), `erap:title` and `erap:locale` (numbers are
+ * formatted in it from when the style is read) the rest of the map
+ * config's settings (`mapDefaults`). A problem in one style
  * layer is left to MapLibre, whose error events name it (see
  * `../map/createMap.ts`), so the other layers still draw.
  */
@@ -30,7 +34,7 @@ export interface StyleLayers {
   layers: LayerDefinition[];
   /** A short message for the layer panel when something is wrong, else null. */
   problem: string | null;
-  /** How the map opens; null when style.json sets none. */
+  /** The map config's settings (view, limits, basemap, title, locale); null when style.json sets none. */
   map: MapDefaults | null;
 }
 
@@ -60,14 +64,59 @@ const inRange = (v: unknown, min: number, max: number): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
 
 /**
- * The opening view and basemap from a style's `center`, `zoom` and
- * `metadata["erap:basemap"]`, or null when it sets none. A value that is
+ * The map's settings from a style's `center`, `zoom` and metadata
+ * (`erap:basemap`, `erap:view` with `minzoom`, `maxzoom` and `bounds`,
+ * `erap:title`, `erap:locale`), or null when it sets none. A value that is
  * not valid is left out with a console warning.
  */
 export function mapDefaults(style: Json): MapDefaults | null {
   const defaults: MapDefaults = {};
   const { center, zoom } = style;
-  const basemap = isObject(style.metadata) ? style.metadata['erap:basemap'] : undefined;
+  const metadata = isObject(style.metadata) ? style.metadata : {};
+  const basemap = metadata['erap:basemap'];
+  const view = metadata['erap:view'];
+  const title = metadata['erap:title'];
+  const locale = metadata['erap:locale'];
+  if (view !== undefined) {
+    if (isObject(view)) {
+      const { minzoom, maxzoom, bounds } = view;
+      if (minzoom !== undefined) {
+        if (inRange(minzoom, 0, 24)) defaults.minZoom = minzoom;
+        else console.warn('style.json: erap:view minzoom ignored: not a number from 0 to 24.');
+      }
+      if (maxzoom !== undefined) {
+        if (inRange(maxzoom, defaults.minZoom ?? 0, 24)) defaults.maxZoom = maxzoom;
+        else console.warn('style.json: erap:view maxzoom ignored: not a number from minzoom to 24.');
+      }
+      if (bounds !== undefined) {
+        if (
+          Array.isArray(bounds) &&
+          bounds.length === 4 &&
+          inRange(bounds[0], -180, 180) &&
+          inRange(bounds[1], -90, 90) &&
+          inRange(bounds[2], -180, 180) &&
+          inRange(bounds[3], -90, 90) &&
+          bounds[0] < bounds[2] &&
+          bounds[1] < bounds[3]
+        ) {
+          defaults.bounds = [bounds[0], bounds[1], bounds[2], bounds[3]];
+        } else {
+          console.warn('style.json: erap:view bounds ignored: not [west, south, east, north].');
+        }
+      }
+    } else {
+      console.warn('style.json: erap:view ignored: not an object.');
+    }
+  }
+  if (title !== undefined) {
+    if (typeof title === 'string' && title.trim()) defaults.title = title;
+    else console.warn('style.json: erap:title ignored: not a text.');
+  }
+  if (locale !== undefined) {
+    const tag = typeof locale === 'string' ? canonicalLocale(locale) : null;
+    if (tag) defaults.locale = tag;
+    else console.warn('style.json: erap:locale ignored: not a language tag such as en-CA.');
+  }
   if (center !== undefined) {
     if (Array.isArray(center) && inRange(center[0], -180, 180) && inRange(center[1], -90, 90)) {
       defaults.center = [center[0], center[1]];
@@ -140,6 +189,9 @@ export function parseStyle(json: unknown, tilesBaseUrl: string): StyleLayers {
   }
   const sources = json.sources as Record<string, Json>;
   const metadata = isObject(json.metadata) ? json.metadata : {};
+  const map = mapDefaults(json);
+  // Numbers (legends here, pop-ups and modals later) in the map's locale.
+  setNumberLocale(map?.locale);
   const entries = (isObject(metadata['erap:layers']) ? metadata['erap:layers'] : {}) as Record<
     string,
     LayerMetadata
@@ -196,7 +248,7 @@ export function parseStyle(json: unknown, tilesBaseUrl: string): StyleLayers {
     };
   });
 
-  return { layers, problem: layers.length ? null : MESSAGES.empty, map: mapDefaults(json) };
+  return { layers, problem: layers.length ? null : MESSAGES.empty, map };
 }
 
 /** The `style.json` URL in the folder holding the archives. */

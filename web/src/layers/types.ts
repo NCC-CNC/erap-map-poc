@@ -124,9 +124,11 @@ export interface LayerDefinition {
 export type BasemapName = 'light' | 'dark';
 
 /**
- * How the map opens, from style.json's `center`, `zoom` and
- * `metadata["erap:basemap"]` (the map config's). Each is optional; the
- * app's own default applies where one is not set.
+ * The map's settings from the map config, as style.json has them: its
+ * `center` and `zoom`, and `metadata["erap:basemap"]`, `["erap:view"]`
+ * (`minzoom`, `maxzoom`, `bounds`), `["erap:title"]` and
+ * `["erap:locale"]`. Each is optional; the app's own default applies where
+ * one is not set.
  */
 export interface MapDefaults {
   /** Opening centre, `[longitude, latitude]`. */
@@ -135,4 +137,14 @@ export interface MapDefaults {
   zoom?: number;
   /** Opening basemap. */
   basemap?: BasemapName;
+  /** The furthest out the map can zoom. */
+  minZoom?: number;
+  /** The furthest in the map can zoom. */
+  maxZoom?: number;
+  /** `[west, south, east, north]`: the map cannot be panned outside them. */
+  bounds?: [number, number, number, number];
+  /** The map's name, the page title. */
+  title?: string;
+  /** The locale numbers are formatted in, a BCP 47 tag such as `fr-CA`. */
+  locale?: string;
 }

@@ -6,6 +6,10 @@
 #   { "version": 8, "name": "ERAP Map data layers",
 #     "metadata": {
 #       "erap:basemap": "light",                 (map config; else absent)
+#       "erap:view": {"minzoom": 2, "maxzoom": 14,
+#                     "bounds": [w, s, e, n]},   (map config's view, those set)
+#       "erap:title": "ERAP Map",                (map config; else absent)
+#       "erap:locale": "en-CA",                  (map config; else absent)
 #       "erap:layers": { "<layer>": { "title": ..., "type": "vector",
 #           "order": 10, "visible": true, "legend": {...},
 #           "themes": [...], "popup": {...}, "modal": {...} } } },
@@ -39,8 +43,8 @@ GLYPHS_URL='https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf'
 # others keep their part of the style.json there was, so a display change
 # reaches the map only through a build or --style-only (and --status shows
 # it as restyle until then). A layer whose layer file has problems keeps
-# its old part, or is left out with a warning if it has none. The view and
-# basemap come from the map config. Each layer taken from its layer file
+# its old part, or is left out with a warning if it has none. The view,
+# basemap, title and locale come from the map config. Each layer taken from its layer file
 # has its display hash recorded in build.json (build_set_display). Atomic,
 # like the archives. Nothing to do without a build.json. A manifest.json
 # from before style.json and build.json is removed.
@@ -113,7 +117,11 @@ write_style() {
     | ($parts | map(.layers[])) as $layers
     | {version: 8, name: "ERAP Map data layers",
        metadata: ({"erap:layers": ($parts | map({key: .name, value: .meta}) | from_entries)}
-         + (if $map.basemap then {"erap:basemap": $map.basemap} else {} end))}
+         + (if $map.basemap then {"erap:basemap": $map.basemap} else {} end)
+         + ($map | with_entries(select(.key | IN("minzoom", "maxzoom", "bounds")))
+            | if . == {} then {} else {"erap:view": .} end)
+         + (if $map.title then {"erap:title": $map.title} else {} end)
+         + (if $map.locale then {"erap:locale": $map.locale} else {} end))}
       + (if $map.center then {center: $map.center} else {} end)
       + (if $map.zoom != null then {zoom: $map.zoom} else {} end)
       + (if any($layers[]; .type == "symbol" and .layout["text-field"] != null) then {glyphs: $glyphs} else {} end)

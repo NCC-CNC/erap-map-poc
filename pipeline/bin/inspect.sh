@@ -53,6 +53,7 @@ source "${PIPELINE_ROOT}/lib/calculated.sh"
 
 PIPELINE_INPUT_DIR=${PIPELINE_INPUT_DIR:-/data/raw}
 PIPELINE_LAYERS_DIR=${PIPELINE_LAYERS_DIR:-${PIPELINE_ROOT}/layers}
+PIPELINE_LOCAL_LAYERS_DIR=${PIPELINE_LOCAL_LAYERS_DIR-${PIPELINE_ROOT}/layers.local}
 
 # Fields with at most this many distinct values get their values listed.
 INSPECT_MAX_VALUES=12
