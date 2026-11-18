@@ -1,15 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "Map config",
-  "description": "Which layers to build and how the map opens: your git-ignored map.config.yaml, or the committed map.pages.yaml for the GitHub Pages copy. Every key is optional. Design note 04.",
+  "description": "Which layers to build, and the map's view, basemap, title and number locale: your git-ignored map.config.yaml, or the committed map.pages.yaml for the GitHub Pages copy. Every key is optional. Design note 04.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
     "view": {
-      "description": "Where the map opens, unless the URL says otherwise.",
+      "description": "Where the map opens (center and zoom, unless the URL says otherwise), and how far it can zoom and pan.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["center", "zoom"],
+      "minProperties": 1,
       "properties": {
         "center": {
           "description": "[longitude, latitude] in degrees.",
@@ -21,8 +21,43 @@
           "minItems": 2,
           "maxItems": 2
         },
-        "zoom": { "description": "Opening zoom.", "type": "number", "minimum": 0, "maximum": 24 }
+        "zoom": { "description": "Opening zoom.", "type": "number", "minimum": 0, "maximum": 24 },
+        "minzoom": {
+          "description": "The furthest out the map can zoom. Not above maxzoom.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 24
+        },
+        "maxzoom": {
+          "description": "The furthest in the map can zoom.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 24
+        },
+        "bounds": {
+          "description": "[west, south, east, north] in degrees: the map cannot be panned outside them.",
+          "type": "array",
+          "prefixItems": [
+            { "type": "number", "minimum": -180, "maximum": 180 },
+            { "type": "number", "minimum": -90, "maximum": 90 },
+            { "type": "number", "minimum": -180, "maximum": 180 },
+            { "type": "number", "minimum": -90, "maximum": 90 }
+          ],
+          "minItems": 4,
+          "maxItems": 4
+        }
       }
+    },
+    "title": {
+      "description": "The map's name, shown as the page title. Default ERAP Map.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "locale": {
+      "description": "The locale numbers are formatted in (a BCP 47 language tag such as en-CA or fr-CA). Default en-CA. The app's own text is not translated.",
+      "type": "string",
+      "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
     },
     "basemap": {
       "description": "The basemap the map opens on.",

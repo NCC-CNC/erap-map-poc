@@ -1,6 +1,7 @@
 import { validateStyleMin } from '@maplibre/maplibre-gl-style-spec';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { buildPopupContent } from '../popup/content';
+import { buildPopupContent, formatNumber } from '../popup/content';
+import { DEFAULT_LOCALE, numberLocale, setNumberLocale } from '../locale';
 import {
   TILES,
   expectedModalStyle,
@@ -13,7 +14,10 @@ import {
 } from '../test/fixtures';
 import { MESSAGES, StyleError, loadStyle, mapDefaults, parseStyle, styleUrl } from './style';
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  setNumberLocale();
+});
 
 describe("the test layers' style.json, as the pipeline writes it", () => {
   it('passes the MapLibre style spec validator', () => {
@@ -149,6 +153,31 @@ describe('parseStyle', () => {
     (style.metadata as Record<string, unknown>)['erap:basemap'] = 'dark';
     expect(parseStyle(style, TILES).map).toEqual({ center: [-100, 55], zoom: 4, basemap: 'dark' });
   });
+
+  it('reads the zoom limits, bounds, title and locale, and formats numbers in that locale', () => {
+    const style = expectedStyle() as Record<string, unknown>;
+    Object.assign(style.metadata as Record<string, unknown>, {
+      'erap:view': { minzoom: 2, maxzoom: 12, bounds: [-141, 41.5, -52, 84] },
+      'erap:title': 'Carte de conservation',
+      'erap:locale': 'fr-ca',
+    });
+    expect(parseStyle(style, TILES).map).toEqual({
+      minZoom: 2,
+      maxZoom: 12,
+      bounds: [-141, 41.5, -52, 84],
+      title: 'Carte de conservation',
+      locale: 'fr-CA',
+    });
+    expect(numberLocale()).toBe('fr-CA');
+    const want = new Intl.NumberFormat('fr-CA', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(1234.5);
+    expect(formatNumber(1234.5, { decimals: 1 })).toBe(want);
+    expect(want).not.toBe('1,234.5');
+
+    // A style without one goes back to the default.
+    parseStyle(expectedStyle(), TILES);
+    expect(numberLocale()).toBe(DEFAULT_LOCALE);
+    expect(formatNumber(1234.5, { decimals: 1 })).toBe('1,234.5');
+  });
 });
 
 describe('mapDefaults', () => {
@@ -157,6 +186,18 @@ describe('mapDefaults', () => {
     expect(mapDefaults({ center: [200, 0], zoom: 40, metadata: { 'erap:basemap': 'neon' } })).toBeNull();
     expect(warn).toHaveBeenCalledTimes(3);
     expect(mapDefaults({ zoom: 2 })).toEqual({ zoom: 2 });
+    expect(
+      mapDefaults({
+        metadata: {
+          'erap:view': { minzoom: 30, maxzoom: -1, bounds: [10, 0, -10, 5] },
+          'erap:title': '',
+          'erap:locale': 'not a locale!',
+        },
+      }),
+    ).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(8);
+    // maxzoom below a valid minzoom is left out.
+    expect(mapDefaults({ metadata: { 'erap:view': { minzoom: 5, maxzoom: 3 } } })).toEqual({ minZoom: 5 });
   });
 });
 

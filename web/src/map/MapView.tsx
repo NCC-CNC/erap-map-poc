@@ -18,7 +18,7 @@ import { createMap, setBasemapStyle, setLayerTheme, setLayerVisibility, tilesBas
 import { LayerList } from './LayerList';
 import { MapPanel } from './MapPanel';
 import { attachPopups, type PopupHandlers } from './popups';
-import { openingView } from './view';
+import { mapLimits, openingView, pageTitle } from './view';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 const NO_LAYERS: readonly LayerDefinition[] = [];
@@ -27,8 +27,9 @@ const NO_LAYERS: readonly LayerDefinition[] = [];
  * Full-page map with a panel holding the basemap toggle and the layer list.
  * The data layers come from the pipeline's `style.json`, fetched once
  * when the map is created and drawn over the basemap, which shows without
- * waiting for it. Its opening view and basemap (the map config's) are
- * applied once it has loaded, unless the URL already holds a view. A layer
+ * waiting for it. The map config's settings in it are applied once it has
+ * loaded: the page title, zoom limits and bounds, and the opening view
+ * (unless the URL already holds one) and basemap. A layer
  * MapLibre reports an error for is marked in the layer panel.
  * Clicking a feature of a visible layer with a pop-up definition opens its
  * pop-up, and one with a modal template opens the modal dialog (ADR 0012),
@@ -83,7 +84,13 @@ export function MapView() {
       currentLayers.current = result.layers;
       setLayers(result.layers);
       setProblem(result.problem);
-      // The opening view and basemap from style.json (the map config's), once known.
+      // The map config's settings from style.json, once known: the page
+      // title, the zoom limits and bounds, the opening view and basemap.
+      document.title = pageTitle(result.map);
+      const limits = mapLimits(result.map);
+      if (limits?.minZoom !== undefined) created.setMinZoom(limits.minZoom);
+      if (limits?.maxZoom !== undefined) created.setMaxZoom(limits.maxZoom);
+      if (limits?.maxBounds) created.setMaxBounds(limits.maxBounds);
       const view = openingView(result.map, hash);
       if (view) created.jumpTo(view);
       if (result.map?.basemap) setTheme(result.map.basemap);

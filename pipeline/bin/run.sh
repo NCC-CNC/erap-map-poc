@@ -3,11 +3,13 @@
 # Pipeline entry point: build tiles (vector tiles in a .pmtiles archive, or
 # one COG for a raster layer, ADR 0010) for every layer, or only the layers
 # named on the command line. Each layer is one file, <layer>.yaml in
-# pipeline/layers/ (schema/layer.schema.json, design note 04): its source,
+# pipeline/layers/, or pipeline/layers.local/ for your own (git-ignored;
+# schema/layer.schema.json, design note 04): its source,
 # fields, processing preset and display. A map config (PIPELINE_MAP_CONFIG;
 # map.config.yaml at the repo root under compose, map.pages.yaml for the
 # GitHub Pages copy; schema/map.schema.json) can pick the layers, override
-# their source and processing, require sources and set the opening view;
+# their source and processing, require sources and set the view, title and
+# number locale of the map;
 # without one every layer is built as it is.
 #
 # Usage: run.sh [-h|--help] [layer ...]
@@ -52,6 +54,11 @@
 #                        lib/build.sh)
 #                                                      (default /data/tiles)
 #   PIPELINE_LAYERS_DIR  layer files                   (default <pipeline>/layers)
+#   PIPELINE_LOCAL_LAYERS_DIR
+#                        your own layer files (layers.local/, git-ignored),
+#                        built like the others; a name that repeats a
+#                        committed layer is an error. Empty for none.
+#                                                      (default <pipeline>/layers.local)
 #   PIPELINE_MAP_CONFIG  map config; none if unset or the file is missing
 #                                                      (default unset)
 #   PIPELINE_WORK_DIR    cache kept between runs: raster sources prepared
@@ -94,6 +101,7 @@ source "${PIPELINE_ROOT}/lib/status.sh"
 PIPELINE_INPUT_DIR=${PIPELINE_INPUT_DIR:-/data/raw}
 PIPELINE_OUTPUT_DIR=${PIPELINE_OUTPUT_DIR:-/data/tiles}
 PIPELINE_LAYERS_DIR=${PIPELINE_LAYERS_DIR:-${PIPELINE_ROOT}/layers}
+PIPELINE_LOCAL_LAYERS_DIR=${PIPELINE_LOCAL_LAYERS_DIR-${PIPELINE_ROOT}/layers.local}
 PIPELINE_WORK_DIR=${PIPELINE_WORK_DIR-/data/work}
 
 usage() {
@@ -247,7 +255,7 @@ style_only_main() {
       if ! layer_archive "$PIPELINE_OUTPUT_DIR" "$name" >/dev/null; then
         log_warn "skipping $name: archive missing (rebuild it)"
       elif ! layer_known "$name"; then
-        log_warn "skipping $name: no ${name}.yaml in $PIPELINE_LAYERS_DIR"
+        log_warn "skipping $name: no ${name}.yaml in $(layer_dirs)"
       elif ! layer_enabled "$name"; then
         log_info "skipping $name: not enabled in the map config"
       else
@@ -271,7 +279,7 @@ style_only_main() {
       return 2
     fi
     if ! layer_known "$name"; then
-      log_error "no layer file for '$name' in $PIPELINE_LAYERS_DIR"
+      log_error "no layer file for '$name' in $(layer_dirs)"
       return 2
     fi
     if ! layer_enabled "$name"; then
@@ -350,7 +358,7 @@ remove_main() {
     log_error "--remove needs at least one layer name"
     return 2
   fi
-  local name
+  local name file
   for name in "$@"; do
     if ! layer_name_valid "$name"; then
       log_error "invalid layer name: $name"
@@ -369,7 +377,8 @@ remove_main() {
     remove_other_archives "$name" ""
     log_info "removed layer $name"
     if layer_enabled "$name"; then
-      log_warn "${name}.yaml is still in ${PIPELINE_LAYERS_DIR}: delete it (or leave it out of the map config's layers), or the next full build makes the layer again"
+      file=$(layer_get "$name" file)
+      log_warn "${name}.yaml is still in ${file%/*}: delete it (or leave it out of the map config's layers), or the next full build makes the layer again"
     fi
   done
   (write_style "$PIPELINE_OUTPUT_DIR")
@@ -417,7 +426,7 @@ build_main() {
       if [[ -n $(layer_names) ]]; then
         die "no layers are enabled in the map config"
       fi
-      die "no layer files in $PIPELINE_LAYERS_DIR"
+      die "no layer files in $(layer_dirs)"
     fi
   fi
 
@@ -428,7 +437,7 @@ build_main() {
       return 2
     fi
     if ! layer_known "$name"; then
-      log_error "no layer file for layer '$name' in $PIPELINE_LAYERS_DIR"
+      log_error "no layer file for layer '$name' in $(layer_dirs)"
       return 2
     fi
     if ! layer_enabled "$name"; then

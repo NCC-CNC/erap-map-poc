@@ -25,7 +25,7 @@
 #   - DIR holds build.json and style.json, and every archive the
 #     build.json names (<layer>.pmtiles, <layer>.cog.tif);
 #   - every layer is a committed one (provenance origin `committed`): no
-#     local-only layer from a map config;
+#     personal layer from layers.local/ (origin `local`);
 #   - each layer in REQUIRED_SOURCES below was built from that source
 #     (provenance.source.path), so a non-public source is never published;
 #   - the files total at most 1 GB, the Pages site limit (a warning over

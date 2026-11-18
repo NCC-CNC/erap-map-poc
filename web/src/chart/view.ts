@@ -1,5 +1,6 @@
 import type { ChartConfiguration, TooltipItem } from 'chart.js';
 import type { Format } from '../layers';
+import { numberLocale } from '../locale';
 import { formatNumber } from '../popup/content';
 
 /**
@@ -68,6 +69,8 @@ export function chartConfig(view: ChartView): ChartConfiguration {
     type: view.type,
     data: { labels: view.labels, datasets },
     options: {
+      // Axis numbers in the map config's locale, as the pop-up's are.
+      locale: numberLocale(),
       animation: false,
       responsive: true,
       maintainAspectRatio: false,

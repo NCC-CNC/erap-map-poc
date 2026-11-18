@@ -1,4 +1,5 @@
 import type { LayerSpecification } from '@maplibre/maplibre-gl-style-spec';
+import { numberLocale } from '../locale';
 import type { Legend, LegendConfig, LegendItem } from './types';
 
 /**
@@ -36,8 +37,6 @@ const SHAPE: Readonly<Record<string, Legend['shape']>> = {
   'color-relief': 'square',
 };
 
-const LOCALE = 'en-CA';
-
 const isColor = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 
 /**
@@ -46,9 +45,9 @@ const isColor = (v: unknown): v is string => typeof v === 'string' && v.length >
  * 10, 2 from 1, else 3).
  */
 export function formatBound(value: number, span?: number): string {
-  if (span === undefined) return new Intl.NumberFormat(LOCALE).format(value);
+  if (span === undefined) return new Intl.NumberFormat(numberLocale()).format(value);
   const decimals = span >= 100 ? 0 : span >= 10 ? 1 : span >= 1 ? 2 : 3;
-  return new Intl.NumberFormat(LOCALE, { maximumFractionDigits: decimals }).format(value);
+  return new Intl.NumberFormat(numberLocale(), { maximumFractionDigits: decimals }).format(value);
 }
 
 /** Legend kind and items from a colour value, or null if not simple enough. */

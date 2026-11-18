@@ -70,8 +70,9 @@ services:
       # The layer files (<layer>.yaml) from the repo, so editing a layer
       # needs no image rebuild: rerun the pipeline and reload the map.
       - ./pipeline/layers:/opt/pipeline/layers:ro
-      # The repo, read only, for your map config (map.config.yaml,
-      # git-ignored, design note 04).
+      # The repo, read only, for your map config (map.config.yaml) and your
+      # own layers (pipeline/layers.local/), both
+      # git-ignored (design note 04).
       # The folder rather than the file: a bind mount of a missing file
       # would make a directory in its place, and the config is optional.
       - .:/repo:ro
@@ -79,6 +80,8 @@ services:
       # MAP_CONFIG (in .env) picks another config file, relative to the
       # repo root. No file there means every layer, as it is.
       PIPELINE_MAP_CONFIG: /repo/${MAP_CONFIG:-map.config.yaml}
+      # Your own layers (git-ignored, design note 04), in the repo mount.
+      PIPELINE_LOCAL_LAYERS_DIR: /repo/pipeline/layers.local
 
   # The GitHub Pages copy (ADR 0014): the pipeline with the committed
   # map.pages.yaml (smaller rasters, the public protected areas source,
@@ -94,6 +97,8 @@ services:
       - ./data/pages:/data/tiles
     environment:
       PIPELINE_MAP_CONFIG: /repo/map.pages.yaml
+      # The public copy has committed layers only: not your layers.local/.
+      PIPELINE_LOCAL_LAYERS_DIR: ""
 
   # Frontend development: Vite with hot reload on http://localhost:5173,
   # serving data/tiles/ at /tiles/ like the web image.

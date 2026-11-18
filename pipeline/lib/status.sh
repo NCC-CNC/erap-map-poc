@@ -61,7 +61,8 @@
 # file's when not built. A raster layer (ADR 0010) has `width` and
 # `height` (of its COG, in pixels) and no `feature_count`; a vector layer
 # the other way round. A raster built as PNG tiles before COGs has
-# `tile_count` instead and is stale. `origin` (committed) and `enabled`
+# `tile_count` instead and is stale. `origin` (committed, or local for a
+# layer in layers.local/) and `enabled`
 # are from the layer files, null when not configured.
 
 # _newest_mtime FILE...: the newest modification time (epoch seconds) of the
@@ -253,7 +254,7 @@ _layer_status() {
     --arg type "$type" --argjson layer "$layer" \
     '{name: $name, state: $state, notes: $ARGS.positional,
       configured: $configured, enabled: $layer.enabled,
-      origin: (if $layer == null then null else "committed" end),
+      origin: (if $layer == null then null else ($layer.origin // "committed") end),
       built: $built,
       type: (if $entry != null then ($entry.type // "vector")
              elif $type != "" then $type else null end),

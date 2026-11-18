@@ -1,21 +1,27 @@
 #!/usr/bin/env bash
 # Layer files and the map config (design note 04).
 #
-# A layer is one file, <layer>.yaml in PIPELINE_LAYERS_DIR, with `source`,
-# `fields`, `processing` and `display` (schema/layer.schema.json). The
-# layer name is the file name. The map config (PIPELINE_MAP_CONFIG: your
-# map.config.yaml, or map.pages.yaml for the GitHub Pages copy;
-# schema/map.schema.json) picks the layers to build, overrides their
-# `source` and `processing`, and sets the opening view.
+# A layer is one file, <layer>.yaml in PIPELINE_LAYERS_DIR (committed) or
+# PIPELINE_LOCAL_LAYERS_DIR (layers.local/, git-ignored: your own layers,
+# built the same way), with `source`, `fields`, `processing` and `display`
+# (schema/layer.schema.json). The layer name is the file name; a local
+# layer with the name of a committed one is an error. The map config
+# (PIPELINE_MAP_CONFIG: your map.config.yaml, or map.pages.yaml for the
+# GitHub Pages copy; schema/map.schema.json) picks the layers to build,
+# overrides their `source` and `processing`, and sets the map's view,
+# basemap, title and number locale.
 #
 # resolve_layers reads them all once per run, before any data: each file is
 # checked with jv against its schema, then by layer_problems for what a
 # schema cannot say, and written as JSON with the map config's overrides
 # applied. The result, LAYERS_JSON, is:
 #
-#   { "map": {"center": [lon, lat], "zoom": 3, "basemap": "light"} or null,
+#   { "map": {"center": [lon, lat], "zoom": 3, "minzoom": 2, "maxzoom": 14,
+#             "bounds": [w, s, e, n], "basemap": "light", "title": "...",
+#             "locale": "en-CA"} (those the map config sets) or null,
 #     "require": ["protected_areas"],
 #     "layers": [ { "name": "ecoregions", "file": ".../ecoregions.yaml",
+#         "origin": "committed" (PIPELINE_LAYERS_DIR) or "local",
 #         "config": ".../ecoregions.json" (the effective layer, or null when
 #                   the file is not valid),
 #         "enabled": true, "problems": [],
@@ -137,6 +143,19 @@ _map_config() {
     log_error "cannot read the map config $config"
     return 2
   }
+  # What the schema cannot say: the zoom limits and the bounds in order.
+  problems=$(jq -r '.view // {}
+    | (if .minzoom != null and .maxzoom != null and .minzoom > .maxzoom
+       then "view: minzoom (\(.minzoom)) is above maxzoom (\(.maxzoom))" else empty end),
+      (if .bounds != null and (.bounds[0] >= .bounds[2] or .bounds[1] >= .bounds[3])
+       then "view: bounds are not [west, south, east, north] with west below east and south below north"
+       else empty end)' "$out")
+  if [[ -n $problems ]]; then
+    local line
+    while IFS= read -r line; do log_error "map config: $line"; done <<<"$problems"
+    log_error "the map config has problems (above); nothing was changed"
+    return 2
+  fi
 }
 
 # resolve_layers OUT_DIR: read every layer file and the map config into
@@ -149,8 +168,18 @@ resolve_layers() {
   map="${out}/map.json"
   _map_config "$map" || return 2
 
-  local file name rows=() problems overrides config sha_build sha_display input type
-  for file in "$PIPELINE_LAYERS_DIR"/*.yaml; do
+  local file name origin dir rows=() problems overrides config sha_build sha_display input type
+  local -A seen=()
+  local clashes=() files=()
+  # Committed layers first, then your own in layers.local/ (if any).
+  for file in "$PIPELINE_LAYERS_DIR"/*.yaml; do files+=("committed|$file"); done
+  dir=${PIPELINE_LOCAL_LAYERS_DIR:-}
+  if [[ -n $dir && -d $dir ]]; then
+    for file in "$dir"/*.yaml; do files+=("local|$file"); done
+  fi
+  for file in "${files[@]}"; do
+    origin=${file%%|*}
+    file=${file#*|}
     [[ -f $file ]] || continue
     name=${file##*/}
     name=${name%.yaml}
@@ -158,6 +187,11 @@ resolve_layers() {
       log_warn "ignoring ${file##*/}: a layer name has lower case letters, digits, _ and - only"
       continue
     fi
+    if [[ -n ${seen[$name]:-} ]]; then
+      clashes+=("$file")
+      continue
+    fi
+    seen[$name]=1
     overrides=$(jq -c --arg n "$name" '.overrides[$n] // null' "$map")
     config="" sha_build="" sha_display="" input="" type=""
     # On a schema problem, `problems` holds jv's findings.
@@ -183,11 +217,12 @@ resolve_layers() {
         type=$(jq -r 'if .processing.profile == "raster" then "raster" else "vector" end' "$config")
       fi
     fi
-    rows+=("$(jq -n -c --arg name "$name" --arg file "$file" --arg config "$config" \
+    rows+=("$(jq -n -c --arg name "$name" --arg file "$file" --arg origin "$origin" \
+      --arg config "$config" \
       --arg problems "$problems" --argjson overrides "$overrides" \
       --arg build "$sha_build" --arg display "$sha_display" \
       --arg input "$input" --arg type "$type" \
-      '{name: $name, file: $file,
+      '{name: $name, file: $file, origin: $origin,
         config: (if $config == "" then null else $config end),
         problems: ($problems | split("\n") | map(select(. != ""))),
         overrides: $overrides,
@@ -196,17 +231,26 @@ resolve_layers() {
         build_sha256: (if $build == "" then null else $build end),
         display_sha256: (if $display == "" then null else $display end)}')")
   done
+  if ((${#clashes[@]} > 0)); then
+    for file in "${clashes[@]}"; do
+      name=${file##*/}
+      log_error "${file}: there is a committed layer called ${name%.yaml} (${PIPELINE_LAYERS_DIR}/${name}): give your layer another name"
+    done
+    log_error "the local layers have problems (above); nothing was changed"
+    return 2
+  fi
 
   LAYERS_JSON="${out}/layers.json"
   printf '%s\n' "${rows[@]}" | jq -s --slurpfile m "$map" '
     $m[0] as $map
-    | {map: (($map.view // {}) + (if $map.basemap then {basemap: $map.basemap} else {} end)
+    | {map: (($map.view // {})
+             + ($map | with_entries(select(.key | IN("basemap", "title", "locale"))))
              | if . == {} then null else . end),
        require: ($map.require // []),
        layers: map(select(. != null) | .enabled = ($map.layers == null
                    or (.name as $n | $map.layers | index($n) != null)))}' >"$LAYERS_JSON" \
     || {
-      log_error "cannot resolve the layer files in $PIPELINE_LAYERS_DIR"
+      log_error "cannot resolve the layer files in $(layer_dirs)"
       return 2
     }
 
@@ -220,7 +264,7 @@ resolve_layers() {
   if [[ -n $unknown ]]; then
     local line
     while IFS= read -r line; do
-      log_error "map config: ${line%%: *} names layer '${line#*: }', which has no ${line#*: }.yaml in $PIPELINE_LAYERS_DIR"
+      log_error "map config: ${line%%: *} names layer '${line#*: }', which has no ${line#*: }.yaml in $(layer_dirs)"
     done <<<"$unknown"
     log_error "the map config has problems (above); nothing was changed"
     return 2
@@ -234,6 +278,15 @@ resolve_layers() {
       return 2
     fi
   done
+}
+
+# layer_dirs: where the layer files are read from, for messages.
+layer_dirs() {
+  if [[ -n ${PIPELINE_LOCAL_LAYERS_DIR:-} && -d $PIPELINE_LOCAL_LAYERS_DIR ]]; then
+    printf '%s or %s\n' "$PIPELINE_LAYERS_DIR" "$PIPELINE_LOCAL_LAYERS_DIR"
+  else
+    printf '%s\n' "$PIPELINE_LAYERS_DIR"
+  fi
 }
 
 # layer_names [enabled]: every layer name in the layer set, or only the
@@ -277,8 +330,8 @@ layer_check() {
 }
 
 # layer_provenance NAME INPUT: NAME's `provenance` for its build.json entry, as
-# compact JSON: where the layer comes from (`origin`, committed: the layers
-# dir), its source data (INPUT, the resolved source path: path relative to
+# compact JSON: where the layer comes from (`origin`: committed, the layers
+# dir, or local, layers.local/), its source data (INPUT, the resolved source path: path relative to
 # the input dir, total size of its files, newest modification time; null
 # fields for a /vsi path), the map config's overrides as applied (null for
 # none) and the hashes of what it was built from, which --status compares
@@ -291,7 +344,7 @@ layer_provenance() {
   jq -c --arg n "$name" --arg input "${input#"${PIPELINE_INPUT_DIR}"/}" \
     --arg bytes "$bytes" --arg mtime "$mtime" \
     'first(.layers[] | select(.name == $n))
-     | {origin: "committed",
+     | {origin,
         source: {path: $input,
                  bytes: (if $bytes == "" then null else ($bytes | tonumber) end),
                  modified_at: (if $mtime == "" then null else ($mtime | tonumber | todate) end)},

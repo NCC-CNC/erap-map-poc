@@ -278,3 +278,53 @@ notes_of() {
   run jq -e 'has("center") | not' "$STYLE"
   [ "$status" -eq 0 ]
 }
+
+@test "the view's zoom limits and bounds, the title and the locale go into style.json" {
+  add_layer alpha
+  config $'view: { center: [-80.5, 45.25], zoom: 5.5, minzoom: 2, maxzoom: 14, bounds: [-141, 41.5, -52, 84] }\ntitle: Conservation map\nlocale: fr-CA'
+  run "$RUN"
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.metadata["erap:view"]' "$STYLE")" = '{"minzoom":2,"maxzoom":14,"bounds":[-141,41.5,-52,84]}' ]
+  [ "$(jq -r '.metadata["erap:title"]' "$STYLE")" = 'Conservation map' ]
+  [ "$(jq -r '.metadata["erap:locale"]' "$STYLE")" = fr-CA ]
+
+  # Only those set; a view of limits alone is fine.
+  config 'view: { maxzoom: 10 }'
+  run "$RUN" --style-only
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.metadata["erap:view"]' "$STYLE")" = '{"maxzoom":10}' ]
+  run jq -e '(has("center") or has("zoom") or (.metadata | has("erap:title") or has("erap:locale"))) | not' "$STYLE"
+  [ "$status" -eq 0 ]
+
+  config '{}'
+  run "$RUN" --style-only
+  [ "$status" -eq 0 ]
+  run jq -e '.metadata | has("erap:view") | not' "$STYLE"
+  [ "$status" -eq 0 ]
+}
+
+@test "zoom limits out of order, bounds the wrong way round or a bad locale stop the run" {
+  add_layer alpha
+  config 'view: { minzoom: 8, maxzoom: 4 }'
+  run "$RUN" --status
+  [ "$status" -eq 2 ]
+  [[ $output == *"map config: view: minzoom (8) is above maxzoom (4)"* ]]
+
+  config 'view: { bounds: [-52, 41.5, -141, 84] }'
+  run "$RUN" --status
+  [ "$status" -eq 2 ]
+  [[ $output == *"map config: view: bounds are not [west, south, east, north]"* ]]
+
+  config 'view: { bounds: [-141, 41.5, -52] }'
+  run "$RUN" --status
+  [ "$status" -eq 2 ]
+
+  config 'locale: en_CA'
+  run "$RUN" --status
+  [ "$status" -eq 2 ]
+  [[ $output == *"map config: at '/locale'"* ]]
+
+  config 'title: ""'
+  run "$RUN" --status
+  [ "$status" -eq 2 ]
+}
