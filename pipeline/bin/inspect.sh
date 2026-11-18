@@ -7,8 +7,6 @@
 #
 # Usage: inspect.sh [-h|--help] [--json | --starter] [--layer NAME] [--no-checks]
 #                   [--gap-width METRES] INPUT
-#        inspect.sh [-h|--help] [--json] [--no-checks] [--gap-width METRES]
-#                   --config LAYER
 #
 #   INPUT        source dataset. Relative paths are resolved against
 #                PIPELINE_INPUT_DIR (default /data/raw), like a layer's source. A
@@ -24,13 +22,6 @@
 #   --no-checks  skip the geometry and coverage checks (slow on big data).
 #   --gap-width  narrowest gap between neighbours that is not flagged by
 #                the coverage check, in Web Mercator metres (default 100).
-#   --config     inspect layer LAYER as its build sees it, instead of an
-#                INPUT: its source data (source.path and source.layer in
-#                its layer file) normalised (fields.keep kept, renamed, in
-#                EPSG:4326, made valid; the feature id as _feature_id) with
-#                its calculated fields added, with the map config's
-#                overrides, if any. Each calculated field shows its
-#                expression. Checks the expressions before a build.
 #
 # Fields: per scalar field the non-null count, distinct count, min and max,
 # and the values with their counts when there are at most 12 distinct ones.
@@ -50,17 +41,8 @@ PIPELINE_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 source "${PIPELINE_ROOT}/lib/log.sh"
 # shellcheck source=lib/normalise.sh
 source "${PIPELINE_ROOT}/lib/normalise.sh"
-# For --config: the layer files and the calculated fields.
-# shellcheck source=lib/layerfile.sh
-source "${PIPELINE_ROOT}/lib/layerfile.sh"
-# shellcheck source=lib/joins.sh
-source "${PIPELINE_ROOT}/lib/joins.sh"
-# shellcheck source=lib/calculated.sh
-source "${PIPELINE_ROOT}/lib/calculated.sh"
 
 PIPELINE_INPUT_DIR=${PIPELINE_INPUT_DIR:-/data/raw}
-PIPELINE_LAYERS_DIR=${PIPELINE_LAYERS_DIR:-${PIPELINE_ROOT}/layers}
-PIPELINE_LOCAL_LAYERS_DIR=${PIPELINE_LOCAL_LAYERS_DIR-${PIPELINE_ROOT}/layers.local}
 
 # Fields with at most this many distinct values get their values listed.
 INSPECT_MAX_VALUES=12
@@ -265,43 +247,6 @@ inspect() {
         ($checks.union_parts < $count and ($checks.overlap_pct // 0) <= 0.001) end)'
 }
 
-# config_data NAME OUT_DIR: for --config, write layer NAME's data as its
-# build sees it to OUT_DIR/NAME.geojsonl: normalised, with its calculated
-# fields added (lib/calculated.sh), and their report to
-# OUT_DIR/calculated.json if it has any. Prints its source path, resolved.
-# Run in a subshell: it loads the layer's settings.
-config_data() {
-  local name=$1 out=$2
-  layer_known "$name" || die "no layer named $name (layers: $(layer_names | paste -sd ' '))"
-  PIPELINE_LOG_PREFIX=$name
-  load_layer "$name"
-  [[ $LAYER_TYPE == vector ]] || die "$name is a $LAYER_TYPE layer: inspect its source ($LAYER_INPUT) instead"
-  local data="${out}/${name}.geojsonl"
-  normalise "$LAYER_INPUT" "$LAYER_SOURCE_LAYER" "$LAYER_SOURCE_SRS" "$LAYER_ENCODING" \
-    "$data" "${LAYER_FIELDS[@]}"
-  if ((${#LAYER_CALCULATED_NAMES[@]} > 0)); then
-    add_calculated_fields "$data" "${out}/calculated.geojsonl" "${out}/calculated.json"
-    mv -f -- "${out}/calculated.geojsonl" "$data"
-  fi
-  printf '%s\n' "$LAYER_INPUT"
-}
-
-# with_config SUMMARY OUT_DIR NAME INPUT: SUMMARY (the JSON from inspect on
-# config_data's output) with `config`: the layer, its input and its
-# calculated fields with their counts, and each calculated field's
-# `calculated` expression.
-with_config() {
-  local summary=$1 out=$2 name=$3 input=$4 calculated=null
-  if [[ -s "${out}/calculated.json" ]]; then
-    calculated=$(jq -c '.' "${out}/calculated.json")
-  fi
-  jq -c --arg name "$name" --arg input "$input" --argjson c "$calculated" '
-    .driver = "as built" | .config = {layer: $name, input: $input, calculated_fields: $c}
-    | .fields |= map(.name as $n
-        | ([($c // [])[] | select(.name == $n) | .expression] | first) as $e
-        | if $e then . + {calculated: $e} else . end)' <<<"$summary"
-}
-
 # starter JSON: a starter layer file (YAML) from the summary JSON, valid
 # against schema/layer.schema.json as printed. `source` with the path
 # (relative to PIPELINE_INPUT_DIR when under it), the layer and an id (a
@@ -437,9 +382,6 @@ human() {
   jq -r '
     def num: if type == "number" and . != floor then (. * 1000 | round / 1000) else . end;
     def v: if . == null then "-" else (num | tostring) end;
-    (if .config then
-      "Config:     layer \(.config.layer), as built (fields.keep and calculated fields) from \(.config.input)"
-     else empty end),
     "Input:      \(.input) (\(.driver))",
     (if (.layers | length) > 1 then "Layers:     \(.layers | join(", ")) (showing \(.layer))" else empty end),
     "Layer:      \(.layer)",
@@ -453,7 +395,6 @@ human() {
     "",
     "Fields:",
     (.fields[] | "  \(.name) \(.type)\(if .width then "(\(.width))" else "" end): non-null \(.non_null | v), distinct \(.distinct | v), min \(.min | v), max \(.max | v)"
-      + (if .calculated then "\n    calculated: \(.calculated)" else "" end)
       + (if .values then "\n    values: " + ([.values[] | "\(.value | v) (\(.count))"] | join(", ")) else "" end)),
     (if .checks then
       "",
@@ -469,7 +410,7 @@ human() {
 }
 
 main() {
-  local json=0 starter=0 layer="" checks=1 gap=100 input="" config=""
+  local json=0 starter=0 layer="" checks=1 gap=100 input=""
   while (($# > 0)); do
     case $1 in
       -h | --help)
@@ -479,14 +420,13 @@ main() {
       --json) json=1 ;;
       --starter) starter=1 ;;
       --no-checks) checks=0 ;;
-      --layer | --gap-width | --config)
+      --layer | --gap-width)
         if (($# < 2)); then
           log_error "$1 needs a value"
           return 2
         fi
         case $1 in
           --layer) layer=$2 ;;
-          --config) config=$2 ;;
           *) gap=$2 ;;
         esac
         shift
@@ -510,15 +450,7 @@ main() {
     log_error "--json and --starter: give one"
     return 2
   fi
-  if [[ -n $config ]] && ((starter)); then
-    log_error "--starter is for a dataset, not --config: the layer already has a file"
-    return 2
-  fi
-  if [[ -n $config && ( -n $input || -n $layer ) ]]; then
-    log_error "--config takes the input and layer from the layer's config: give no INPUT or --layer"
-    return 2
-  fi
-  if [[ -z $input && -z $config ]]; then
+  if [[ -z $input ]]; then
     log_error "no input given"
     usage >&2
     return 2
@@ -529,20 +461,9 @@ main() {
   fi
 
   local dataset summary
-  if [[ -n $config ]]; then
-    local scratch
-    scratch=$(mktemp -d "${TMPDIR:-/tmp}/inspect.XXXXXX")
-    # shellcheck disable=SC2064 # expand now: scratch is local to main.
-    trap "rm -rf '${scratch}'" EXIT
-    resolve_layers "${scratch}/resolved" || return 2
-    input=$(config_data "$config" "$scratch") || return 1
-    summary=$(inspect "${scratch}/${config}.geojsonl" "$input" "" "$checks" "$gap")
-    summary=$(with_config "$summary" "$scratch" "$config" "${input#"${PIPELINE_INPUT_DIR}"/}")
-  else
-    [[ $input == /* ]] || input="${PIPELINE_INPUT_DIR}/${input}"
-    dataset=$(gdal_input_path "$input") || return 1
-    summary=$(inspect "$dataset" "$input" "$layer" "$checks" "$gap")
-  fi
+  [[ $input == /* ]] || input="${PIPELINE_INPUT_DIR}/${input}"
+  dataset=$(gdal_input_path "$input") || return 1
+  summary=$(inspect "$dataset" "$input" "$layer" "$checks" "$gap")
   if ((starter)); then
     starter "$summary"
   elif ((json)); then

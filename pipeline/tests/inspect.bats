@@ -246,6 +246,4 @@ set_starter() {
 @test "--starter usage errors" {
   run "$INSPECT" --starter --json "${FIXTURES}/sample.geojson"
   [ "$status" -eq 2 ]
-  run "$INSPECT" --starter --config sample
-  [ "$status" -eq 2 ]
 }

@@ -190,11 +190,12 @@ docker compose run --rm pipeline --style-only ecoregions
 To see which attributes the tiles have, look at the layer's
 `fields.keep` and `fields.calculated`, or at the source with
 `inspect.sh`. An attribute not in the tiles needs adding to `fields` and
-a rebuild:
+a rebuild of that layer (its log names a failing calculated field; then
+`--status` shows its fields):
 
 ```sh
-docker compose run --rm --entrypoint inspect.sh pipeline --config ecoregions   # as the build sees it
 docker compose run --rm pipeline ecoregions
+docker compose run --rm pipeline --status ecoregions
 ```
 
 ## Update a layer's data

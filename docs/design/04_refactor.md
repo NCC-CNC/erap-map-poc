@@ -493,7 +493,7 @@ practical:
 ## Settled in the starter layer file (#122)
 
 - `inspect.sh --starter INPUT` prints a starter `<layer>.yaml` (not with
-  `--json` or `--config`), valid against `layer.schema.json` and the
+  `--json`), valid against `layer.schema.json` and the
   pipeline's own checks as printed. `source` has the path (relative to
   `RAW_DIR` when under it), the layer and an id: a unique non-null
   integer field, `id`, `objectid` or `fid` first; with none, the first
@@ -590,3 +590,11 @@ practical:
   is `invalid`, with a note that `run.sh --remove` removes it. A layer
   the map config leaves out (was `disabled`) gets its usual state plus a
   note; `enabled` in the JSON says the same.
+
+## Settled in removing inspect.sh --config (#138)
+
+- `inspect.sh --config LAYER` is gone: it ran calculated fields and
+  joins outside the pipeline. To check them, build that one layer
+  (`docker compose run --rm pipeline <layer>`), which logs a failing
+  expression or join, then read the log or `--status`. `inspect.sh`
+  summarises source datasets only.

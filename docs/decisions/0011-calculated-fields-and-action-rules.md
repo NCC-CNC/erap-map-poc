@@ -70,9 +70,10 @@ they must not be a way to run anything else.
   to the map config file, or null for none. Both change the tiles.
 - `--status` shows the calculated fields and rule counts of each build
   and reports `stale` when the `.env`, the map config's overrides or the
-  rules table's content (by hash) change. `inspect.sh --config LAYER`
-  shows a layer's data as its build sees it, calculated fields and rule
-  counts included, before a build. `cli.mjs check` also checks
+  rules table's content (by hash) change. Building that one layer
+  (`docker compose run --rm pipeline <layer>`) checks its expressions
+  and logs a failing one; `inspect.sh --config`, which ran them outside
+  the pipeline, was removed in #138. `cli.mjs check` also checks
   `.rules.json` files.
 
 ## Consequences
