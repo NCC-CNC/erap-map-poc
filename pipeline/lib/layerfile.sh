@@ -28,12 +28,12 @@
 #         "overrides": {...} or null,
 #         "type": "vector", "input": "/data/raw/ERAP_2026_ecoregions.gdb",
 #         "joins": [] (source.joins paths, resolved),
-#         "build_sha256": "...", "display_sha256": "..." } ] }
+#         "build_sha256": "..." } ] }
 #
 # `build_sha256` is the hash of the effective `source`, `fields` and
-# `processing`, `display_sha256` that of `title`, `visible`, `order` and
-# `display`: a build records both, so --status tells a change that needs a
-# rebuild from one that needs only --style-only (lib/status.sh).
+# `processing`: a build records it, so --status tells when a layer needs a
+# rebuild (lib/status.sh). The display needs no hash: every run writes
+# style.json from the layer files (lib/style.sh).
 #
 # load_layer then sets the LAYER_* variables of one layer for a build, in
 # its subshell.
@@ -187,7 +187,7 @@ resolve_layers() {
   map="${out}/map.json"
   _map_config "$map" || return 2
 
-  local file name origin dir rows=() problems overrides config sha_build sha_display input type joins
+  local file name origin dir rows=() problems overrides config sha_build input type joins
   local -A seen=()
   local clashes=() files=()
   # Committed layers first, then your own in layers.local/ (if any).
@@ -212,7 +212,7 @@ resolve_layers() {
     fi
     seen[$name]=1
     overrides=$(jq -c --arg n "$name" '.overrides[$n] // null' "$map")
-    config="" sha_build="" sha_display="" input="" type="" joins="[]"
+    config="" sha_build="" input="" type="" joins="[]"
     # On a schema problem, `problems` holds jv's findings.
     if problems=$(_check_schema "$LAYER_SCHEMA" "$file"); then
       config="${out}/${name}.json"
@@ -231,7 +231,6 @@ resolve_layers() {
         config=""
       else
         sha_build=$(jq -S -c '{source, fields, processing}' "$config" | _sha256 -)
-        sha_display=$(jq -S -c '{title, visible, order, display}' "$config" | _sha256 -)
         input=$(resolve_input "$(jq -r '.source.path' "$config")")
         joins=$(jq -c --arg dir "$PIPELINE_INPUT_DIR" \
           '[(.source.joins // [])[].path | if startswith("/") then . else "\($dir)/\(.)" end]' "$config")
@@ -241,7 +240,7 @@ resolve_layers() {
     rows+=("$(jq -n -c --arg name "$name" --arg file "$file" --arg origin "$origin" \
       --arg config "$config" \
       --arg problems "$problems" --argjson overrides "$overrides" \
-      --arg build "$sha_build" --arg display "$sha_display" \
+      --arg build "$sha_build" \
       --arg input "$input" --arg type "$type" --argjson joins "$joins" \
       '{name: $name, file: $file, origin: $origin,
         config: (if $config == "" then null else $config end),
@@ -250,8 +249,7 @@ resolve_layers() {
         type: (if $type == "" then null else $type end),
         input: (if $input == "" then null else $input end),
         joins: $joins,
-        build_sha256: (if $build == "" then null else $build end),
-        display_sha256: (if $display == "" then null else $display end)}')")
+        build_sha256: (if $build == "" then null else $build end)}')")
   done
   if ((${#clashes[@]} > 0)); then
     for file in "${clashes[@]}"; do
@@ -374,7 +372,7 @@ layer_provenance() {
      | ($ARGS.positional | map(fromjson)) as $files
      | {origin, source: $files[0]}
        + (if ($files | length) > 1 then {joins: $files[1:]} else {} end)
-       + {overrides, build_sha256, display_sha256}' "${files[@]}" <"$LAYERS_JSON"
+       + {overrides, build_sha256}' "${files[@]}" <"$LAYERS_JSON"
 }
 
 # _provenance_file PATH: PATH (resolved) as {path, bytes, modified_at}, the

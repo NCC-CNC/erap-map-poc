@@ -55,10 +55,10 @@ shared files in `pipeline/layers/` or opening a pull request (issue #59).
   scratch dir; the committed files are never written.
 - Tiles versus display: `input` and `env` changes need a rebuild;
   everything else, and `enabled`, `disabled` and `map`, is applied by
-  `run.sh --style-only`. `--status` tells them apart through hashes of the
-  effective settings and display config, stored in the manifest entry's
-  `provenance` at build (and display update) time: `stale` versus
-  `restyle`, as for the committed files' modification times.
+  `run.sh --style-only`. `--status` tells them apart through a hash of the
+  effective settings, stored in the manifest entry's `provenance` at
+  build time: `stale` (since #135 the display needs no hash: every run
+  writes `style.json` afresh).
 - **Missing sources**: a full build skips a layer whose source data is
   not found, with a warning and a summary, and fails only if nothing could
   be built; a layer named on the command line still fails. `--status`

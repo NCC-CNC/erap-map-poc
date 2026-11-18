@@ -34,8 +34,8 @@ small pop-up with a chart).
 
 `source`, `fields` and `processing` decide the build: a change to them
 makes the layer `stale` (rebuild it). `title`, `visible`, `order` and
-`display` are display only: a change makes it `restyle` (apply it with
-`--style-only`, in seconds).
+`display` are display only: the next run applies them (`--style-only`
+rewrites `style.json` in seconds, no re-tiling).
 
 ## source
 

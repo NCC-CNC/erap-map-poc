@@ -43,5 +43,5 @@ Common failures:
 - A layer shown as not available: its archive is missing or unreadable;
   check `--status` for it. A raster needs range requests: `curl -fsSI -r
   0-99 http://localhost:8080/tiles/<name>.cog.tif` should answer `206`.
-- A layer not clickable after a pull: `--status` shows `restyle`; run
+- A layer not clickable after a pull: run
   `docker compose run --rm pipeline --style-only`.

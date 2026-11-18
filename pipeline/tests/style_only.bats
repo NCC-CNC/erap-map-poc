@@ -1,8 +1,7 @@
 #!/usr/bin/env bats
-# Tests for `run.sh --style-only` (restyle_layer in bin/run.sh,
-# write_style in lib/style.sh) and how --status reads a display
-# update (lib/status.sh), on copies of the sample layer and a synthetic
-# raster layer. Run in the test image with the other bats files:
+# Tests for `run.sh --style-only` (style_only_main in bin/run.sh,
+# write_style in lib/style.sh), on copies of the sample layer and a
+# synthetic raster layer. Run in the test image with the other bats files:
 #   docker build --target test -t erap-pipeline-test pipeline
 #   docker run --rm erap-pipeline-test
 
@@ -60,32 +59,24 @@ notes_of() {
   "$RUN" --status --json | jq -r --arg n "$1" '.layers[] | select(.name == $n) | .notes | join(";")'
 }
 
-@test "--style-only replaces the display only: tiles, build report and other layers kept" {
+@test "--style-only rewrites style.json only: tiles and build.json kept" {
   add_layer alpha beta
   run "$RUN"
   [ "$status" -eq 0 ]
-  local tiles beta_entry alpha_report built_from
+  local tiles build
   tiles=$(sha256sum "${PIPELINE_OUTPUT_DIR}"/*.pmtiles)
-  beta_entry=$(entry_without beta)
-  alpha_report=$(entry_without alpha display_updated_at provenance)
-  built_from=$(entry_without alpha | jq -c ".provenance | del(.display_sha256)")
+  build=$(sha256sum "$BUILD")
 
   restyle alpha '.title = "Alpha restyled"' \
     '.display.layers[0].paint["fill-color"][2][2] = "#ff0000"' \
     '.display.popup.sections[0].blocks[0].items |= .[:1]'
   run "$RUN" --style-only alpha
   [ "$status" -eq 0 ]
-  [[ $output == *"display updated for 1 layer(s), no tiles rebuilt"* ]]
+  [[ $output == *"style.json rewritten from the layer files, no tiles rebuilt"* ]]
   assert_no_temp_files
 
   [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}"/*.pmtiles)" = "$tiles" ]
-  [ "$(entry_without beta)" = "$beta_entry" ]
-  [ "$(entry_without alpha display_updated_at provenance)" = "$alpha_report" ]
-  # The provenance keeps what the tiles were built from; only the display
-  # hash moves.
-  [ "$(entry_without alpha | jq -c ".provenance | del(.display_sha256)")" = "$built_from" ]
-  run jq -e '.layers[] | select(.name == "alpha") | .display_updated_at | type == "string"' "$BUILD"
-  [ "$status" -eq 0 ]
+  [ "$(sha256sum "$BUILD")" = "$build" ]
   run jq -e '.metadata["erap:layers"].alpha
     | .title == "Alpha restyled" and (.popup.sections[0].blocks[0].items | length) == 1' "$STYLE"
   [ "$status" -eq 0 ]
@@ -98,7 +89,7 @@ notes_of() {
   [ "$output" = "#ff0000" ]
 }
 
-@test "--style-only with no names updates every built layer, skipping unbuilt ones" {
+@test "--style-only updates every built layer, skipping unbuilt ones" {
   add_layer alpha beta
   run "$RUN" alpha beta
   [ "$status" -eq 0 ]
@@ -108,38 +99,40 @@ notes_of() {
 
   run "$RUN" --style-only
   [ "$status" -eq 0 ]
-  [[ $output == *"display updated for 2 layer(s)"* ]]
   run jq -c '[.metadata["erap:layers"] | to_entries[] | [.key, .value.title]]' "$STYLE"
   [ "$output" = '[["alpha","A2"],["beta","B2"]]' ]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/gamma.pmtiles" ]
 }
 
-@test "--style-only rejects an invalid layer file without changing build.json or style.json" {
+@test "--style-only fails on an invalid layer file, leaving it out of style.json" {
   add_layer alpha beta
   run "$RUN"
   [ "$status" -eq 0 ]
-  local before
-  before=$(sha256sum "$BUILD" "$STYLE")
+  local build
+  build=$(sha256sum "$BUILD")
 
+  # The bad layer fails the run and is left out; the good one is updated.
   restyle alpha '.visible = "yes"'
-  run "$RUN" --style-only alpha
+  restyle beta '.title = "B2"'
+  run "$RUN" --style-only
   [ "$status" -eq 1 ]
   [[ $output == *"alpha.yaml: at '/visible'"* ]]
-  [[ $output == *"alpha.yaml has problems (above); keeping the previous build"* ]]
-  [ "$(sha256sum "$BUILD" "$STYLE")" = "$before" ]
+  [[ $output == *"layer alpha: left out of style.json until alpha.yaml is fixed"* ]]
+  [ "$(sha256sum "$BUILD")" = "$build" ]
+  run jq -c '[.metadata["erap:layers"][] | .title]' "$STYLE"
+  [ "$output" = '["B2"]' ]
   assert_no_temp_files
 
   # Not YAML at all: the same.
   printf 'title: [unclosed\n' >"${PIPELINE_LAYERS_DIR}/alpha.yaml"
-  run "$RUN" --style-only alpha
+  run "$RUN" --style-only
   [ "$status" -eq 1 ]
-  [ "$(sha256sum "$BUILD" "$STYLE")" = "$before" ]
+  [ "$(sha256sum "$BUILD")" = "$build" ]
 
-  # The bad layer fails; the good one is still updated.
-  restyle beta '.title = "B2"'
-  run "$RUN" --style-only alpha beta
-  [ "$status" -eq 1 ]
-  [[ $output == *"1 of 2 layer(s) failed: alpha"* ]]
+  # Fixed, it is back.
+  add_layer alpha
+  run "$RUN" --style-only
+  [ "$status" -eq 0 ]
   run jq -c '[.metadata["erap:layers"][] | .title]' "$STYLE"
   [ "$output" = '["Sample polygons","B2"]' ]
 }
@@ -148,12 +141,8 @@ notes_of() {
   add_layer alpha beta
   run "$RUN" --style-only alpha
   [ "$status" -eq 2 ]
-  [[ $output == *"layer 'alpha' is not built yet"* ]]
-  [ ! -e "$BUILD" ]
-
-  run "$RUN" --style-only
-  [ "$status" -eq 2 ]
   [[ $output == *"no layers built"* ]]
+  [ ! -e "$BUILD" ]
 
   run "$RUN" alpha
   [ "$status" -eq 0 ]
@@ -168,9 +157,6 @@ notes_of() {
   rm "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles"
   run "$RUN" --style-only alpha
   [ "$status" -eq 2 ]
-  run "$RUN" --style-only
-  [ "$status" -eq 2 ]
-  [[ $output == *"skipping alpha: archive missing"* ]]
   [ "$(sha256sum "$BUILD")" = "$before" ]
 }
 
@@ -181,14 +167,14 @@ notes_of() {
   [ "$status" -eq 0 ]
   local archive="${PIPELINE_OUTPUT_DIR}/cover.cog.tif" before report
   before=$(sha256sum "$archive")
-  report=$(entry_without cover display_updated_at provenance)
+  report=$(entry_without cover)
 
   restyle cover '.display.layers[0].paint["color-relief-color"][6] = "rgba(255, 0, 0, 1)"' \
     '.display.layers[0].paint["color-relief-opacity"] = 0.4'
   run "$RUN" --style-only cover
   [ "$status" -eq 0 ]
   [ "$(sha256sum "$archive")" = "$before" ]
-  [ "$(entry_without cover display_updated_at provenance)" = "$report" ]
+  [ "$(entry_without cover)" = "$report" ]
   run jq -r '.layers[] | select(.source == "cover") | .paint["color-relief-color"][6]' "$STYLE"
   [ "$output" = "rgba(255, 0, 0, 1)" ]
   run jq -r '.layers[] | select(.name == "cover") | .type' "$BUILD"
@@ -206,7 +192,7 @@ notes_of() {
   # fields and processing.
   cp "${PIPELINE_ROOT}/tests/fixtures/sample_modal.yaml" "${PIPELINE_LAYERS_DIR}/alpha.yaml"
   restyle alpha '.source.path = "sample.geojson"'
-  [ "$(state_of alpha)" = restyle ]
+  [ "$(state_of alpha)" = current ]
   run "$RUN" --style-only alpha
   [ "$status" -eq 0 ]
   [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles")" = "$tiles" ]
@@ -226,34 +212,24 @@ notes_of() {
   [ "$output" = interpolate ]
 }
 
-@test "--status: a changed display needs --style-only, which makes it current" {
+@test "--status: a changed display keeps a layer current; any run applies it" {
   add_layer alpha beta
   add_raster cover
   run "$RUN"
   [ "$status" -eq 0 ]
-  [ "$(state_of alpha)" = current ]
 
   restyle alpha '.order = 11'
   restyle cover '.display.layers[0].paint["color-relief-opacity"] = 0.5'
-  [ "$(state_of alpha)" = restyle ]
-  [ "$(notes_of alpha)" = "display changed since it was last updated (alpha.yaml; --style-only updates it)" ]
-  [ "$(state_of cover)" = restyle ]
-  run "$RUN" --status alpha
-  [[ ${lines[1]} == "alpha "*restyle* ]]
-  [[ ${lines[2]} == "  - display changed since it was last updated"* ]]
-
-  local built_at
-  built_at=$(jq -r '.layers[] | select(.name == "alpha") | .built_at' "$BUILD")
-  sleep 1
-  run "$RUN" --style-only alpha cover
-  [ "$status" -eq 0 ]
   [ "$(state_of alpha)" = current ]
   [ "$(state_of cover)" = current ]
-  [ "$(state_of beta)" = current ]
-  run "$RUN" --status --json alpha
-  run jq -e --arg b "$built_at" '.layers[0]
-    | .built_at == $b and .display_updated_at > .built_at' <<<"$output"
+  [ "$(notes_of alpha)" = "" ]
+
+  # Building beta alone writes alpha's and cover's display too.
+  run "$RUN" beta
   [ "$status" -eq 0 ]
+  [ "$(jq -r '.metadata["erap:layers"].alpha.order' "$STYLE")" = 11 ]
+  run jq -r '.layers[] | select(.source == "cover") | .paint["color-relief-opacity"]' "$STYLE"
+  [ "$output" = 0.5 ]
 }
 
 @test "--status: a style-only update does not hide a stale build" {
@@ -268,24 +244,11 @@ notes_of() {
   [ "$(state_of alpha)" = stale ]
   [ "$(notes_of alpha)" = "source, fields or processing changed since the build (alpha.yaml or the map config's overrides)" ]
 
-  # Source data and display changed: stale (a rebuild covers both), with
-  # both notes.
+  # Source data changed: stale.
   touch -d "@$(($(date +%s) + 120))" "${PIPELINE_INPUT_DIR}/sample.geojson"
   restyle beta '.title = "B2"'
   [ "$(state_of beta)" = stale ]
-  [ "$(notes_of beta)" = "source data changed since the build;display changed since it was last updated (beta.yaml; --style-only updates it)" ]
-}
-
-@test "--status reads an entry without display_updated_at by its built_at" {
-  add_layer alpha
-  run "$RUN" alpha
-  [ "$status" -eq 0 ]
-  jq '.layers[0] |= del(.display_updated_at)' "$BUILD" >"${BUILD}.new"
-  mv "${BUILD}.new" "$BUILD"
-  [ "$(state_of alpha)" = current ]
-  run "$RUN" --status --json
-  run jq -e '.layers[0] | .display_updated_at == .built_at' <<<"$output"
-  [ "$status" -eq 0 ]
+  [ "$(notes_of beta)" = "source data changed since the build" ]
 }
 
 @test "--style-only cannot be combined with another mode" {

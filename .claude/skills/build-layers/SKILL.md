@@ -1,6 +1,6 @@
 ---
 name: build-layers
-description: Build or rebuild map layers with the pipeline (one, several or all, vector or raster), report which layers are configured, built, stale, restyle-only, invalid or missing their source (with build time, archive size, zooms, feature count and largest tile), and explain any failure from the log and data/tiles/build.json, such as a drop guard failure, and what to change. Use when asked to build, rebuild or refresh layers or tiles, what layers there are, what is built or out of date, or why a layer build failed.
+description: Build or rebuild map layers with the pipeline (one, several or all, vector or raster), report which layers are configured, built, stale, invalid or missing their source (with build time, archive size, zooms, feature count and largest tile), and explain any failure from the log and data/tiles/build.json, such as a drop guard failure, and what to change. Use when asked to build, rebuild or refresh layers or tiles, what layers there are, what is built or out of date, or why a layer build failed.
 ---
 
 # Build layers and check their status
@@ -15,8 +15,8 @@ repo root in Git Bash.
    ```
 
    Summarise per layer: `current`, `stale` (source, fields, processing
-   or the data changed: rebuild), `restyle` (display only:
-   `--style-only`), `not built`, `source missing` (not in `RAW_DIR`),
+   or the data changed: rebuild), `not built`, `source missing` (not
+   in `RAW_DIR`),
    `invalid` (quote the problems in the layer file), `disabled` (left
    out by `map.config.yaml`) or `orphan` (layer file gone: remove-layer
    skill). If the user only asked what there is, stop here.
@@ -27,7 +27,7 @@ repo root in Git Bash.
 
    ```sh
    docker compose run --rm --build pipeline <layer> ...   # or no names: every layer
-   docker compose run --rm pipeline --style-only [layer ...]   # restyle only
+   docker compose run --rm pipeline --style-only   # rewrite style.json only
    ```
 
 3. Report from the log and `data/tiles/build.json`: features, zooms,

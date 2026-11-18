@@ -13,7 +13,6 @@
 #         "minzoom": 0, "maxzoom": 8,
 #         "bounds": [west, south, east, north], "center": [lon, lat, zoom],
 #         "built_at": "2026-01-01T00:00:00Z",
-#         "display_updated_at": "2026-01-01T00:00:00Z",
 #         "build_seconds": 3, "bytes": 12345,
 #         "provenance": {...},
 #         ...the build report of the layer type (below)... }
@@ -25,17 +24,14 @@
 # `<layer>.cog.tif` for a raster one (ADR 0010). `format` is the tile type:
 # from the PMTiles header for a vector layer (`mvt`), `cog` for a raster,
 # whose zooms, bounds and center come
-# from the build (raster_header). `display_updated_at` is when the layer's
-# part of style.json was last written from its layer file: by a build or
-# by `run.sh --style-only` (build_set_display, which changes nothing else
-# in the entry but the display hash in `provenance`). `provenance` says
+# from the build (raster_header). `provenance` says
 # what the layer was built from (lib/layerfile.sh, layer_provenance):
 #
 #   "provenance": { "origin": "committed",
 #     "source": { "path": "sample.geojson", "bytes": 12345,
 #                 "modified_at": "2026-01-01T00:00:00Z" },
 #     "overrides": { "source": ..., "processing": ... } or null,
-#     "build_sha256": "...", "display_sha256": "..." }
+#     "build_sha256": "..." }
 #
 # The rest is the build report:
 #
@@ -177,7 +173,6 @@ build_update() {
           bounds: $header.bounds,
           center: $header.center,
           built_at: $now,
-          display_updated_at: $now,
           build_seconds: $seconds,
           bytes: $bytes,
           provenance: $provenance
@@ -205,26 +200,6 @@ vector_report() {
        max_tile_bytes: ([.[].max_tile_bytes] | max),
        zooms: .
      }' "$stats_file" || die "cannot read $stats_file"
-}
-
-# build_set_display OUT_DIR SHAS_JSON: after style.json took these layers'
-# display from their layer files (write_style), record the display hash in
-# the provenance of each whose hash changed, and set its
-# display_updated_at. SHAS_JSON is an object of layer name to
-# display_sha256. A build records the hash itself (build_update), so
-# build.json is rewritten only after --style-only of a changed display (or
-# a layer back in the map config with a changed one).
-build_set_display() {
-  local out_dir=$1 shas=$2
-  jq -e --argjson shas "$shas" \
-    'any(.layers[]?; $shas[.name] != null and .provenance.display_sha256 != $shas[.name])' \
-    "${out_dir}/build.json" >/dev/null 2>&1 || return 0
-  _build_write "$out_dir" '
-    .layers |= map($shas[.name] as $sha
-      | if $sha == null or .provenance.display_sha256 == $sha then .
-        else .display_updated_at = $now
-          | .provenance = ((.provenance // {}) | .display_sha256 = $sha) end)' \
-    --argjson shas "$shas"
 }
 
 # build_remove OUT_DIR LAYER: drop LAYER's entry from OUT_DIR/build.json

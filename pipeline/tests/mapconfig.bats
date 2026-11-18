@@ -92,7 +92,6 @@ notes_of() {
   config 'layers: [alpha]'
   run "$RUN" --style-only
   [ "$status" -eq 0 ]
-  [[ $output == *"skipping beta: not enabled in the map config"* ]]
   [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}"/*.pmtiles)" = "$tiles" ]
   run jq -r '[.sources | keys[]] | join(",")' "$STYLE"
   [ "$output" = alpha ]
@@ -237,8 +236,8 @@ notes_of() {
   mtime=$(date -u -d "@$(stat -c %Y "$src")" +%Y-%m-%dT%H:%M:%SZ)
   run entry alpha '.provenance | [.origin, .source.path, .source.bytes, .source.modified_at, .overrides]'
   [ "$output" = "[\"committed\",\"sample.geojson\",$(stat -c %s "$src"),\"${mtime}\",{\"processing\":{\"min_visible_px\":2}}]" ]
-  run entry alpha '.provenance | [.build_sha256, .display_sha256] | map(test("^[0-9a-f]{64}$"))'
-  [ "$output" = "[true,true]" ]
+  run entry alpha '.provenance.build_sha256 | test("^[0-9a-f]{64}$")'
+  [ "$output" = true ]
   # The build hash is of the effective source, fields and processing.
   local want
   want=$(yq -o json '.processing.min_visible_px = 2 | {"source": .source, "fields": .fields, "processing": .processing}' \

@@ -47,7 +47,6 @@ status_of() {
 
   # A change to it is seen like any other.
   set_layer "${PIPELINE_LOCAL_LAYERS_DIR}/mine.yaml" '.title = "Mine, renamed"'
-  [ "$(status_of mine)" = "restyle local" ]
   run "$RUN" --style-only mine
   [ "$status" -eq 0 ]
   [ "$(jq -r '.metadata["erap:layers"].mine.title' "$STYLE")" = 'Mine, renamed' ]

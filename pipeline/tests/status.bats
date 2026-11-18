@@ -95,8 +95,8 @@ touch_later() {
   set_layer "${PIPELINE_LAYERS_DIR}/epsilon.yaml" '.fields.keep += ["notes"]'
   [ "$(state_of alpha)" = stale ]
   [ "$(notes_of alpha)" = "source, fields or processing changed since the build (alpha.yaml or the map config's overrides)" ]
-  [ "$(state_of beta)" = restyle ]
-  [ "$(notes_of beta)" = "display changed since it was last updated (beta.yaml; --style-only updates it)" ]
+  # The display needs no rebuild: every run writes style.json afresh.
+  [ "$(state_of beta)" = current ]
   [ "$(state_of gamma)" = stale ]
   [ "$(notes_of gamma)" = "archive missing" ]
   [ "$(state_of delta)" = current ]
@@ -107,9 +107,6 @@ touch_later() {
   touch_later "${PIPELINE_LAYERS_DIR}/delta.yaml"
   echo '# a comment' >>"${PIPELINE_LAYERS_DIR}/delta.yaml"
   [ "$(state_of delta)" = current ]
-  # Title, visibility and order are display.
-  set_layer "${PIPELINE_LAYERS_DIR}/delta.yaml" '.title = "Delta"'
-  [ "$(state_of delta)" = restyle ]
 
   touch_later "${PIPELINE_INPUT_DIR}/sample.geojson"
   [ "$(state_of gamma)" = stale ]
@@ -120,14 +117,13 @@ touch_later() {
   [ "$status" -eq 0 ]
   [[ ${lines[1]} == "beta "*stale* ]]
   [ "${lines[2]}" = "  - source data changed since the build" ]
-  [ "${lines[3]}" = "  - display changed since it was last updated (beta.yaml; --style-only updates it)" ]
 }
 
 @test "--status: a build without a build hash is stale" {
   add_layer alpha
   run "$RUN" alpha
   [ "$status" -eq 0 ]
-  jq '.layers[0].provenance |= (del(.build_sha256, .display_sha256) | .env_sha256 = "x")' \
+  jq '.layers[0].provenance |= (del(.build_sha256) | .env_sha256 = "x")' \
     "$BUILD" >"${BUILD}.new"
   mv "${BUILD}.new" "$BUILD"
   [ "$(state_of alpha)" = stale ]

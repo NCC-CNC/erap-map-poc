@@ -135,8 +135,7 @@ docker compose run --rm pipeline --status --json    # with every detail
 ```
 
 `--status` gives each layer a state: `current`, `stale` (its source,
-fields, processing or source data changed: rebuild it), `restyle` (only
-its display changed: `--style-only` is enough), `not built`, `source
+fields, processing or source data changed: rebuild it), `not built`, `source
 missing`, `invalid` (with the problems in its file), `disabled` (left out
 by the map config) or `orphan` (built, but its layer file is gone). It
 also shows build time, archive size, zooms, feature count and the
