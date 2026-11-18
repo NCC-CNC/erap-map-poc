@@ -119,6 +119,18 @@ map_config() {
   broken "$LAYER_SCHEMA" "$SAMPLE" '.fields.calculated.Bad = "1"' "'Bad' does not match pattern"
 }
 
+@test "processing.tippecanoe: extra arguments starting with --, vector only" {
+  local copy="${BATS_TEST_TMPDIR}/extra.yaml"
+  yq '.processing.tippecanoe = ["--drop-densest-as-needed", "--buffer=8"]' "$SAMPLE" >"$copy"
+  run jv "$LAYER_SCHEMA" "$copy"
+  echo "$output"
+  [ "$status" -eq 0 ]
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.processing.tippecanoe = ["drop-densest-as-needed"]' "processing/tippecanoe/0"
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.processing.tippecanoe = ["-z", "8"]' "processing/tippecanoe/0"
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.processing.tippecanoe = "--buffer=8"' "processing/tippecanoe"
+  broken "$LAYER_SCHEMA" "$FOREST" '.processing.tippecanoe = ["--buffer=8"]' "processing/tippecanoe"
+}
+
 @test "a valid map config passes" {
   local file
   file=$(map_config '

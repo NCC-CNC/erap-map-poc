@@ -90,10 +90,11 @@ resolve_input() {
 # layer_problems: the problems in a layer (effective JSON on stdin) that
 # the schema cannot express, one per line: zooms in order, attribute names
 # unique, style layer and theme ids unique, theme paint on a style layer of
-# the layer. A legend is optional: the web app builds one from the colour
-# expression (design note 04).
+# the layer, no tippecanoe option the pipeline sets itself. A legend is
+# optional: the web app builds one from the colour expression (design
+# note 04).
 layer_problems() {
-  jq -r --arg fid "$FEATURE_ID_ATTRIBUTE" '
+  jq -r --arg fid "$FEATURE_ID_ATTRIBUTE" --argjson reserved "$TIPPECANOE_RESERVED" '
     ((.processing.minzoom // 0) as $min | .processing.maxzoom as $max
       | if $min > $max then "processing: minzoom (\($min)) is above maxzoom (\($max))" else empty end),
     ([(.fields.keep // [])[] | if type == "string" then . else to_entries[0].value end]
@@ -108,8 +109,16 @@ layer_problems() {
           | select(. as $id | $ids | index($id) | not)
           | "display.themes[\($i)].paint: \(.) is not an id in display.layers")),
     ((.display.themes // []) | [.[].id] | group_by(.) | map(select(length > 1) | .[0])[]
-      | "display.themes: id \(.) is used twice")'
+      | "display.themes: id \(.) is used twice"),
+    ((.processing.tippecanoe // [])[] | select(split("=")[0] | IN($reserved[]))
+      | "processing.tippecanoe: \(split("=")[0]) is set by the pipeline")'
 }
+
+# The tippecanoe options the pipeline sets itself (lib/tiles.sh), which
+# processing.tippecanoe cannot pass.
+TIPPECANOE_RESERVED='["--output", "--output-to-directory", "--force", "--layer", "--name",
+  "--minimum-zoom", "--maximum-zoom", "--use-attribute-for-id",
+  "--temporary-directory", "--quiet", "--read-parallel"]'
 
 # _map_config OUT: check the map config, if any, and write it as JSON to
 # OUT ({} for none). Returns 2, after logging why, if it has a problem.
@@ -402,7 +411,8 @@ _provenance_file() {
 #                         simplify_px (default 1)
 #   LAYER_GREY_LEVELS     processing.grey_levels, default 256 (lib/raster.sh)
 #   LAYER_TIPPECANOE_FLAGS
-#                         the preset's tippecanoe flags (preset_flags)
+#                         the preset's tippecanoe flags (preset_flags), then
+#                         processing.tippecanoe's
 # shellcheck disable=SC2034 # the LAYER_* variables are read by bin/run.sh.
 load_layer() {
   local name=$1 config
@@ -449,7 +459,9 @@ load_layer() {
     if [[ $LAYER_PROFILE == coverage ]] && ((LAYER_MIN_ZOOM < LAYER_MAX_ZOOM)); then
       LAYER_GENERALISE_MAX_ZOOM=$((LAYER_MAX_ZOOM - 1))
     fi
-    mapfile -t LAYER_TIPPECANOE_FLAGS < <(preset_flags "$LAYER_PROFILE")
+    # The preset's flags, then processing.tippecanoe's (advanced).
+    mapfile -t LAYER_TIPPECANOE_FLAGS < <(preset_flags "$LAYER_PROFILE"
+      jq -r '(.processing.tippecanoe // [])[]' "$config")
   fi
 }
 
