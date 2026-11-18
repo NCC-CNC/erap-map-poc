@@ -103,9 +103,11 @@ generator_options() {
   [[ $output == *"coverage: building tiles z0-z4 with --simplify-only-low-zooms --no-simplification-of-shared-nodes --drop-smallest-as-needed"* ]]
   [[ $output == *"points: building tiles z0-z4 with --simplify-only-low-zooms --drop-rate=1"* ]]
   [[ $output == *"none: building tiles z0-z4 with --simplify-only-low-zooms"$'\n'* ]]
-  # Only coverage generalises, below the max zoom.
-  [[ $output == *"coverage: generalising z0-z3"* ]]
-  [[ $output != *"default: generalising"* ]]
+  # Polygons are generalised at every zoom: coverage as a coverage, default
+  # feature by feature; points never.
+  [[ $output == *"coverage: generalising z0-z4 (coverage)"* ]]
+  [[ $output == *"default: generalising z0-z4 (feature)"* ]]
+  [[ $output != *"points: generalising"* ]]
   run generator_options coverage
   [[ $output == *"--no-simplification-of-shared-nodes"* ]]
   run generator_options points

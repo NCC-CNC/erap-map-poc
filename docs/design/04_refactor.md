@@ -66,10 +66,10 @@ with tests, and documented for people.
    config. There is no separate rules file.
 8. **Processing uses presets.** `processing.profile` (`default`,
    `coverage`, `points`, `raster`) sets the tippecanoe or GDAL options.
-   Low-zoom generalisation and the drop guard live inside `coverage`; a
-   layer overrides only `minzoom`, `maxzoom`, `min_part_px` and
-   `simplify_px` (and `min_visible_px` and `grey_levels`; see Settled in
-   step 1).
+   Per-zoom generalisation (polygons, `coverage` and `default`) and the
+   drop guard live inside the presets; a layer overrides only `minzoom`,
+   `maxzoom`, `min_part_px`, `simplify_px` and their `maxzoom_` pair (and
+   `min_visible_px` and `grey_levels`; see Settled in step 1).
 9. **One map config format, two files.** Your git-ignored, optional
    `map.config.yaml` and the committed `map.pages.yaml` share one schema
    with these keys: `view` (and its zoom limits and bounds), `basemap`,
@@ -313,8 +313,8 @@ practical:
   stays until step 6 switches the map config over.
 - `processing` also keeps `min_visible_px` (the drop guard threshold,
   any vector layer; `protected_areas` needs 4) and `grey_levels` (raster
-  only; the Pages copy uses 8). `coverage` generalises every zoom below
-  `maxzoom`.
+  only; the Pages copy uses 8). Polygon layers are generalised at every
+  zoom, `maxzoom` included (#147).
 - `display.themes`: the first theme is what `display.layers` draw and has
   no `paint`; each other theme sets paint properties per style layer id.
 - Every converted layer sets an explicit `legend` for now (labels such
@@ -329,12 +329,14 @@ practical:
   style layer and theme ids, a full legend while the app still needs
   one). A layer with problems is `invalid` in `--status` and fails its
   build before any data is read; the others still build.
-- Presets: every vector preset keeps the max zoom at full detail
-  (`--simplify-only-low-zooms`, ADR 0013). `default` adds nothing;
+- Presets: every vector preset passes `--simplify-only-low-zooms` (ADR
+  0013), so tippecanoe leaves the max zoom to the pipeline. `default`
+  adds nothing and generalises polygons feature by feature at every zoom;
   `coverage` adds `--no-simplification-of-shared-nodes
   --drop-smallest-as-needed` and generalises every zoom from `minzoom` to
-  `maxzoom - 1`; `points` adds `--drop-rate=1`. `raster` is the GDAL
-  path. Other tippecanoe flags go in `processing.tippecanoe` (#122).
+  `maxzoom` as a coverage (the max zoom more gently, #147); `points`
+  adds `--drop-rate=1`. `raster` is the GDAL path. Other tippecanoe
+  flags go in `processing.tippecanoe` (#122).
 - `source.id` is read into an internal attribute, `_feature_id`, which
   tippecanoe writes as the feature id and drops from the attributes.
 - Calculated fields are one nested query, each field a level, so a field

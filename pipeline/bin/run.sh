@@ -165,18 +165,25 @@ build_vector_layer() {
   local sizes="${layer_scratch}/sizes.tsv" stats="${layer_scratch}/zoom_stats.json"
   feature_sizes "$normalised" "$LAYER_FEATURE_ID" "$sizes"
 
-  # The coverage preset generalises every zoom below the max: tippecanoe
-  # reads the generalised zooms and the full input from one file
-  # (lib/generalise.sh); the drop guard still measures the full input.
-  local tile_input=$normalised
-  if [[ -n $LAYER_GENERALISE_MAX_ZOOM ]]; then
+  # The coverage and default presets generalise a polygon layer at every
+  # zoom: tippecanoe reads every zoom's features from one file
+  # (lib/generalise.sh). Only a layer whose every feature is a polygon (one
+  # with a size) is generalised; points and lines are tiled as they are. The
+  # drop guard still measures the normalised input.
+  local tile_input=$normalised polygons
+  polygons=$(wc -l <"$sizes")
+  polygons=${polygons//[[:space:]]/}
+  if [[ -n $LAYER_GENERALISE ]] && ((polygons > 0 && polygons < count)); then
+    log_info "not generalised: only ${polygons} of ${count} features are polygons"
+  elif [[ -n $LAYER_GENERALISE ]] && ((polygons == count)); then
     local field attributes=()
     for field in "${LAYER_FIELDS[@]}"; do attributes+=("${field#*:}"); done
     tile_input="${layer_scratch}/${name}.generalised.geojsonl"
-    generalised_input "$normalised" "$tile_input" "$LAYER_MIN_ZOOM" \
-      "$LAYER_GENERALISE_MAX_ZOOM" "$LAYER_FEATURE_ID" "$LAYER_GENERALISE_MIN_PART_PX" \
-      "$LAYER_GENERALISE_SIMPLIFY_PX" "$layer_scratch" "${attributes[@]}" \
-      "${LAYER_CALCULATED_NAMES[@]}"
+    generalised_input "$normalised" "$tile_input" "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" \
+      "$LAYER_FEATURE_ID" "$LAYER_GENERALISE" \
+      "$LAYER_GENERALISE_MIN_PART_PX" "$LAYER_GENERALISE_SIMPLIFY_PX" \
+      "$LAYER_GENERALISE_MAX_MIN_PART_PX" "$LAYER_GENERALISE_MAX_SIMPLIFY_PX" \
+      "$layer_scratch" "${attributes[@]}" "${LAYER_CALCULATED_NAMES[@]}"
   fi
 
   build_tiles "$name" "$tile_input" "$PIPELINE_OUTPUT_DIR" \

@@ -42,6 +42,8 @@
               "maxzoom": { "maximum": 14 },
               "min_part_px": false,
               "simplify_px": false,
+              "maxzoom_min_part_px": false,
+              "maxzoom_simplify_px": false,
               "min_visible_px": false,
               "tippecanoe": false
             }
@@ -57,13 +59,17 @@
       }
     },
     {
-      "description": "Low-zoom generalisation settings belong to the coverage profile.",
+      "description": "Generalisation settings belong to the polygon profiles, coverage and default.",
       "if": {
         "required": ["processing"],
-        "properties": { "processing": { "not": { "required": ["profile"], "properties": { "profile": { "const": "coverage" } } } } }
+        "properties": { "processing": { "required": ["profile"], "properties": { "profile": { "const": "points" } } } }
       },
       "then": {
-        "properties": { "processing": { "properties": { "min_part_px": false, "simplify_px": false } } }
+        "properties": {
+          "processing": {
+            "properties": { "min_part_px": false, "simplify_px": false, "maxzoom_min_part_px": false, "maxzoom_simplify_px": false }
+          }
+        }
       }
     }
   ],
@@ -190,7 +196,7 @@
       "additionalProperties": false,
       "properties": {
         "profile": {
-          "description": "The preset. `default`: lines and polygons, simplified below the max zoom only. `coverage`: polygons that tile the land without overlaps; shared borders kept identical, the smallest dropped first when a tile is full, and the zooms below the max generalised (small parts dropped, borders simplified). `points`: every point at every zoom. `raster`: a binary raster, a Web Mercator COG, display only. Default `default`.",
+          "description": "The preset. `default`: lines and polygons; lines simplified below the max zoom only, polygons generalised at every zoom (small parts dropped, each feature simplified on its own, as they may overlap). `coverage`: polygons that tile the land without overlaps; shared borders kept identical, the smallest dropped first when a tile is full, and every zoom generalised (small parts dropped, borders simplified once for both neighbours). `points`: every point at every zoom. `raster`: a binary raster, a Web Mercator COG, display only. Default `default`.",
           "enum": ["default", "coverage", "points", "raster"]
         },
         "minzoom": {
@@ -206,12 +212,22 @@
           "maximum": 24
         },
         "min_part_px": {
-          "description": "Coverage only: below the max zoom, drop polygon parts smaller than this many screen pixels (each feature keeps its largest part). Default 4.",
+          "description": "Polygons (coverage and default): below the max zoom, drop polygon parts smaller than this many screen pixels (each feature keeps its largest part); 0 for none. Default 4.",
           "type": "number",
           "minimum": 0
         },
         "simplify_px": {
-          "description": "Coverage only: below the max zoom, simplify borders by this many screen pixels; 0 for none. Default 1.",
+          "description": "Polygons (coverage and default): below the max zoom, simplify borders by this many screen pixels; 0 for none. Default 1.",
+          "type": "number",
+          "minimum": 0
+        },
+        "maxzoom_min_part_px": {
+          "description": "As min_part_px, at the max zoom. Default 1. With maxzoom_simplify_px 0 too, the max zoom keeps full detail.",
+          "type": "number",
+          "minimum": 0
+        },
+        "maxzoom_simplify_px": {
+          "description": "As simplify_px, at the max zoom. Default 0.5.",
           "type": "number",
           "minimum": 0
         },

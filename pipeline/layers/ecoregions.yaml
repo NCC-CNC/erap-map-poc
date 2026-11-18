@@ -69,8 +69,9 @@ fields:
 processing:
   profile: coverage
   minzoom: 0
-  # z12 holds coordinates to about 1 to 2 m across Canada and is not
-  # simplified, so small islands keep their shape when zoomed in.
+  # z12 holds coordinates to about 1 to 2 m across Canada. It is generalised
+  # gently (the defaults: parts under 1 px dropped, 0.5 px simplification),
+  # so small islands keep their shape when zoomed in.
   maxzoom: 12
   # About 90,000 parts, mostly small islands: below z12 keep parts of 2 px
   # or more and simplify borders gently, so detail builds up zoom by zoom.

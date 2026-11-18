@@ -51,8 +51,9 @@ For each layer:
    keep and rename the attributes in `fields.keep`, then add the
    `fields.calculated` SQLite expressions.
 3. **Tile** a vector layer with tippecanoe, using the options of its
-   profile (`default`, `coverage` or `points`). A `coverage` layer is
-   generalised zoom by zoom first (ADR 0016). The drop guard then checks
+   profile (`default`, `coverage` or `points`). A polygon layer is
+   generalised zoom by zoom first, max zoom included, more gently there
+   (ADR 0016; as a coverage for `coverage`). The drop guard then checks
    no visible polygon was lost, and the archive is moved into place.
 4. **Or warp** a raster layer (profile `raster`) with GDAL into one Web
    Mercator COG, whose pixels are the share covered (0 to 255), with an

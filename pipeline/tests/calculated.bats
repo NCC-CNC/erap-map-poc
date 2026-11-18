@@ -137,7 +137,7 @@ props() {
   demo '.processing.profile = "coverage"'
   run "$RUN" demo
   [ "$status" -eq 0 ]
-  [[ $output == *"generalising z0-z3"* ]]
+  [[ $output == *"generalising z0-z4"* ]]
   run props 3
   [ "$(jq -c '[.score_gap, .low_count]' <<<"$output")" = '[90,1]' ]
 }

@@ -42,7 +42,7 @@ In the image the pipeline is at `/opt/pipeline`; compose mounts
 | `normalise.sh` | reads a source with `ogr2ogr` into GeoJSONSeq: EPSG:4326, valid geometries, the kept and renamed attributes, the feature id |
 | `joins.sh` | `source.joins`: reads each table once and adds its rows by key, with jq |
 | `calculated.sh` | `fields.calculated`: SQLite expressions run by `ogr2ogr -dialect SQLite`, one nested query per field |
-| `generalise.sh` | the `coverage` profile's low zooms: drop small parts and simplify the coverage per zoom, with GDAL (ADR 0016) |
+| `generalise.sh` | polygon layers (`coverage` and `default`), every zoom: drop small parts and simplify per zoom (as a coverage for `coverage`), with GDAL (ADR 0016) |
 | `tiles.sh` | runs tippecanoe into a temp file, verifies and checks it, then moves it into place |
 | `guard.sh` | the drop guard: fails a build that lost a visible polygon at some zoom, and gathers per-zoom stats (ADR 0016) |
 | `raster.sh` | the `raster` profile: prepares a binary raster once (cached in `data/work/raster/`), warps it to a Web Mercator COG of the share covered, with overviews (ADR 0010) |
