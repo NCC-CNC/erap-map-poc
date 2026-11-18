@@ -15,7 +15,8 @@ source:
   id: OBJECTID
 
 # Dissolved, so no overlaps, but not a contiguous coverage: the default
-# profile, which drops only what simplification collapses.
+# profile, which drops parts under a few pixels and simplifies each area on
+# its own at every zoom; each area keeps its largest part.
 processing:
   profile: default
   minzoom: 0

@@ -1,8 +1,9 @@
 #!/usr/bin/env bats
-# Full detail at a vector layer's max zoom (ADR 0013): every processing
-# preset passes tippecanoe's --simplify-only-low-zooms, on the synthetic
-# island coverage from fixtures/make_islands.sh (generated here, not
-# committed). Run in the test image with the other bats files.
+# The max zoom of a vector layer (ADR 0013): every processing preset passes
+# tippecanoe's --simplify-only-low-zooms, so the pipeline alone generalises
+# polygons there (lib/generalise.sh), on the synthetic island coverage from
+# fixtures/make_islands.sh (generated here, not committed). Run in the test
+# image with the other bats files.
 
 load helpers
 
@@ -57,7 +58,7 @@ vertices_at_zoom() {
     -sql "SELECT SUM(ST_NPoints(geometry)) AS n FROM islands WHERE mvt_id = $2" | tail -n 1
 }
 
-@test "every preset keeps the max zoom at full detail: --simplify-only-low-zooms" {
+@test "every preset passes --simplify-only-low-zooms" {
   local profile
   for profile in coverage default points; do
     write_config ".processing.profile = \"${profile}\""
@@ -71,35 +72,36 @@ vertices_at_zoom() {
   done
 }
 
-@test "full detail keeps more vertices at the max zoom; lower zooms are simplified either way" {
+@test "the max zoom is simplified gently by the pipeline; 0 keeps full detail" {
+  # Defaults: the pipeline simplifies z4 at 0.5 px.
   write_config
+  run "$RUN" islands
+  [ "$status" -eq 0 ]
+  local gen_max gen_low
+  gen_max=$(vertices_at_zoom 4 1)
+  gen_low=$(vertices_at_zoom 3 1)
+
+  # 0: z4 at full detail, as tippecanoe leaves it (--simplify-only-low-zooms).
+  write_config '.processing.maxzoom_min_part_px = 0' '.processing.maxzoom_simplify_px = 0'
   run "$RUN" islands
   [ "$status" -eq 0 ]
   local full_max full_low
   full_max=$(vertices_at_zoom 4 1)
   full_low=$(vertices_at_zoom 3 1)
 
+  # Without the flag tippecanoe would simplify z4 itself.
   without_full_detail
   run "$RUN" islands
   [ "$status" -eq 0 ]
   run generator_options
   [[ $output != *"--simplify-only-low-zooms"* ]]
-  local simple_max simple_low
+  local simple_max
   simple_max=$(vertices_at_zoom 4 1)
-  simple_low=$(vertices_at_zoom 3 1)
 
-  echo "z4: full $full_max, simplified $simple_max; z3: $full_low, $simple_low"
-  # The zigzag border (101 vertices) stays at z4 only without simplification.
+  echo "z4: generalised $gen_max, full $full_max, tippecanoe $simple_max; z3: $gen_low, $full_low"
+  # The zigzag border (101 vertices) stays at z4 only at full detail.
+  ((full_max > gen_max + 50))
   ((full_max > simple_max + 50))
-  ((full_low == simple_low))
-}
-
-@test "full detail at the max zoom works with low-zoom generalisation" {
-  write_config
-  run "$RUN" islands
-  echo "$output"
-  [ "$status" -eq 0 ]
-  [[ $output == *"generalising z0-z3"* ]]
-  run generator_options
-  [[ $output == *"--simplify-only-low-zooms"* ]]
+  # Lower zooms are generalised with their own settings either way.
+  ((gen_low < 20 && full_low < 20))
 }

@@ -73,7 +73,8 @@ copy_layers() {
 
   run bash -c "pmtiles show --metadata '${PIPELINE_OUTPUT_DIR}/sample.pmtiles' \
     | jq -r '.tilestats.layers[0].count'"
-  [ "$output" = "15" ]
+  # 15 polygons, generalised once per zoom (z0 to z8, lib/generalise.sh).
+  [ "$output" = "$((15 * 9))" ]
 
   # Feature ids survive into the tiles.
   run bash -c "tippecanoe-decode '${PIPELINE_OUTPUT_DIR}/sample.pmtiles' 0 0 0 \

@@ -5,7 +5,9 @@
 Accepted. Records decisions first made in design note 02 (removed in the
 refactor, ADR 0015), now the `coverage` profile and the drop guard in
 `pipeline/lib/`. Builds on 0002-bash-gdal-tippecanoe-pipeline.md and
-0013-full-detail-at-vector-max-zoom.md.
+0013-full-detail-at-vector-max-zoom.md. Since #147 the per-zoom
+generalisation also covers the max zoom (more gently) and `default`
+polygon layers (each feature simplified on its own, no shared borders).
 
 ## Context
 

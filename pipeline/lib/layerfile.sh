@@ -388,12 +388,15 @@ layer_provenance() {
 #   LAYER_MIN_ZOOM, LAYER_MAX_ZOOM
 #                         processing.minzoom (default 0) and maxzoom
 #   LAYER_MIN_VISIBLE_PX  processing.min_visible_px, default 1 (lib/guard.sh)
-#   LAYER_GENERALISE_MAX_ZOOM
-#                         coverage: maxzoom - 1, so every zoom below the max
-#                         is generalised (lib/generalise.sh); empty otherwise
+#   LAYER_GENERALISE      how a polygon layer is simplified at each zoom
+#                         (lib/generalise.sh): `coverage` for the coverage
+#                         profile, `feature` for default; empty otherwise
 #   LAYER_GENERALISE_MIN_PART_PX, LAYER_GENERALISE_SIMPLIFY_PX
-#                         processing.min_part_px (default 4) and
-#                         simplify_px (default 1)
+#                         below the max zoom: processing.min_part_px
+#                         (default 4) and simplify_px (default 1)
+#   LAYER_GENERALISE_MAX_MIN_PART_PX, LAYER_GENERALISE_MAX_SIMPLIFY_PX
+#                         at the max zoom: processing.maxzoom_min_part_px
+#                         (default 1) and maxzoom_simplify_px (default 0.5)
 #   LAYER_GREY_LEVELS     processing.grey_levels, default 256 (lib/raster.sh)
 #   LAYER_TIPPECANOE_FLAGS
 #                         the preset's tippecanoe flags (preset_flags), then
@@ -414,11 +417,14 @@ load_layer() {
       (.processing.minzoom // 0), .processing.maxzoom,
       (.processing.min_visible_px // 1),
       (.processing.min_part_px // 4), (.processing.simplify_px // 1),
+      (.processing.maxzoom_min_part_px // 1), (.processing.maxzoom_simplify_px // 0.5),
       (.processing.grey_levels // 256) ] | map(tostring) | join("\u001f")' "$config") \
     || die "cannot read $config"
   IFS=$'\x1f' read -r LAYER_PROFILE LAYER_INPUT LAYER_SOURCE_LAYER LAYER_SOURCE_SRS \
     LAYER_ENCODING LAYER_NODATA LAYER_MIN_ZOOM LAYER_MAX_ZOOM LAYER_MIN_VISIBLE_PX \
-    LAYER_GENERALISE_MIN_PART_PX LAYER_GENERALISE_SIMPLIFY_PX LAYER_GREY_LEVELS <<<"$settings"
+    LAYER_GENERALISE_MIN_PART_PX LAYER_GENERALISE_SIMPLIFY_PX \
+    LAYER_GENERALISE_MAX_MIN_PART_PX LAYER_GENERALISE_MAX_SIMPLIFY_PX \
+    LAYER_GREY_LEVELS <<<"$settings"
   LAYER_INPUT=$(resolve_input "$LAYER_INPUT")
 
   LAYER_TYPE=vector
@@ -428,7 +434,7 @@ load_layer() {
   LAYER_CALCULATED_NAMES=()
   LAYER_CALCULATED_EXPRESSIONS=()
   LAYER_JOINS='[]'
-  LAYER_GENERALISE_MAX_ZOOM=""
+  LAYER_GENERALISE=""
   LAYER_TIPPECANOE_FLAGS=()
   if [[ $LAYER_TYPE == vector ]]; then
     mapfile -t LAYER_FIELDS < <(jq -r --arg fid "$FEATURE_ID_ATTRIBUTE" '
@@ -441,9 +447,10 @@ load_layer() {
     LAYER_JOINS=$(jq -c --arg dir "$PIPELINE_INPUT_DIR" \
       '[(.source.joins // [])[] | .path |= (if startswith("/") then . else "\($dir)/\(.)" end)]' \
       "$config")
-    if [[ $LAYER_PROFILE == coverage ]] && ((LAYER_MIN_ZOOM < LAYER_MAX_ZOOM)); then
-      LAYER_GENERALISE_MAX_ZOOM=$((LAYER_MAX_ZOOM - 1))
-    fi
+    case $LAYER_PROFILE in
+      coverage) LAYER_GENERALISE=coverage ;;
+      default) LAYER_GENERALISE=feature ;;
+    esac
     # The preset's flags, then processing.tippecanoe's (advanced).
     mapfile -t LAYER_TIPPECANOE_FLAGS < <(preset_flags "$LAYER_PROFILE"
       jq -r '(.processing.tippecanoe // [])[]' "$config")
@@ -451,19 +458,22 @@ load_layer() {
 }
 
 # preset_flags PROFILE: the tippecanoe flags of a vector processing preset,
-# one per line. Every preset keeps the full detail of the source at the max
-# zoom (--simplify-only-low-zooms, ADR 0013): lines and polygons are
-# simplified at the lower zooms only.
+# one per line. Every preset passes --simplify-only-low-zooms (ADR 0013):
+# tippecanoe simplifies at the lower zooms only, so lines keep full detail
+# at the max zoom, and polygons keep what the pipeline's own generalisation
+# leaves there (lib/generalise.sh) rather than being simplified twice.
 #
 #   default   lines and polygons: nothing else, so tippecanoe drops only
 #             what its tiny polygon reduction and simplification collapse.
+#             Polygons are generalised at every zoom first, each feature on
+#             its own, as they may overlap (lib/generalise.sh).
 #   coverage  polygons that tile the land without overlaps (shared
 #             borders): --no-simplification-of-shared-nodes simplifies each
 #             shared border once, identically in both neighbours, so no gaps
 #             or slivers open along it; --drop-smallest-as-needed drops the
 #             physically smallest polygons first when a tile is too big,
-#             never large ones for being in a dense area. The zooms below the
-#             max are also generalised first (lib/generalise.sh).
+#             never large ones for being in a dense area. Every zoom is
+#             generalised first, as a coverage (lib/generalise.sh).
 #   points    every point at every zoom: a drop rate of 1 turns off
 #             tippecanoe's point thinning below the base zoom.
 preset_flags() {

@@ -77,10 +77,15 @@ map_config() {
   broken "$LAYER_SCHEMA" "$SAMPLE" '.processing.profile = "fast"' "processing/profile"
 }
 
-@test "generalisation settings need the coverage profile" {
-  broken "$LAYER_SCHEMA" "$SAMPLE" '.processing.min_part_px = 2' "processing/min_part_px"
-  # The same settings are fine on the coverage layer.
+@test "generalisation settings need a polygon profile, coverage or default" {
+  local points="${PIPELINE_ROOT}/tests/layers/sample_points.yaml"
+  broken "$LAYER_SCHEMA" "$points" '.processing.min_part_px = 2' "processing/min_part_px"
+  broken "$LAYER_SCHEMA" "$points" '.processing.maxzoom_simplify_px = 0' "processing/maxzoom_simplify_px"
+  broken "$LAYER_SCHEMA" "$SAMPLE" '.processing.maxzoom_min_part_px = -1' "processing/maxzoom_min_part_px"
+  # The same settings are fine on the coverage and default layers.
   run jv "$LAYER_SCHEMA" "$ECOREGIONS"
+  [ "$status" -eq 0 ]
+  valid "$SAMPLE" '.processing.min_part_px = 2 | .processing.maxzoom_min_part_px = 0 | .processing.maxzoom_simplify_px = 0'
   [ "$status" -eq 0 ]
 }
 

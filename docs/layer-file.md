@@ -117,19 +117,23 @@ processing:
 | --- | --- | --- |
 | `profile` | all | `default`, `coverage`, `points` or `raster` (default `default`) |
 | `minzoom` | all | lowest zoom built (default 0) |
-| `maxzoom` | all | required. Highest zoom built, at full detail; the map overzooms past it. A raster's resolution too (z12 is about 20 to 27 m across Canada), at most 14. |
-| `min_part_px` | `coverage` | below `maxzoom`, drop polygon parts under this many screen pixels (default 4) |
-| `simplify_px` | `coverage` | below `maxzoom`, simplify borders by this many pixels (default 1; 0 for none) |
+| `maxzoom` | all | required. Highest zoom built; the map overzooms past it. Lines and points keep full detail there; polygons are generalised gently (`maxzoom_min_part_px`, `maxzoom_simplify_px`). A raster's resolution too (z12 is about 20 to 27 m across Canada), at most 14. |
+| `min_part_px` | polygons (`coverage`, `default`) | below `maxzoom`, drop polygon parts under this many screen pixels; each feature keeps its largest (default 4; 0 for none) |
+| `simplify_px` | polygons (`coverage`, `default`) | below `maxzoom`, simplify borders by this many pixels (default 1; 0 for none) |
+| `maxzoom_min_part_px` | polygons (`coverage`, `default`) | as `min_part_px`, at `maxzoom` (default 1) |
+| `maxzoom_simplify_px` | polygons (`coverage`, `default`) | as `simplify_px`, at `maxzoom` (default 0.5); with `maxzoom_min_part_px: 0` too, `maxzoom` keeps full detail |
 | `min_visible_px` | vector | the drop guard fails the build if a polygon this many pixels or larger is missing from a zoom (default 1) |
 | `grey_levels` | `raster` | how many shares of cover the COG keeps, 2 to 256 (default 256); fewer compress better |
 | `tippecanoe` | vector | advanced: extra tippecanoe options, one per item, such as `--drop-densest-as-needed` or `--maximum-tile-bytes=1000000` |
 
 The profiles:
 
-- `default`: lines and polygons, simplified below the max zoom only.
+- `default`: lines and polygons. Lines are simplified below the max zoom
+  only; polygons are generalised at every zoom, each on its own, as they
+  may overlap (small parts dropped, each feature keeping its largest).
 - `coverage`: polygons that tile the land without overlaps, such as
   ecoregions. Shared borders stay identical, the smallest polygons go
-  first when a tile is full, and the zooms below the max are generalised
+  first when a tile is full, and every zoom is generalised as a coverage
   (ADR 0016).
 - `points`: every point at every zoom.
 - `raster`: a binary raster (one band of 0, 1 and nodata) as one Web

@@ -213,7 +213,7 @@ export interface Fields {
  */
 export interface Processing {
   /**
-   * The preset. `default`: lines and polygons, simplified below the max zoom only. `coverage`: polygons that tile the land without overlaps; shared borders kept identical, the smallest dropped first when a tile is full, and the zooms below the max generalised (small parts dropped, borders simplified). `points`: every point at every zoom. `raster`: a binary raster, a Web Mercator COG, display only. Default `default`.
+   * The preset. `default`: lines and polygons; lines simplified below the max zoom only, polygons generalised at every zoom (small parts dropped, each feature simplified on its own, as they may overlap). `coverage`: polygons that tile the land without overlaps; shared borders kept identical, the smallest dropped first when a tile is full, and every zoom generalised (small parts dropped, borders simplified once for both neighbours). `points`: every point at every zoom. `raster`: a binary raster, a Web Mercator COG, display only. Default `default`.
    */
   profile?: 'default' | 'coverage' | 'points' | 'raster';
   /**
@@ -225,13 +225,21 @@ export interface Processing {
    */
   maxzoom?: number;
   /**
-   * Coverage only: below the max zoom, drop polygon parts smaller than this many screen pixels (each feature keeps its largest part). Default 4.
+   * Polygons (coverage and default): below the max zoom, drop polygon parts smaller than this many screen pixels (each feature keeps its largest part); 0 for none. Default 4.
    */
   min_part_px?: number;
   /**
-   * Coverage only: below the max zoom, simplify borders by this many screen pixels; 0 for none. Default 1.
+   * Polygons (coverage and default): below the max zoom, simplify borders by this many screen pixels; 0 for none. Default 1.
    */
   simplify_px?: number;
+  /**
+   * As min_part_px, at the max zoom. Default 1. With maxzoom_simplify_px 0 too, the max zoom keeps full detail.
+   */
+  maxzoom_min_part_px?: number;
+  /**
+   * As simplify_px, at the max zoom. Default 0.5.
+   */
+  maxzoom_simplify_px?: number;
   /**
    * Vector only: the drop guard fails the build if a polygon whose largest part covers this many screen pixels is missing from a zoom. Default 1.
    */
@@ -681,7 +689,7 @@ export interface Source1 {
  */
 export interface ProcessingSettings {
   /**
-   * The preset. `default`: lines and polygons, simplified below the max zoom only. `coverage`: polygons that tile the land without overlaps; shared borders kept identical, the smallest dropped first when a tile is full, and the zooms below the max generalised (small parts dropped, borders simplified). `points`: every point at every zoom. `raster`: a binary raster, a Web Mercator COG, display only. Default `default`.
+   * The preset. `default`: lines and polygons; lines simplified below the max zoom only, polygons generalised at every zoom (small parts dropped, each feature simplified on its own, as they may overlap). `coverage`: polygons that tile the land without overlaps; shared borders kept identical, the smallest dropped first when a tile is full, and every zoom generalised (small parts dropped, borders simplified once for both neighbours). `points`: every point at every zoom. `raster`: a binary raster, a Web Mercator COG, display only. Default `default`.
    */
   profile?: 'default' | 'coverage' | 'points' | 'raster';
   /**
@@ -693,13 +701,21 @@ export interface ProcessingSettings {
    */
   maxzoom?: number;
   /**
-   * Coverage only: below the max zoom, drop polygon parts smaller than this many screen pixels (each feature keeps its largest part). Default 4.
+   * Polygons (coverage and default): below the max zoom, drop polygon parts smaller than this many screen pixels (each feature keeps its largest part); 0 for none. Default 4.
    */
   min_part_px?: number;
   /**
-   * Coverage only: below the max zoom, simplify borders by this many screen pixels; 0 for none. Default 1.
+   * Polygons (coverage and default): below the max zoom, simplify borders by this many screen pixels; 0 for none. Default 1.
    */
   simplify_px?: number;
+  /**
+   * As min_part_px, at the max zoom. Default 1. With maxzoom_simplify_px 0 too, the max zoom keeps full detail.
+   */
+  maxzoom_min_part_px?: number;
+  /**
+   * As simplify_px, at the max zoom. Default 0.5.
+   */
+  maxzoom_simplify_px?: number;
   /**
    * Vector only: the drop guard fails the build if a polygon whose largest part covers this many screen pixels is missing from a zoom. Default 1.
    */
@@ -723,7 +739,7 @@ export interface ProcessingSettings {
  */
 export interface Processing1 {
   /**
-   * The preset. `default`: lines and polygons, simplified below the max zoom only. `coverage`: polygons that tile the land without overlaps; shared borders kept identical, the smallest dropped first when a tile is full, and the zooms below the max generalised (small parts dropped, borders simplified). `points`: every point at every zoom. `raster`: a binary raster, a Web Mercator COG, display only. Default `default`.
+   * The preset. `default`: lines and polygons; lines simplified below the max zoom only, polygons generalised at every zoom (small parts dropped, each feature simplified on its own, as they may overlap). `coverage`: polygons that tile the land without overlaps; shared borders kept identical, the smallest dropped first when a tile is full, and every zoom generalised (small parts dropped, borders simplified once for both neighbours). `points`: every point at every zoom. `raster`: a binary raster, a Web Mercator COG, display only. Default `default`.
    */
   profile?: 'default' | 'coverage' | 'points' | 'raster';
   /**
@@ -735,13 +751,21 @@ export interface Processing1 {
    */
   maxzoom?: number;
   /**
-   * Coverage only: below the max zoom, drop polygon parts smaller than this many screen pixels (each feature keeps its largest part). Default 4.
+   * Polygons (coverage and default): below the max zoom, drop polygon parts smaller than this many screen pixels (each feature keeps its largest part); 0 for none. Default 4.
    */
   min_part_px?: number;
   /**
-   * Coverage only: below the max zoom, simplify borders by this many screen pixels; 0 for none. Default 1.
+   * Polygons (coverage and default): below the max zoom, simplify borders by this many screen pixels; 0 for none. Default 1.
    */
   simplify_px?: number;
+  /**
+   * As min_part_px, at the max zoom. Default 1. With maxzoom_simplify_px 0 too, the max zoom keeps full detail.
+   */
+  maxzoom_min_part_px?: number;
+  /**
+   * As simplify_px, at the max zoom. Default 0.5.
+   */
+  maxzoom_simplify_px?: number;
   /**
    * Vector only: the drop guard fails the build if a polygon whose largest part covers this many screen pixels is missing from a zoom. Default 1.
    */
