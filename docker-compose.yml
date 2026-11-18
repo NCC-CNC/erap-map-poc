@@ -1,5 +1,5 @@
-# ERAP Map PoC stack (ADR 0004). Usage is in README.md; the design is in
-# docs/design/01_architecture.md (Docker Compose section).
+# ERAP Map PoC stack (ADR 0004). Usage is in README.md; how it fits together in
+# docs/how-it-works.md.
 #
 #   docker compose run --rm pipeline [layer ...]   build tiles into data/tiles/
 #   docker compose run --rm pipeline --status      what is built, what is stale

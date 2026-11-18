@@ -8,7 +8,9 @@ Accepted. Supersedes the storage and build steps of
 `.pmtiles` archive. The rest of 0008 stands: binary rasters only, the share
 of each pixel covered as a grey level, coloured in the map by a
 `color-relief` layer on a `raster-dem` source, display only. Vector layers
-stay PMTiles (0002).
+stay PMTiles (0002). The `LAYER_*` settings named below are now layer
+file keys (`processing.minzoom`, `maxzoom` and `grey_levels`,
+`source.srs` and `nodata`; ADR 0015).
 
 ## Context
 

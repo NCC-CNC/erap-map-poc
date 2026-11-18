@@ -6,8 +6,7 @@
 # Every tool is pinned. Base images are pinned by tag and digest (the
 # multi-arch index) in literal `FROM` lines so Dependabot can propose
 # updates; it does not resolve `ARG` values in `FROM`. To upgrade a tool,
-# change its ARG (and commit or checksum) here. Note upgrades in
-# CHANGELOG.md.
+# change its ARG (and commit or checksum) here.
 
 # ---------------------------------------------------------------------------
 # GDAL base. Every GDAL-based stage below builds from this one, so the pin

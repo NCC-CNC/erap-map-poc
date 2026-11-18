@@ -4,7 +4,8 @@
 
 Accepted. Extends 0002-bash-gdal-tippecanoe-pipeline.md (a tippecanoe
 default for every vector layer) and 0009-local-map-config.md (a map config
-setting can be `true` or `false`).
+setting can be `true` or `false`). Since ADR 0015 every vector profile
+keeps the max zoom at full detail and `LAYER_SIMPLIFY_MAX_ZOOM` is gone.
 
 ## Context
 

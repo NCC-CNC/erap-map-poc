@@ -76,7 +76,8 @@ See `docs/design/03_milestones.md` for the phased plan.
    needs, and serve files. Fewer moving parts suits a PoC.
 4. Keep the data contract explicit: the attributes and sidecar files the
    pipeline produces are the interface the web app reads. Document them in
-   `docs/design/02_data_layers_and_popups.md` and change both sides together.
+   `docs/layer-file.md` (the app reads `style.json` and the tile
+   attributes, ADR 0015) and change both sides together.
 
 ## Open questions
 
@@ -86,7 +87,7 @@ See `docs/design/03_milestones.md` for the phased plan.
 - What each pop-up shows: which stats, which plots, and whether stats are
   precomputed per feature or aggregated across features.
 - Does the plot data fit in tile attributes, or does it need sidecar JSON
-  files keyed by feature id? See `02_data_layers_and_popups.md`.
+  files keyed by feature id? So far tile attributes are enough.
 - Is `mb-util` needed? Tippecanoe writes `.pmtiles` directly and the
   `pmtiles` CLI converts `.mbtiles`, so `mb-util` only earns a place if a
   tile directory step is needed.

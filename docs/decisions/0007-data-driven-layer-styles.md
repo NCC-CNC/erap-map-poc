@@ -2,10 +2,10 @@
 
 ## Status
 
-Accepted. Amends 0003-react-vite-maplibre-chartjs-web-app.md on where
-layers are defined: no longer in the web app's code. Extended by
-0012-click-modal-template-and-colour-themes.md (click modal, colour themes,
-gradients, number format presets).
+Superseded by 0015-one-layer-file-and-a-maplibre-style.md: a layer is
+one YAML file whose `display` is plain MapLibre style layers, and the app
+reads `style.json`, not `manifest.json`. Kept as the record of the first
+data-driven design.
 
 ## Context
 

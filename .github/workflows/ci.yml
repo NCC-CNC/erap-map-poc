@@ -292,5 +292,7 @@ jobs:
         run: |
           test -f CLAUDE.md
           test -f docs/decisions/README.md
-          test -f docs/handoffs/HANDOFF_TEMPLATE.md
+          test -f docs/how-it-works.md
+          test -f docs/guide.md
+          test -f docs/layer-file.md
           test -d docs/design

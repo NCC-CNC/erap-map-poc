@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Low-zoom generalisation of a polygon layer (the coverage processing
-# profile, lib/layerfile.sh; docs/design/02_data_layers_and_popups.md).
+# profile, lib/layerfile.sh; ADR 0015).
 #
 # For each zoom z from the layer's min zoom up to the zoom below its max,
 # a generalised copy of the normalised input is made with GDAL, in EPSG:3857

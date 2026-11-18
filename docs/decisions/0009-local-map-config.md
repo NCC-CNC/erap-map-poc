@@ -2,9 +2,9 @@
 
 ## Status
 
-Accepted. Extends 0007-data-driven-layer-styles.md: the committed layer
-configs stay the shared defaults, and a local file can change them for one
-user's map.
+Superseded by 0015-one-layer-file-and-a-maplibre-style.md: the map
+config is `map.config.yaml` (and `map.pages.yaml`), overriding only
+`source` and `processing`; personal layers go in `pipeline/layers.local/`.
 
 ## Context
 
