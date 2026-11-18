@@ -69,7 +69,7 @@ json_of() {
   [ "$status" -eq 0 ]
   [[ $output == *"CRS:        NAD83 / Statistics Canada Lambert (EPSG:3347)"* ]]
   [[ $output == *"Encoding:   ISO-8859-1 (from cpg)"* ]]
-  [[ $output == *"consider LAYER_PROFILE=coverage"* ]]
+  [[ $output == *"consider processing.profile: coverage"* ]]
 }
 
 @test "overlapping polygons are flagged and not coverage-like" {
@@ -117,7 +117,7 @@ json_of() {
   done
 }
 
-@test "a shapefile without .prj: no CRS, no WGS84 extent, a LAYER_SOURCE_SRS hint" {
+@test "a shapefile without .prj: no CRS, no WGS84 extent, a source.srs hint" {
   mkdir -p "${PIPELINE_INPUT_DIR}/noprj"
   ogr2ogr -f "ESRI Shapefile" -t_srs EPSG:3347 "${PIPELINE_INPUT_DIR}/noprj/sample.shp" \
     "${FIXTURES}/sample.geojson"
@@ -127,7 +127,7 @@ json_of() {
   run jq -c '[.crs, .extent_wgs84]' <<<"$JSON"
   [ "$output" = '[null,null]' ]
   run jq -r '.warnings[]' <<<"$JSON"
-  [[ $output == *"set LAYER_SOURCE_SRS"* ]]
+  [[ $output == *"set source.srs in the layer file"* ]]
 }
 
 @test "reads a zipped shapefile in place and picks a layer with --layer" {

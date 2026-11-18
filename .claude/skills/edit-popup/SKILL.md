@@ -5,6 +5,17 @@ description: Change what a map layer shows when a feature is clicked - its small
 
 # Edit a pop-up or modal
 
+> **Layer files changed (design note 04, #115).** A layer is now one file,
+> `pipeline/layers/<layer>.yaml` (schema `pipeline/schema/layer.schema.json`),
+> and your map config is `map.config.yaml`. Where this skill says
+> `<layer>.env`, read the layer file's `source`, `fields` and `processing`
+> (a `profile` preset: `default`, `coverage`, `points` or `raster`);
+> `.style.json`, its `title`, `visible`, `order` and `display` (plain
+> MapLibre style layers, `themes`, `legend`, `popup`, `modal`);
+> `LAYER_CALCULATED` and `.rules.json`, `fields.calculated` (SQLite
+> expressions). `docker compose run --rm pipeline --status` lists any
+> problem in a layer file. This skill is rewritten in #120.
+
 What a layer shows on click lives in `pipeline/layers/<name>.style.json`:
 a `popup` (small map pop-up) or a `modal` (a dialog of sections), never
 both. Colours, colour themes and legends are the restyle-layer skill.
@@ -104,11 +115,11 @@ Change only the `popup` or `modal` of `<name>.style.json`:
 - Switching a layer from `popup` to `modal` (or back): remove the other.
 
 Anything a feature has no value for is hidden, so a template can name
-attributes some features lack. Check the config without building:
+attributes some features lack. Check the layer file without building (an
+`invalid` state lists each problem):
 
 ```sh
-docker compose run --rm --entrypoint sh pipeline -c \
-  'node /opt/pipeline/style/cli.mjs check /opt/pipeline/layers/<name>.style.json'
+docker compose run --rm pipeline --status <name>
 ```
 
 ## 4. Apply

@@ -104,8 +104,8 @@ jobs:
       - name: shellcheck
         run: |
           shellcheck --version
-          shellcheck -x pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \
-            pipeline/tests/layers/*.env pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh \
+          shellcheck -x pipeline/bin/*.sh pipeline/lib/*.sh \
+            pipeline/tests/fixtures/*.sh pipeline/tests/*.bats pipeline/tests/*.bash scripts/screenshot.sh \
             scripts/check-tiles-cache.sh scripts/setup.sh scripts/publish-pages.sh scripts/tests/*.bats
 
       - name: hadolint
@@ -172,6 +172,9 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # scripts/screenshot.cjs runs in the Playwright image; the pipeline
+      # image has no Node any more, so its syntax is checked here.
+      - run: node --check ../scripts/screenshot.cjs
 
       # Runtime dependencies only: the known moderate findings are dev-only
       # (eslint toolchain) and nothing from them ships in the bundle.

@@ -5,6 +5,17 @@ description: Refresh an existing map layer (vector, or a binary raster) after it
 
 # Update a layer's data
 
+> **Layer files changed (design note 04, #115).** A layer is now one file,
+> `pipeline/layers/<layer>.yaml` (schema `pipeline/schema/layer.schema.json`),
+> and your map config is `map.config.yaml`. Where this skill says
+> `<layer>.env`, read the layer file's `source`, `fields` and `processing`
+> (a `profile` preset: `default`, `coverage`, `points` or `raster`);
+> `.style.json`, its `title`, `visible`, `order` and `display` (plain
+> MapLibre style layers, `themes`, `legend`, `popup`, `modal`);
+> `LAYER_CALCULATED` and `.rules.json`, `fields.calculated` (SQLite
+> expressions). `docker compose run --rm pipeline --status` lists any
+> problem in a layer file. This skill is rewritten in #120.
+
 The configs (`pipeline/layers/<name>.env`, `<name>.style.json`) stay as
 they are unless the new data forces a change. Commands run from the repo
 root in Git Bash. Never commit data or screenshots.

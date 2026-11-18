@@ -3,6 +3,8 @@
 # shapefiles. The shapefiles are made here with ogr2ogr from GeoJSON, so no
 # binaries are committed. Run in the test image with the other bats files.
 
+load helpers
+
 setup() {
   PIPELINE_ROOT=$(cd "${BATS_TEST_DIRNAME}/.." && pwd)
   RUN="${PIPELINE_ROOT}/bin/run.sh"
@@ -13,15 +15,13 @@ setup() {
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR"
 }
 
-# write_config LAYER INPUT [LINE...]: a config for the sample fixture's
-# attributes, z0 to 4, plus any extra lines, and a minimal display config.
+# write_config LAYER INPUT [EXPR...]: a layer file for the sample fixture's
+# attributes from INPUT, z0 to 4, changed by any yq EXPRs.
 write_config() {
   local layer=$1 input=$2
   shift 2
-  printf '%s\n' "LAYER_INPUT=${input}" 'LAYER_FIELDS=(id NAME_EN:name score)' \
-    'LAYER_FEATURE_ID=id' 'LAYER_MIN_ZOOM=0' 'LAYER_MAX_ZOOM=4' "$@" \
-    >"${PIPELINE_LAYERS_DIR}/${layer}.env"
-  cp "${PIPELINE_ROOT}/tests/fixtures/minimal.style.json" "${PIPELINE_LAYERS_DIR}/${layer}.style.json"
+  layer_file "${PIPELINE_LAYERS_DIR}/${layer}.yaml" ".source.path = \"${input}\"" \
+    '.fields.keep = [{"NAME_EN": "name"}, "score"]' "$@"
 }
 
 # Decoded `name` of feature ID at z0 of LAYER.
@@ -38,7 +38,7 @@ assert_sample_bounds() {
   [ "$status" -eq 0 ]
 }
 
-@test "a shapefile without .prj needs LAYER_SOURCE_SRS, which reprojects it" {
+@test "a shapefile without .prj needs source.srs, which reprojects it" {
   mkdir -p "${PIPELINE_INPUT_DIR}/lcc"
   ogr2ogr -f "ESRI Shapefile" -t_srs EPSG:3347 "${PIPELINE_INPUT_DIR}/lcc/sample.shp" "$SAMPLE"
   rm "${PIPELINE_INPUT_DIR}/lcc/sample.prj"
@@ -49,7 +49,7 @@ assert_sample_bounds() {
   [[ $output == *"Use -s_srs to set one"* ]]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/noprj.pmtiles" ]
 
-  write_config noprj lcc/sample.shp 'LAYER_SOURCE_SRS=EPSG:3347'
+  write_config noprj lcc/sample.shp '.source.srs = "EPSG:3347"'
   run "$RUN" noprj
   [ "$status" -eq 0 ]
   assert_sample_bounds noprj
@@ -57,7 +57,7 @@ assert_sample_bounds() {
   [ "$output" = "15" ]
 }
 
-@test "LAYER_ENCODING reads a shapefile without .cpg; LAYER_FIELDS restores a cut name" {
+@test "source.encoding reads a shapefile without .cpg; fields.keep restores a cut name" {
   printf '%s\n' '{"type": "FeatureCollection", "features": [' \
     '{"type": "Feature", "properties": {"id": 1, "NAME_EN": "Érable à sucre", "score": 5, "description_long": "Forêt"},' \
     ' "geometry": {"type": "Polygon", "coordinates": [[[-80, 45], [-79, 45], [-79, 46], [-80, 46], [-80, 45]]]}}' \
@@ -72,15 +72,15 @@ assert_sample_bounds() {
   rm "${PIPELINE_INPUT_DIR}/latin/latin.cpg"
   printf '\0' | dd of="${PIPELINE_INPUT_DIR}/latin/latin.dbf" bs=1 seek=29 conv=notrunc status=none
 
-  # Without LAYER_ENCODING the Latin-1 bytes pass through as is, and
+  # Without source.encoding the Latin-1 bytes pass through as is, and
   # tippecanoe rejects them as invalid UTF-8.
   write_config latin latin/latin.shp
   run "$RUN" latin
   [ "$status" -eq 1 ]
   [[ $output == *"is not valid UTF-8"* ]]
 
-  write_config latin latin/latin.shp 'LAYER_ENCODING=ISO-8859-1' \
-    'LAYER_FIELDS=(id NAME_EN:name score descriptio:description)'
+  write_config latin latin/latin.shp '.source.encoding = "ISO-8859-1"' \
+    '.fields.keep += [{"descriptio": "description"}]'
   run "$RUN" latin
   [ "$status" -eq 0 ]
   [ "$(name_of latin 1)" = "Érable à sucre" ]
@@ -113,4 +113,29 @@ assert_sample_bounds() {
   run "$RUN" gone
   [ "$status" -eq 1 ]
   [[ $output == *"input not found: ${PIPELINE_INPUT_DIR}/gone.zip"* ]]
+}
+
+@test "source.path: relative to the input dir, absolute, or a /vsi path, as given" {
+  mkdir -p "${PIPELINE_INPUT_DIR}/sub" "${BATS_TEST_TMPDIR}/zip"
+  cp "$SAMPLE" "${PIPELINE_INPUT_DIR}/sub/sample.geojson"
+  cp "$SAMPLE" "${BATS_TEST_TMPDIR}/zip/sample.geojson"
+  (cd "${BATS_TEST_TMPDIR}/zip" && python3 -m zipfile -c "${BATS_TEST_TMPDIR}/sample.zip" sample.geojson)
+
+  write_config relative sub/sample.geojson
+  write_config absolute "$SAMPLE"
+  write_config vsi "/vsizip/${BATS_TEST_TMPDIR}/sample.zip/sample.geojson"
+  run "$RUN" relative absolute vsi
+  echo "$output"
+  [ "$status" -eq 0 ]
+  [[ $output == *"normalising ${PIPELINE_INPUT_DIR}/sub/sample.geojson"* ]]
+  [[ $output == *"normalising ${SAMPLE}"* ]]
+  [[ $output == *"normalising /vsizip/${BATS_TEST_TMPDIR}/sample.zip/sample.geojson"* ]]
+
+  # The manifest records a path under the input dir relative to it, and
+  # any other as it is; a /vsi path has no size or time.
+  run jq -r '.layers[] | "\(.name) \(.provenance.source.path) \(.provenance.source.bytes != null) \(.feature_count)"' \
+    "${PIPELINE_OUTPUT_DIR}/manifest.json"
+  [ "${lines[0]}" = "absolute ${SAMPLE} true 15" ]
+  [ "${lines[1]}" = "relative sub/sample.geojson true 15" ]
+  [ "${lines[2]}" = "vsi /vsizip/${BATS_TEST_TMPDIR}/sample.zip/sample.geojson false 15" ]
 }

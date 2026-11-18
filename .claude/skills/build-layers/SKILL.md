@@ -5,6 +5,17 @@ description: Build or rebuild map layer tiles with the pipeline (one layer, seve
 
 # Build layers
 
+> **Layer files changed (design note 04, #115).** A layer is now one file,
+> `pipeline/layers/<layer>.yaml` (schema `pipeline/schema/layer.schema.json`),
+> and your map config is `map.config.yaml`. Where this skill says
+> `<layer>.env`, read the layer file's `source`, `fields` and `processing`
+> (a `profile` preset: `default`, `coverage`, `points` or `raster`);
+> `.style.json`, its `title`, `visible`, `order` and `display` (plain
+> MapLibre style layers, `themes`, `legend`, `popup`, `modal`);
+> `LAYER_CALCULATED` and `.rules.json`, `fields.calculated` (SQLite
+> expressions). `docker compose run --rm pipeline --status` lists any
+> problem in a layer file. This skill is rewritten in #120.
+
 The pipeline turns each `pipeline/layers/<name>.env` plus
 `<name>.style.json` into `data/tiles/<name>.pmtiles` (vector) or
 `data/tiles/<name>.cog.tif` (raster, one COG; README, Tile formats) and a

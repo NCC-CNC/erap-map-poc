@@ -36,8 +36,8 @@
 set -euo pipefail
 
 # Layers that must come from a given source, as the manifest records it
-# (provenance.source.path, relative to RAW_DIR). Keep in step with
-# `requiredInputs` in map.config.pages.json (scripts/tests checks this).
+# (provenance.source.path, relative to RAW_DIR). Keep in step with the
+# source overrides and `require` in map.pages.yaml (scripts/tests checks this).
 REQUIRED_SOURCES=(
   protected_areas=ProtectedConservedArea_2025.gdb
 )
@@ -193,7 +193,7 @@ main() {
     total=$((total + bytes))
   done
   if ((total > MAX_BYTES)); then
-    fail "the files total $(mb "$total"), over the 1 GB GitHub Pages limit: lower a layer's max zoom in map.config.pages.json (ADR 0014)"
+    fail "the files total $(mb "$total"), over the 1 GB GitHub Pages limit: lower a layer's max zoom in map.pages.yaml (ADR 0014)"
   fi
   if ((total > WARN_BYTES)); then
     log "warning: the files total $(mb "$total"), close to the 1 GB GitHub Pages limit"

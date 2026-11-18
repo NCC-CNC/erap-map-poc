@@ -48,7 +48,7 @@ a `.cog.tif` per raster layer, a read-only
 web map with pop-ups (stats and Chart.js charts), and a docker-compose setup to
 run both locally.
 Also a slimmed-down, public demo copy on GitHub Pages, published by hand
-(ADR 0014): `map.config.pages.json` into `data/pages/`, data in a release.
+(ADR 0014): `map.pages.yaml` into `data/pages/`, data in a release.
 
 Not in scope: production hosting, authentication, a tile server or database,
 in-browser editing, scheduled pipeline runs. Do not expand scope without a
@@ -59,8 +59,8 @@ design note in `docs/design/` or an ADR in `docs/decisions/`.
 - Pipeline (`pipeline/`): bash, GDAL/OGR, tippecanoe, `pmtiles` CLI, in a
   custom image on a pinned `ghcr.io/osgeo/gdal` base. shellcheck and bats.
   See ADR 0002; raster layers are GDAL only (warp, overviews, COG; ADR
-  0010). Node in the same image runs the display config tool
-  (`pipeline/style/`, ajv and the MapLibre style spec; ADR 0007).
+  0010). `yq`, `jq` and the `jv` JSON Schema validator read and check
+  the YAML layer files; no Node in the image (design note 04).
 - Web app (`web/`): React, TypeScript, Vite, MapLibre GL JS, `pmtiles`,
   `@geomatico/maplibre-cog-protocol` (raster COGs, ADR 0010), Chart.js,
   OpenFreeMap basemaps (ADR 0006); served by nginx. ESLint, `tsc`,
@@ -73,15 +73,14 @@ design note in `docs/design/` or an ADR in `docs/decisions/`.
   `docs/design/02_data_layers_and_popups.md`, never `data/raw/`; any secrets
   come from `.env` at runtime, never committed or baked into images;
   pipeline writes are atomic (temp file then move); no layer is defined in
-  `web/`: each is `pipeline/layers/<layer>.env` plus `<layer>.style.json`
-  (schema `pipeline/schema/layer-style.schema.json`), and the app reads
-  them from `data/tiles/manifest.json` at runtime (ADR 0007). A user's
-  own changes (layer selection, overrides, local-only layers, map view) go
-  in the git-ignored `map.config.json` (schema
-  `pipeline/schema/map-config.schema.json`, ADR 0009), never into the
-  committed layer files. Derived values and action recommendations are
-  calculated by the pipeline (`LAYER_CALCULATED`, `LAYER_RULES` and a
-  `pipeline/layers/<table>.rules.json`, ADR 0011), never in the app.
+  `web/`: each is one file, `pipeline/layers/<layer>.yaml` (schema
+  `pipeline/schema/layer.schema.json`, design note 04), and the app reads
+  them from `data/tiles/manifest.json` at runtime. A user's own changes
+  (layer selection, source and processing overrides, map view) go in the
+  git-ignored `map.config.yaml` (schema `pipeline/schema/map.schema.json`),
+  never into the committed layer files. Derived values and action
+  recommendations are calculated by the pipeline (`fields.calculated`,
+  SQLite expressions), never in the app.
 
 ## Commands
 
@@ -96,22 +95,21 @@ block; keep it in step with this section.
 - Pipeline: `docker compose run --rm pipeline [layer ...]` (no names builds
   every enabled layer into `data/tiles/`, plus `manifest.json` and
   `style.json`, skipping layers whose source data is missing). The map
-  config is `map.config.json` at the repo root (`MAP_CONFIG` in `.env`),
+  config is `map.config.yaml` at the repo root (`MAP_CONFIG` in `.env`),
   read from the repo mounted read-only at `/repo`.
   Source data comes from `RAW_DIR` (`.env`; default `./data/raw`), mounted
   read-only at `/data/raw`; the play data lives outside the repo.
-  `--status [--json]` lists built, stale and `restyle` layers (read only);
-  `--style-only [layer ...]` applies `.style.json` changes to built layers
+  `--status [--json]` lists built, stale and `restyle` layers (read only)
+  and every problem in a layer file (`invalid`, checked with jv);
+  `--style-only [layer ...]` applies `display` changes to built layers
   (vector or raster) without re-tiling; `--remove <layer>` deletes a
-  layer's build. Check display configs only: `docker compose run --rm
-  --entrypoint sh pipeline -c 'node /opt/pipeline/style/cli.mjs check
-  /opt/pipeline/layers/*.json'` (`.style.json` and `.rules.json`).
+  layer's build.
 - Web map: `docker compose up -d --build web` (<http://localhost:8080>,
   `WEB_PORT`). Dev server: `docker compose --profile dev up web-dev` (Vite
   on :5173, `VITE_USE_POLLING`). Optional ports and UIDs come from `.env`.
 - GitHub Pages copy (ADR 0014): `docker compose run --rm pipeline-pages`
-  builds `data/pages/` with `map.config.pages.json` (never `data/tiles/`
-  or `map.config.json`; `requiredInputs` stops a build from the wrong
+  builds `data/pages/` with `map.pages.yaml` (never `data/tiles/` or
+  `map.config.yaml`; `require` stops a build without the public
   protected areas source), `docker compose --profile pages up -d
   web-pages` serves it on :8081 (`WEB_PAGES_PORT`), then
   `scripts/publish-pages.sh [--dry-run]` (`gh` signed in) checks it,
@@ -163,9 +161,9 @@ and `--remove`, `pipeline/bin/inspect.sh`, `scripts/setup.sh` with
 `tmp/screenshots/`, the `CONTRIBUTING.md` checks); new logic goes into the
 pipeline or `scripts/` with tests first. Claude Code stays optional.
 `remove-layer` always confirms with the user. Data is never committed: a
-layer PR holds the two config files only, never anything from `data/`,
+layer PR holds the layer file only, never anything from `data/`,
 `.pmtiles`, `.cog.tif` or screenshots. Skills that change a layer ask whether the
-change is just for the user (their `map.config.json`, no PR) or for
+change is just for the user (their `map.config.yaml`, no PR) or for
 everyone (the committed files and a draft PR).
 
 ## Working rules

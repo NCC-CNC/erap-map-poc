@@ -11,7 +11,7 @@
 #                   --config LAYER
 #
 #   INPUT        source dataset. Relative paths are resolved against
-#                PIPELINE_INPUT_DIR (default /data/raw), like LAYER_INPUT. A
+#                PIPELINE_INPUT_DIR (default /data/raw), like a layer's source. A
 #                `.zip`, or a file inside one (`data.zip/dir/file.shp`), is
 #                read in place.
 #   --json       print JSON instead of the human-readable summary.
@@ -19,14 +19,13 @@
 #   --no-checks  skip the geometry and coverage checks (slow on big data).
 #   --gap-width  narrowest gap between neighbours that is not flagged by
 #                the coverage check, in Web Mercator metres (default 100).
-#   --config     inspect configured layer LAYER as its build sees it, instead
-#                of an INPUT: its source data (LAYER_INPUT and
-#                LAYER_SOURCE_LAYER) normalised (the LAYER_FIELDS kept,
-#                renamed, in EPSG:4326, made valid) with its calculated
-#                fields and rule attributes added (ADR 0011), with the map
-#                config's overrides, if any. Each calculated field shows its
-#                expression; the rules table, how many features each action
-#                is recommended for. Checks expressions before a build.
+#   --config     inspect layer LAYER as its build sees it, instead of an
+#                INPUT: its source data (source.path and source.layer in
+#                its layer file) normalised (fields.keep kept, renamed, in
+#                EPSG:4326, made valid; the feature id as _feature_id) with
+#                its calculated fields added, with the map config's
+#                overrides, if any. Each calculated field shows its
+#                expression. Checks the expressions before a build.
 #
 # Fields: per scalar field the non-null count, distinct count, min and max,
 # and the values with their counts when there are at most 12 distinct ones.
@@ -34,7 +33,7 @@
 # -makevalid), the union of all polygons (parts, holes, overlap as a share of
 # the summed area) and GDAL's coverage check (edges of neighbours that
 # overlap or leave a gap narrower than --gap-width). A contiguous coverage
-# (touching polygons, no overlaps) suits LAYER_PROFILE=coverage.
+# (touching polygons, no overlaps) suits the coverage processing profile.
 #
 # Exit status: 0 on success, 1 if the dataset cannot be read, 2 for a usage
 # error.
@@ -46,15 +45,11 @@ PIPELINE_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 source "${PIPELINE_ROOT}/lib/log.sh"
 # shellcheck source=lib/normalise.sh
 source "${PIPELINE_ROOT}/lib/normalise.sh"
-# For --config: the layer set, its settings and the derived attributes.
-# shellcheck source=lib/config.sh
-source "${PIPELINE_ROOT}/lib/config.sh"
-# shellcheck source=lib/display.sh
-source "${PIPELINE_ROOT}/lib/display.sh"
-# shellcheck source=lib/mapconfig.sh
-source "${PIPELINE_ROOT}/lib/mapconfig.sh"
-# shellcheck source=lib/derive.sh
-source "${PIPELINE_ROOT}/lib/derive.sh"
+# For --config: the layer files and the calculated fields.
+# shellcheck source=lib/layerfile.sh
+source "${PIPELINE_ROOT}/lib/layerfile.sh"
+# shellcheck source=lib/calculated.sh
+source "${PIPELINE_ROOT}/lib/calculated.sh"
 
 PIPELINE_INPUT_DIR=${PIPELINE_INPUT_DIR:-/data/raw}
 PIPELINE_LAYERS_DIR=${PIPELINE_LAYERS_DIR:-${PIPELINE_ROOT}/layers}
@@ -242,15 +237,15 @@ inspect() {
       }
     | .warnings = ([
         (if .crs == null and .geometry_type != null then
-          "no CRS: set LAYER_SOURCE_SRS (for example EPSG:3347)" else empty end),
+          "no CRS: set source.srs in the layer file (for example EPSG:3347)" else empty end),
         (if .encoding != null and .encoding.source == null then
-          "no encoding declared (.cpg or DBF language id): if text looks wrong, set LAYER_ENCODING (for example ISO-8859-1)" else empty end),
+          "no encoding declared (.cpg or DBF language id): if text looks wrong, set source.encoding in the layer file (for example ISO-8859-1)" else empty end),
         (if $driver == "ESRI Shapefile" then
           (.fields[] | select(.name | length == 10)
-           | "field \(.name) is 10 characters long, maybe cut short by the shapefile format: rename with src:dest in LAYER_FIELDS")
+           | "field \(.name) is 10 characters long, maybe cut short by the shapefile format: rename it with {source_name: output_name} in fields.keep")
          else empty end),
         (if (.id_candidates | length) == 0 then
-          "no unique non-null integer field for LAYER_FEATURE_ID" else empty end),
+          "no unique non-null integer field for source.id" else empty end),
         (if $checks != null and $checks.invalid_geometries > 0 then
           "\($checks.invalid_geometries) invalid geometry location(s): the pipeline makes them valid, but check the source" else empty end),
         (if $checks != null and ($checks.overlap_pct // 0) > 0.001 then
@@ -262,44 +257,40 @@ inspect() {
         ($checks.union_parts < $count and ($checks.overlap_pct // 0) <= 0.001) end)'
 }
 
-# config_data NAME OUT_DIR: for --config, write configured layer NAME's data
-# as its build sees it to OUT_DIR/NAME.geojsonl: normalised, with its
-# calculated fields and rule attributes added (lib/derive.sh), and its plan
-# to OUT_DIR/derive.json if it has any. Prints LAYER_INPUT. Run in a
-# subshell: it loads the layer's settings.
+# config_data NAME OUT_DIR: for --config, write layer NAME's data as its
+# build sees it to OUT_DIR/NAME.geojsonl: normalised, with its calculated
+# fields added (lib/calculated.sh), and their report to
+# OUT_DIR/calculated.json if it has any. Prints its source path, resolved.
+# Run in a subshell: it loads the layer's settings.
 config_data() {
   local name=$1 out=$2
   layer_known "$name" || die "no layer named $name (layers: $(layer_names | paste -sd ' '))"
   PIPELINE_LOG_PREFIX=$name
-  load_layer_config "$(layer_get "$name" env)"
-  [[ $LAYER_TYPE == vector ]] || die "$name is a $LAYER_TYPE layer: inspect its LAYER_INPUT instead"
-  local data="${out}/${name}.geojsonl" plan=""
-  if layer_derives; then
-    plan="${out}/derive.json"
-    derive_plan "$name" "$name" "$plan"
-  fi
+  load_layer "$name"
+  [[ $LAYER_TYPE == vector ]] || die "$name is a $LAYER_TYPE layer: inspect its source ($LAYER_INPUT) instead"
+  local data="${out}/${name}.geojsonl"
   normalise "$LAYER_INPUT" "$LAYER_SOURCE_LAYER" "$LAYER_SOURCE_SRS" "$LAYER_ENCODING" \
     "$data" "${LAYER_FIELDS[@]}"
-  if [[ -n $plan ]]; then derive_apply "$data" "$plan"; fi
+  if ((${#LAYER_CALCULATED_NAMES[@]} > 0)); then
+    add_calculated_fields "$data" "${out}/calculated.geojsonl" "${out}/calculated.json"
+    mv -f -- "${out}/calculated.geojsonl" "$data"
+  fi
   printf '%s\n' "$LAYER_INPUT"
 }
 
 # with_config SUMMARY OUT_DIR NAME INPUT: SUMMARY (the JSON from inspect on
-# config_data's output) with `config`: the layer, its input, and its
-# calculated fields and rules with their counts (derive_report), and each
-# calculated field's `calculated` expression.
+# config_data's output) with `config`: the layer, its input and its
+# calculated fields with their counts, and each calculated field's
+# `calculated` expression.
 with_config() {
-  local summary=$1 out=$2 name=$3 input=$4 plan='{"calculated": [], "rules": null}'
-  local derived='{"calculated_fields": null, "rules": null}'
-  if [[ -s "${out}/derive.json" ]]; then
-    plan=$(jq -c '.' "${out}/derive.json")
-    derived=$(derive_report "${out}/${name}.geojsonl" "${out}/derive.json")
+  local summary=$1 out=$2 name=$3 input=$4 calculated=null
+  if [[ -s "${out}/calculated.json" ]]; then
+    calculated=$(jq -c '.' "${out}/calculated.json")
   fi
-  jq -c --arg name "$name" --arg input "$input" --argjson plan "$plan" --argjson d "$derived" '
-    .driver = "as built" | .config = {layer: $name, input: $input,
-               calculated_fields: $d.calculated_fields, rules: $d.rules}
+  jq -c --arg name "$name" --arg input "$input" --argjson c "$calculated" '
+    .driver = "as built" | .config = {layer: $name, input: $input, calculated_fields: $c}
     | .fields |= map(.name as $n
-        | ([$plan.calculated[] | select(.name == $n) | .expression] | first) as $e
+        | ([($c // [])[] | select(.name == $n) | .expression] | first) as $e
         | if $e then . + {calculated: $e} else . end)' <<<"$summary"
 }
 
@@ -309,7 +300,7 @@ human() {
     def num: if type == "number" and . != floor then (. * 1000 | round / 1000) else . end;
     def v: if . == null then "-" else (num | tostring) end;
     (if .config then
-      "Config:     layer \(.config.layer), as built (LAYER_FIELDS, calculated fields, rules) from \(.config.input)"
+      "Config:     layer \(.config.layer), as built (fields.keep and calculated fields) from \(.config.input)"
      else empty end),
     "Input:      \(.input) (\(.driver))",
     (if (.layers | length) > 1 then "Layers:     \(.layers | join(", ")) (showing \(.layer))" else empty end),
@@ -326,12 +317,6 @@ human() {
     (.fields[] | "  \(.name) \(.type)\(if .width then "(\(.width))" else "" end): non-null \(.non_null | v), distinct \(.distinct | v), min \(.min | v), max \(.max | v)"
       + (if .calculated then "\n    calculated: \(.calculated)" else "" end)
       + (if .values then "\n    values: " + ([.values[] | "\(.value | v) (\(.count))"] | join(", ")) else "" end)),
-    (if .config.rules then
-      "",
-      "Rules:      \(.config.rules.file)",
-      (.config.rules.actions[] | "  \(.id) (\(.type)): \(.condition)\n    recommended for \(.recommended) feature(s): \(.attribute), \(.reason_attribute)"),
-      (.config.rules.types[] | "  type \(.id): \(.features) feature(s) with an action (\(.attribute))")
-     else empty end),
     (if .checks then
       "",
       "Checks:",
@@ -339,7 +324,7 @@ human() {
       "  union:                   \(.checks.union_parts) part(s), \(.checks.union_holes) hole(s)",
       "  overlap:                 \(.checks.overlap_pct | v)% of summed area",
       "  coverage invalid edges:  \(.checks.coverage_invalid_edges) (gaps under \(.checks.gap_width_m) m)",
-      "  coverage-like:           \(if .coverage_like then "yes (touching, no overlaps): consider LAYER_PROFILE=coverage" else "no" end)"
+      "  coverage-like:           \(if .coverage_like then "yes (touching, no overlaps): consider processing.profile: coverage" else "no" end)"
      else empty end),
     (if (.warnings | length) > 0 then "", "Warnings:", (.warnings[] | "  - \(.)") else empty end)
   '

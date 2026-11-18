@@ -25,7 +25,7 @@ export interface MapLibreLayer {
  * `#dem` mode encodes each pixel value, the grey level 0 to 255 that is
  * the share of the pixel covered by 1 cells, as a Terrain-RGB "elevation"
  * for the `color-relief` layer. The pipeline's style.json uses the same
- * source (`pipeline/style/display.mjs`).
+ * source (`pipeline/lib/style.sh`).
  */
 export const RASTER_SOURCE = {
   type: 'raster-dem',
@@ -60,7 +60,7 @@ export function visibilityValue(visible: boolean): 'visible' | 'none' {
 /**
  * The id of a style layer on the map: the configured id prefixed with the
  * layer id, so ids from different layers never clash. The pipeline's
- * `style.json` uses the same rule (`pipeline/style/display.mjs`).
+ * `style.json` uses the same rule (`pipeline/lib/style.sh`).
  */
 export function styleLayerId(layerId: string, id: string): string {
   return `${layerId}-${id}`;

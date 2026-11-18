@@ -20,51 +20,41 @@
 #     ]
 #   }
 #
-# `map` is the local map config's opening view and basemap (ADR 0009), left
-# out when it sets none. `type` is the layer's LAYER_TYPE (`vector` or
-# `raster`). `file` is the archive: `<layer>.pmtiles` for a vector layer,
-# `<layer>.cog.tif` for a raster one (ADR 0010; a raster built before that
-# is a `.pmtiles` of PNG tiles until rebuilt). `format` is the tile type:
-# from the PMTiles header for a vector layer (`mvt`), `cog` for a raster
-# (`png` for an older raster build), whose zooms, bounds and center come
-# from the build (raster_header). The fields up to `enabled` are the ones the web app
-# reads (display is the resolved <layer>.style.json, lib/display.sh).
-# `enabled` is false for a layer built before but left out by the map
-# config: the map does not show it (manifest_apply_config); an entry
-# without it is enabled. `display_updated_at` is when display was last
-# written: by a build (then equal to built_at) or by `run.sh --style-only`
-# (manifest_set_display), which changes nothing else in the entry but the
-# display part of `provenance`. An entry from before it existed has none;
-# read it as built_at. `provenance` says what the layer was built from
-# (lib/mapconfig.sh, layer_provenance), so two maps can be compared:
+# `map` is the map config's `view` and `basemap` (lib/layerfile.sh), left
+# out when it sets neither. `type` is `raster` for a layer with the raster
+# profile, else `vector`. `file` is the archive: `<layer>.pmtiles` for a
+# vector layer, `<layer>.cog.tif` for a raster one (ADR 0010; a raster
+# built before that is a `.pmtiles` of PNG tiles until rebuilt). `format`
+# is the tile type: from the PMTiles header for a vector layer (`mvt`),
+# `cog` for a raster (`png` for an older raster build), whose zooms, bounds
+# and center come from the build (raster_header). The fields up to
+# `enabled` are the ones the web app reads (display is built from the
+# layer file's `display`, lib/style.sh). `enabled` is false for a layer
+# built before but left out by the map config: the map does not show it
+# (manifest_apply_config); an entry without it is enabled.
+# `display_updated_at` is when display was last written: by a build (then
+# equal to built_at) or by `run.sh --style-only` (manifest_set_display),
+# which changes nothing else in the entry but the display hash in
+# `provenance`. `provenance` says what the layer was built from
+# (lib/layerfile.sh, layer_provenance):
 #
 #   "provenance": { "origin": "committed",
 #     "source": { "path": "sample.geojson", "bytes": 12345,
 #                 "modified_at": "2026-01-01T00:00:00Z" },
-#     "overrides": { "input": ..., "title": ... } or null,
-#     "env_sha256": "...", "style_sha256": "...",
-#     "rules_sha256": "..." or null }   (the rules table, ADR 0011)
+#     "overrides": { "source": ..., "processing": ... } or null,
+#     "build_sha256": "...", "display_sha256": "..." }
 #
 # The rest is the build report:
 #
-#   vector: "feature_count": 15, "profile": null, "min_visible_px": 1,
-#           "simplify_max_zoom": false (LAYER_SIMPLIFY_MAX_ZOOM),
+#   vector: "feature_count": 15, "profile": "default", "min_visible_px": 1,
 #           "max_tile_bytes": 1234,
 #           "zooms": [ { "zoom": 0, "input": 15, "present": 15,
 #                        "required": 15, "required_present": 15,
 #                        "max_tile_bytes": 1234 }, ... ]
 #           (from the drop guard, lib/guard.sh), and for a layer with
-#           calculated fields or a rules table (ADR 0011, lib/derive.sh):
+#           calculated fields (lib/calculated.sh):
 #           "calculated_fields": [ { "name": "x", "expression": "a - b",
-#                                    "non_null": 15, "min": 0, "max": 9 } ],
-#           "rules": { "file": ".../ecoregions.rules.json", "sha256": "...",
-#             "types": [ { "id": "t", "label": "...",
-#                          "attribute": "actions_t_count", "features": 4 } ],
-#             "actions": [ { "id": "a", "type": "t", "title": "...",
-#                            "condition": "...", "attribute": "action_a",
-#                            "reason_attribute": "action_a_reason",
-#                            "recommended": 4 } ] }
-#           (null or absent when the layer has none)
+#                                    "non_null": 15, "min": 0, "max": 9 } ]
 #   raster: "width": 447240, "height": 290531, "block_size": 256,
 #           "resampling": "near" (the warp's method: "average" when the
 #           max zoom is coarser than the source; lib/raster.sh),
@@ -73,8 +63,8 @@
 #           "majority" with -r average: 255 where at least half is
 #           covered; absent in a build from before, which is then stale
 #           if averaged),
-#           "grey_levels": 256 (LAYER_GREY_LEVELS: the grey levels the
-#           COG holds, 256 for the full share; only in the overviews
+#           "grey_levels": 256 (processing.grey_levels: the grey levels
+#           the COG holds, 256 for the full share; only in the overviews
 #           when "majority"; lib/raster.sh),
 #           "overview_count": 10,
 #           "zooms": [ { "zoom": 12, "width": 447240, "height": 290531 }, ... ]
@@ -126,8 +116,8 @@ layer_archive() {
 
 # manifest_update OUT_DIR LAYER TYPE DISPLAY_FILE REPORT_JSON BUILD_SECONDS
 # [PROVENANCE_JSON] [HEADER_JSON]
-# DISPLAY_FILE is the resolved display block from resolve_display (null when
-# empty); REPORT_JSON is a JSON object holding the layer type's build report,
+# DISPLAY_FILE is the display block from display_block (lib/style.sh);
+# REPORT_JSON is a JSON object holding the layer type's build report,
 # added to the entry as it is; PROVENANCE_JSON is the layer's provenance
 # (null when not given). HEADER_JSON, {tile_type, minzoom, maxzoom, bounds,
 # center}, gives the archive fields of a raster layer (raster_header); a
@@ -203,38 +193,33 @@ manifest_update() {
   log_info "updated $manifest"
 }
 
-# vector_report FEATURE_COUNT STATS_FILE PROFILE MIN_PX [SIMPLIFY_MAX_ZOOM]:
-# print a vector layer's build report (see above) as compact JSON.
-# STATS_FILE is the drop guard's per-zoom JSON array; SIMPLIFY_MAX_ZOOM is
-# LAYER_SIMPLIFY_MAX_ZOOM, `true` or `false` (the default).
+# vector_report FEATURE_COUNT STATS_FILE PROFILE MIN_PX: print a vector
+# layer's build report (see above) as compact JSON. STATS_FILE is the drop
+# guard's per-zoom JSON array.
 vector_report() {
-  local count=$1 stats_file=$2 profile=$3 min_px=$4 simplify_max=${5:-false}
+  local count=$1 stats_file=$2 profile=$3 min_px=$4
   jq -c \
     --argjson count "$count" \
     --arg profile "$profile" \
     --arg min_px "$min_px" \
-    --arg simplify_max "$simplify_max" \
     '{
        feature_count: $count,
        profile: (if $profile == "" then null else $profile end),
        min_visible_px: (if $min_px == "" then null else ($min_px | tonumber) end),
-       simplify_max_zoom: ($simplify_max == "true"),
        max_tile_bytes: ([.[].max_tile_bytes] | max),
        zooms: .
      }' "$stats_file" || die "cannot read $stats_file"
 }
 
-# manifest_set_display OUT_DIR LAYER DISPLAY_FILE [DISPLAY_PROVENANCE]:
-# replace the `display` block of LAYER's entry in OUT_DIR/manifest.json with
-# the resolved one in DISPLAY_FILE and set its display_updated_at, for
-# `run.sh --style-only`. DISPLAY_PROVENANCE, `{overrides, style_sha256}`
-# (layer_display_provenance), updates the display part of the provenance:
-# the display config's hash and the display overrides (the build ones,
-# input, env, calculated and rules, stay as built). built_at and the build
-# report are kept.
-# Atomic, like manifest_update.
+# manifest_set_display OUT_DIR LAYER DISPLAY_FILE [DISPLAY_SHA256]: replace
+# the `display` block of LAYER's entry in OUT_DIR/manifest.json with the one
+# in DISPLAY_FILE and set its display_updated_at, for `run.sh
+# --style-only`. DISPLAY_SHA256, the hash of the layer file's display part
+# (lib/layerfile.sh), replaces the one in the provenance. built_at, the
+# build report and the rest of the provenance are kept. Atomic, like
+# manifest_update.
 manifest_set_display() {
-  local out_dir=$1 layer=$2 display_file=$3 prov=${4:-null}
+  local out_dir=$1 layer=$2 display_file=$3 sha=${4:-}
   local manifest="${out_dir}/manifest.json"
   jq -e --arg name "$layer" '.layers | type == "array" and any(.[]; .name == $name)' \
     "$manifest" >/dev/null 2>&1 || die "no entry for $layer in $manifest"
@@ -242,18 +227,11 @@ manifest_set_display() {
   local now display tmp="${manifest}.$$.tmp"
   now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   display=$(jq -c '.' "$display_file") || die "cannot read $display_file"
-  jq --arg name "$layer" --arg now "$now" --argjson display "$display" --argjson prov "$prov" \
-    'def build_key: .key == "input" or .key == "env" or .key == "calculated" or .key == "rules";
-     .updated_at = $now
+  jq --arg name "$layer" --arg now "$now" --argjson display "$display" --arg sha "$sha" \
+    '.updated_at = $now
      | .layers |= map(if .name == $name
          then .display = $display | .display_updated_at = $now
-           | if $prov == null then . else
-               .provenance = ((.provenance // {})
-                 | .style_sha256 = $prov.style_sha256
-                 | .overrides = (((.overrides // {}) | with_entries(select(build_key)))
-                     + (($prov.overrides // {}) | with_entries(select(build_key | not))))
-                 | if .overrides == {} then .overrides = null else . end)
-             end
+           | if $sha == "" then . else .provenance = ((.provenance // {}) | .display_sha256 = $sha) end
          else . end)' \
     "$manifest" >"$tmp" \
     || {
@@ -290,7 +268,7 @@ manifest_remove() {
 }
 
 # manifest_apply_config OUT_DIR LAYERS_JSON: apply the layer set
-# (lib/mapconfig.sh) to OUT_DIR/manifest.json: `map` from the map config
+# (lib/layerfile.sh) to OUT_DIR/manifest.json: `map` from the map config
 # (removed when it sets none) and `enabled` on the entry of every layer in
 # the set. Entries of layers not in the set (orphans) are left as they are.
 # Rewritten (atomically) only when something changes; nothing to do if

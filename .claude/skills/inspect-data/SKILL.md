@@ -39,5 +39,5 @@ WGS84, CRS), the fields worth styling or showing in a pop-up (text fields
 with few values, numeric ranges), a stable integer id (or that there is
 none: a layer needs one), and every warning (no CRS, no encoding,
 invalid geometries, overlaps or gaps, a coverage-like polygon set that
-suits `LAYER_PROFILE=coverage`). Say what a layer config would need. If
+suits `processing.profile: coverage`). Say what a layer file would need. If
 the user then wants it on the map, continue with the add-layer skill.

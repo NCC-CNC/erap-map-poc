@@ -4,8 +4,8 @@
 # PATH that logs its arguments to $STUB_LOG. STUB_GH_AUTH=fail makes
 # `gh auth status` fail; STUB_GH_RELEASE=missing makes the release not
 # found; STUB_GH_ASSETS lists the release's files. Also checks that
-# map.config.pages.json is valid for the committed layers and in step with
-# the script. Run in the pipeline test image (it has bats, jq and node),
+# map.pages.yaml is valid for the committed layers and in step with
+# the script. Run in the pipeline test image (it has bats, jq and yq),
 # with the repo mounted read only:
 #   docker build --target test -t erap-map-pipeline:test pipeline
 #   docker run --rm -v "$repo":/repo:ro erap-map-pipeline:test /repo/scripts/tests
@@ -247,25 +247,28 @@ changes() {
   [ ! -s "$STUB_LOG" ]
 }
 
-@test "map.config.pages.json is valid for the committed layers and in step with the script" {
-  # The pipeline's own check and resolution (bin/run.sh runs the same).
-  run node /opt/pipeline/style/cli.mjs layers "$SRC/map.config.pages.json" "$SRC/pipeline/layers" "$T/resolved"
-  [ "$status" -eq 0 ]
-  run jq -r '.layers[] | select(.enabled | not) | .name' "$T/resolved/layers.json"
+@test "map.pages.yaml is valid for the committed layers and in step with the script" {
+  # The pipeline's own check (bin/run.sh reads it the same way): the
+  # schema, and every layer it names has a layer file.
+  local json
+  json=$(PIPELINE_MAP_CONFIG="$SRC/map.pages.yaml" PIPELINE_LAYERS_DIR="$SRC/pipeline/layers" \
+    PIPELINE_INPUT_DIR="$T/raw" PIPELINE_OUTPUT_DIR="$T/out" \
+    /opt/pipeline/bin/run.sh --status --json 2>/dev/null)
+  [ "$(jq '.layers | length' <<<"$json")" -eq 4 ]
+  # Every committed layer is in the Pages copy, none invalid.
+  run jq -r '.layers[] | select(.enabled | not) | .name' <<<"$json"
   [ -z "$output" ]
-  # No local-only layers: committed ones only.
-  run jq -r '[.layers[].origin] | unique | join(",")' "$T/resolved/layers.json"
-  [ "$output" = committed ]
+  run jq -r '[.layers[] | select(.state == "invalid") | .name] | join(",")' <<<"$json"
+  [ -z "$output" ]
   # Rasters at max zoom 10.
-  run jq -r '.overrides | [.forest.env.LAYER_MAX_ZOOM, .agriculture.env.LAYER_MAX_ZOOM] | join(",")' \
-    "$SRC/map.config.pages.json"
+  run yq -r '[.overrides.forest.processing.maxzoom, .overrides.agriculture.processing.maxzoom] | join(",")' \
+    "$SRC/map.pages.yaml"
   [ "$output" = "10,10" ]
-  # The protected areas input is the required one, and the script checks it.
-  run jq -r '.overrides.protected_areas.input == .requiredInputs.protected_areas' "$SRC/map.config.pages.json"
+  # The protected areas source is required, and the script checks it.
+  run yq -r '.require | contains(["protected_areas"])' "$SRC/map.pages.yaml"
   [ "$output" = true ]
   local want got
-  want=$(jq -r '.requiredInputs | to_entries[] | "\(.key)=\(.value)"' "$SRC/map.config.pages.json" | sort)
+  want="protected_areas=$(yq -r '.overrides.protected_areas.source.path' "$SRC/map.pages.yaml")"
   got=$(bash -c "source <(sed -n '/^REQUIRED_SOURCES=(/,/^)/p' '$SRC/scripts/publish-pages.sh'); printf '%s\n' \"\${REQUIRED_SOURCES[@]}\"" | sort)
-  [ -n "$want" ]
   [ "$want" = "$got" ]
 }

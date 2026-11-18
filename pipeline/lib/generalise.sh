@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Low-zoom generalisation of a polygon layer (LAYER_GENERALISE_MAX_ZOOM; see
-# lib/config.sh and docs/design/02_data_layers_and_popups.md).
+# Low-zoom generalisation of a polygon layer (the coverage processing
+# profile, lib/layerfile.sh; docs/design/02_data_layers_and_popups.md).
 #
-# For each zoom z from the layer's min zoom up to LAYER_GENERALISE_MAX_ZOOM,
+# For each zoom z from the layer's min zoom up to the zoom below its max,
 # a generalised copy of the normalised input is made with GDAL, in EPSG:3857
 # (the tiles' own projection, as the drop guard measures):
 #
@@ -20,11 +20,11 @@
 # Zooms are done from the highest down, each from the one above it, so only
 # the first pass reads the full input. Each zoom's features are tagged for
 # tippecanoe with {"tippecanoe": {"minzoom": z, "maxzoom": z}}, and the full
-# input follows from LAYER_GENERALISE_MAX_ZOOM + 1, so one tippecanoe run
+# input follows at the max zoom, so one tippecanoe run
 # builds the whole archive: no tile-join, and the drop guard and the shared
 # node handling of the coverage profile work as before.
 #
-# Pixels are at 256 px tiles, as for LAYER_MIN_VISIBLE_PX: at zoom z one
+# Pixels are at 256 px tiles, as for min_visible_px: at zoom z one
 # pixel is 40075016.686 / (256 * 2^z) m wide in EPSG:3857.
 
 # _generalise_px_m Z: the width of one screen pixel at zoom Z in EPSG:3857 m.
@@ -34,7 +34,7 @@ _generalise_px_m() {
 
 # generalise_zoom INPUT OUTPUT Z FEATURE_ID MIN_PART_PX SIMPLIFY_PX FIELD...
 # Write OUTPUT (GeoJSONSeq, EPSG:4326): INPUT generalised for zoom Z as
-# described above. FIELD is a `src` or `src:dest` from LAYER_FIELDS; the
+# described above. FIELD is an attribute name or a `src:dest` pair; the
 # dest names are the attributes kept.
 generalise_zoom() {
   local input=$1 output=$2 z=$3 id=$4 min_part_px=$5 simplify_px=$6
