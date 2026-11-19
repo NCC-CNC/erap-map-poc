@@ -259,7 +259,7 @@ published is public (ADR 0014). One-off setup: the repo's Settings,
 Pages, Source: GitHub Actions; and `gh` signed in (`gh auth login`).
 
 The copy is built from the committed layers with `map.pages.yaml`: max
-zoom 10, 8 grey levels for the rasters, and protected areas from the
+zoom 10 (the map zooms in no further), 8 grey levels for the rasters, and protected areas from the
 public CPCAD (`ProtectedConservedArea_2025.gdb`, which must be in
 `RAW_DIR`; `require` stops the build without it).
 
