@@ -25,6 +25,12 @@ processing:
   # The default of 1 fails at z12 on slivers under a metre wide that
   # simplification collapses; nothing that can be seen goes.
   min_visible_px: 4
+  # Gentler than the defaults (4 and 1): many areas are made of small
+  # parcels, which the default dropped part by part at mid zooms, and a
+  # 1 px simplification turned small areas into triangles. Only parts
+  # under a pixel go, and outlines stay within half a pixel.
+  min_part_px: 1
+  simplify_px: 0.5
 
 display:
   layers:
