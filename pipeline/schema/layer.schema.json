@@ -53,8 +53,7 @@
       },
       "else": {
         "properties": {
-          "source": { "required": ["id"], "properties": { "nodata": false } },
-          "processing": { "properties": { "grey_levels": false } }
+          "source": { "required": ["id"], "properties": { "nodata": false } }
         }
       }
     },
@@ -235,12 +234,6 @@
           "description": "Vector only: the drop guard fails the build if a polygon whose largest part covers this many screen pixels is missing from a zoom. Default 1.",
           "type": "number",
           "minimum": 0
-        },
-        "grey_levels": {
-          "description": "Raster only: how many evenly spaced shares of cover (0 to 255) the COG keeps, 2 to 256. Fewer compress better. Default 256.",
-          "type": "integer",
-          "minimum": 2,
-          "maximum": 256
         },
         "tippecanoe": {
           "description": "Advanced, vector only: extra tippecanoe arguments, added after the preset's, for layers the presets do not fit (dense points, detailed lines, large polygon sets), such as `--drop-densest-as-needed`. Each is one argument starting with `--`, its value after `=`. A change makes the layer stale.",

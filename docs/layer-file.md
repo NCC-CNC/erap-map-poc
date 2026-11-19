@@ -123,7 +123,6 @@ processing:
 | `maxzoom_min_part_px` | polygons (`coverage`, `default`) | as `min_part_px`, at `maxzoom` (default 1) |
 | `maxzoom_simplify_px` | polygons (`coverage`, `default`) | as `simplify_px`, at `maxzoom` (default 0.5); with `maxzoom_min_part_px: 0` too, `maxzoom` keeps full detail |
 | `min_visible_px` | vector | the drop guard fails the build if a polygon this many pixels or larger is missing from a zoom (default 1) |
-| `grey_levels` | `raster` | how many shares of cover the COG keeps, 2 to 256 (default 256); fewer compress better |
 | `tippecanoe` | vector | advanced: extra tippecanoe options, one per item, such as `--drop-densest-as-needed` or `--maximum-tile-bytes=1000000` |
 
 The profiles:
@@ -137,7 +136,9 @@ The profiles:
   (ADR 0016).
 - `points`: every point at every zoom.
 - `raster`: a binary raster (one band of 0, 1 and nodata) as one Web
-  Mercator COG of the share covered. Display only: no `fields`, no
+  Mercator COG of the share covered. The max zoom is 0 or 255 (the
+  majority, when its pixel is coarser than the source's); each lower zoom
+  is GDAL's average of the one above. Display only: no `fields`, no
   pop-up.
 
 `processing.tippecanoe` cannot set what the pipeline sets itself (output,
