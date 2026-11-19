@@ -1,4 +1,4 @@
-import { Map as MapLibreMap, type ErrorEvent } from 'maplibre-gl';
+import { Map as MapLibreMap, NavigationControl, type ErrorEvent } from 'maplibre-gl';
 import {
   themePaintUpdates,
   toMapLibre,
@@ -122,6 +122,11 @@ export function createMap(container: HTMLElement, options: CreateMapOptions): Ma
     // reloaded, and scripts/screenshot.sh opens the map at a given view.
     hash: true,
   });
+
+  // A compass for the rotation and tilt a right-drag (or Ctrl-drag) sets:
+  // the needle shows both, a click resets the map to north up and flat,
+  // and dragging it rotates and tilts. Top right, clear of the map panel.
+  map.addControl(new NavigationControl({ showZoom: false, visualizePitch: true }), 'top-right');
 
   // Registered once; each later style reuses them.
   let ready: Promise<readonly LayerDefinition[]> | undefined;
