@@ -21,10 +21,12 @@ processing:
   profile: default
   minzoom: 0
   maxzoom: 12
-  # An area must be in a zoom's tiles once its largest part covers 4 px.
-  # The default of 1 fails at z12 on slivers under a metre wide that
-  # simplification collapses; nothing that can be seen goes.
-  min_visible_px: 4
+  # An area must be in a zoom's tiles once its largest part covers 10 px.
+  # Lower values fail at z12 on slivers along provincial and territorial
+  # borders, a few metres wide and up to about 9 px in area (ids 53636,
+  # 54416, 110942), that the half pixel simplification collapses; nothing
+  # that can be seen goes.
+  min_visible_px: 10
   # Gentler than the defaults (4 and 1): many areas are made of small
   # parcels, which the default dropped part by part at mid zooms, and a
   # 1 px simplification turned small areas into triangles. Only parts
