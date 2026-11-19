@@ -43,7 +43,7 @@ In the image the pipeline is at `/opt/pipeline`; compose mounts
 | `joins.sh` | `source.joins`: reads each table once and adds its rows by key, with jq |
 | `calculated.sh` | `fields.calculated`: SQLite expressions run by `ogr2ogr -dialect SQLite`, one nested query per field |
 | `generalise.sh` | polygon layers (`coverage` and `default`), every zoom: drop small parts and simplify per zoom (as a coverage for `coverage`), with GDAL (ADR 0016) |
-| `tiles.sh` | runs tippecanoe into a temp file, verifies and checks it, then moves it into place |
+| `tiles.sh` | runs tippecanoe in the scratch dir, verifies and checks the archive there, then copies it to a temp file and moves it into place |
 | `guard.sh` | the drop guard: fails a build that lost a visible polygon at some zoom, and gathers per-zoom stats (ADR 0016) |
 | `raster.sh` | the `raster` profile: prepares a binary raster once (cached in `data/work/raster/`), warps it with `gdalwarp` and writes a Web Mercator COG of the share covered with `gdal_translate -of COG` (average overviews; ADR 0010) |
 | `build.sh` | `build.json`: the build report, one entry per built layer, with the hashes that spot stale builds |
