@@ -69,7 +69,7 @@ with tests, and documented for people.
    Per-zoom generalisation (polygons, `coverage` and `default`) and the
    drop guard live inside the presets; a layer overrides only `minzoom`,
    `maxzoom`, `min_part_px`, `simplify_px` and their `maxzoom_` pair (and
-   `min_visible_px` and `grey_levels`; see Settled in step 1).
+   `min_visible_px`; see Settled in step 1).
 9. **One map config format, two files.** Your git-ignored, optional
    `map.config.yaml` and the committed `map.pages.yaml` share one schema
    with these keys: `view` (and its zoom limits and bounds), `basemap`,
@@ -312,8 +312,8 @@ practical:
   `pipeline/schema/map.schema.json`. The old `map-config.schema.json`
   stays until step 6 switches the map config over.
 - `processing` also keeps `min_visible_px` (the drop guard threshold,
-  any vector layer; `protected_areas` needs 4) and `grey_levels` (raster
-  only; the Pages copy uses 8). Polygon layers are generalised at every
+  any vector layer; `protected_areas` needs 4). `grey_levels` (raster
+  only) was dropped in #140. Polygon layers are generalised at every
   zoom, `maxzoom` included (#147).
 - `display.themes`: the first theme is what `display.layers` draw and has
   no `paint`; each other theme sets paint properties per style layer id.

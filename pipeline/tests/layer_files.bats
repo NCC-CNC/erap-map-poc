@@ -94,7 +94,7 @@ map_config() {
   broken "$LAYER_SCHEMA" "$FOREST" '.display.popup = {"title": "{a}", "sections": [{"description": "a"}]}' "display/popup"
   broken "$LAYER_SCHEMA" "$FOREST" '.processing.min_visible_px = 4' "processing/min_visible_px"
   broken "$LAYER_SCHEMA" "$FOREST" '.processing.maxzoom = 15' "processing/maxzoom"
-  broken "$LAYER_SCHEMA" "$SAMPLE" '.processing.grey_levels = 8' "processing/grey_levels"
+  broken "$LAYER_SCHEMA" "$FOREST" '.processing.grey_levels = 8' "additional properties 'grey_levels'"
 }
 
 @test "style layers have no source and a short id" {
@@ -179,7 +179,7 @@ view: { center: [-96, 60], zoom: 3 }
 basemap: dark
 layers: [ecoregions, forest]
 overrides:
-  forest: { processing: { maxzoom: 10, grey_levels: 8 } }
+  forest: { processing: { maxzoom: 10 } }
   protected_areas: { source: { path: other.gdb, layer: other } }
 require: [protected_areas]')
   run jv "$MAP_SCHEMA" "$file"

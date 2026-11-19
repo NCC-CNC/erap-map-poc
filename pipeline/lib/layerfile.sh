@@ -397,7 +397,6 @@ layer_provenance() {
 #   LAYER_GENERALISE_MAX_MIN_PART_PX, LAYER_GENERALISE_MAX_SIMPLIFY_PX
 #                         at the max zoom: processing.maxzoom_min_part_px
 #                         (default 1) and maxzoom_simplify_px (default 0.5)
-#   LAYER_GREY_LEVELS     processing.grey_levels, default 256 (lib/raster.sh)
 #   LAYER_TIPPECANOE_FLAGS
 #                         the preset's tippecanoe flags (preset_flags), then
 #                         processing.tippecanoe's
@@ -417,14 +416,13 @@ load_layer() {
       (.processing.minzoom // 0), .processing.maxzoom,
       (.processing.min_visible_px // 1),
       (.processing.min_part_px // 4), (.processing.simplify_px // 1),
-      (.processing.maxzoom_min_part_px // 1), (.processing.maxzoom_simplify_px // 0.5),
-      (.processing.grey_levels // 256) ] | map(tostring) | join("\u001f")' "$config") \
+      (.processing.maxzoom_min_part_px // 1), (.processing.maxzoom_simplify_px // 0.5) ]
+    | map(tostring) | join("\u001f")' "$config") \
     || die "cannot read $config"
   IFS=$'\x1f' read -r LAYER_PROFILE LAYER_INPUT LAYER_SOURCE_LAYER LAYER_SOURCE_SRS \
     LAYER_ENCODING LAYER_NODATA LAYER_MIN_ZOOM LAYER_MAX_ZOOM LAYER_MIN_VISIBLE_PX \
     LAYER_GENERALISE_MIN_PART_PX LAYER_GENERALISE_SIMPLIFY_PX \
-    LAYER_GENERALISE_MAX_MIN_PART_PX LAYER_GENERALISE_MAX_SIMPLIFY_PX \
-    LAYER_GREY_LEVELS <<<"$settings"
+    LAYER_GENERALISE_MAX_MIN_PART_PX LAYER_GENERALISE_MAX_SIMPLIFY_PX <<<"$settings"
   LAYER_INPUT=$(resolve_input "$LAYER_INPUT")
 
   LAYER_TYPE=vector

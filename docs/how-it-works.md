@@ -57,7 +57,10 @@ For each layer:
    no visible polygon was lost, and the archive is moved into place.
 4. **Or warp** a raster layer (profile `raster`) with GDAL into one Web
    Mercator COG, whose pixels are the share covered (0 to 255), with an
-   overview per zoom. The prepared source is cached in `data/work/`.
+   overview per zoom: `gdalwarp`, then `gdal_translate -of COG` on the
+   `GoogleMapsCompatible` tiling scheme with average overviews. The
+   source is first rewritten once as a tiled file, cached in
+   `data/work/`.
 5. **Record** the build in `build.json` (counts, sizes, drops, zooms,
    the source path, and the build hash and time that `--status` compares
    with the layer file and the source files' times to spot stale builds).

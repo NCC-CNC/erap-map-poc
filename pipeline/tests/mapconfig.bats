@@ -131,10 +131,10 @@ notes_of() {
 
 @test "an override that makes the layer invalid fails it, naming the override" {
   add_layer alpha
-  config 'overrides: { alpha: { processing: { grey_levels: 8 } } }'
+  config 'overrides: { alpha: { source: { nodata: 0 } } }'
   run "$RUN" alpha
   [ "$status" -eq 1 ]
-  [[ $output == *"alpha.yaml: with the map config overrides: at '/processing/grey_levels'"* ]]
+  [[ $output == *"alpha.yaml: with the map config overrides: at '/source/nodata'"* ]]
   [ ! -e "$BUILD" ]
 }
 

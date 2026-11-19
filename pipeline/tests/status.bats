@@ -313,20 +313,20 @@ add_raster() {
   [ "$output" = alpha ]
 }
 
-@test "--status: a raster is stale when grey_levels changes in the map config" {
+@test "--status: a raster is stale when its max zoom changes in the map config" {
   export PIPELINE_MAP_CONFIG="${BATS_TEST_TMPDIR}/map.config.yaml"
   add_raster cover
-  echo 'overrides: { cover: { processing: { grey_levels: 8 } } }' >"$PIPELINE_MAP_CONFIG"
+  echo 'overrides: { cover: { processing: { maxzoom: 7 } } }' >"$PIPELINE_MAP_CONFIG"
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  [ "$(jq '.layers[0].grey_levels' "$BUILD")" -eq 8 ]
+  [ "$(jq '.layers[0].maxzoom' "$BUILD")" -eq 7 ]
   [ "$(state_of cover)" = current ]
 
-  echo 'overrides: { cover: { processing: { grey_levels: 16 } } }' >"$PIPELINE_MAP_CONFIG"
+  echo 'overrides: { cover: { processing: { maxzoom: 5 } } }' >"$PIPELINE_MAP_CONFIG"
   [ "$(state_of cover)" = stale ]
   [[ "$(notes_of cover)" == *"source, fields or processing changed since the build"* ]]
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  [ "$(jq '.layers[0].grey_levels' "$BUILD")" -eq 16 ]
+  [ "$(jq '.layers[0].maxzoom' "$BUILD")" -eq 5 ]
   [ "$(state_of cover)" = current ]
 }

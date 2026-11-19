@@ -128,7 +128,7 @@ build_layer() {
   if [[ $LAYER_TYPE == raster ]]; then
     build_raster_tiles "$name" "$LAYER_INPUT" "$LAYER_SOURCE_SRS" "$LAYER_NODATA" \
       "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" "$PIPELINE_OUTPUT_DIR" "$layer_scratch" "$report" \
-      "$header" "$LAYER_GREY_LEVELS" "${PIPELINE_WORK_DIR:+${PIPELINE_WORK_DIR}/raster}"
+      "$header" "${PIPELINE_WORK_DIR:+${PIPELINE_WORK_DIR}/raster}"
     header_json=$(jq -c '.' "$header")
   else
     build_vector_layer

@@ -1,15 +1,14 @@
 # yaml-language-server: $schema=./pipeline/schema/map.schema.json
 #
 # The GitHub Pages copy (ADR 0014), built by `docker compose run --rm
-# pipeline-pages` into data/pages/. Lower max zooms and fewer grey levels
-# keep it small.
+# pipeline-pages` into data/pages/. Lower max zooms keep it small.
 
 view: { center: [-96, 60], zoom: 3 }
 basemap: light
 
 overrides:
-  forest: { processing: { maxzoom: 10, grey_levels: 8 } }
-  agriculture: { processing: { maxzoom: 10, grey_levels: 8 } }
+  forest: { processing: { maxzoom: 10 } }
+  agriculture: { processing: { maxzoom: 10 } }
   ecoregions: { processing: { maxzoom: 10 } }
   # The public CPCAD release in place of NCC's dissolved copy.
   protected_areas:

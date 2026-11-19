@@ -45,7 +45,7 @@ In the image the pipeline is at `/opt/pipeline`; compose mounts
 | `generalise.sh` | polygon layers (`coverage` and `default`), every zoom: drop small parts and simplify per zoom (as a coverage for `coverage`), with GDAL (ADR 0016) |
 | `tiles.sh` | runs tippecanoe in the scratch dir, verifies and checks the archive there, then copies it to a temp file and moves it into place |
 | `guard.sh` | the drop guard: fails a build that lost a visible polygon at some zoom, and gathers per-zoom stats (ADR 0016) |
-| `raster.sh` | the `raster` profile: prepares a binary raster once (cached in `data/work/raster/`), warps it to a Web Mercator COG of the share covered, with overviews (ADR 0010) |
+| `raster.sh` | the `raster` profile: prepares a binary raster once (cached in `data/work/raster/`), warps it with `gdalwarp` and writes a Web Mercator COG of the share covered with `gdal_translate -of COG` (average overviews; ADR 0010) |
 | `build.sh` | `build.json`: the build report, one entry per built layer, with the hashes that spot stale builds |
 | `style.sh` | `style.json`: the MapLibre style of every built layer, with `erap:` metadata |
 | `status.sh` | `--status`: each layer's state, read only |

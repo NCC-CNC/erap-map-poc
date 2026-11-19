@@ -245,10 +245,6 @@ export interface Processing {
    */
   min_visible_px?: number;
   /**
-   * Raster only: how many evenly spaced shares of cover (0 to 255) the COG keeps, 2 to 256. Fewer compress better. Default 256.
-   */
-  grey_levels?: number;
-  /**
    * Advanced, vector only: extra tippecanoe arguments, added after the preset's, for layers the presets do not fit (dense points, detailed lines, large polygon sets), such as `--drop-densest-as-needed`. Each is one argument starting with `--`, its value after `=`. A change makes the layer stale.
    *
    * @minItems 1
@@ -721,10 +717,6 @@ export interface ProcessingSettings {
    */
   min_visible_px?: number;
   /**
-   * Raster only: how many evenly spaced shares of cover (0 to 255) the COG keeps, 2 to 256. Fewer compress better. Default 256.
-   */
-  grey_levels?: number;
-  /**
    * Advanced, vector only: extra tippecanoe arguments, added after the preset's, for layers the presets do not fit (dense points, detailed lines, large polygon sets), such as `--drop-densest-as-needed`. Each is one argument starting with `--`, its value after `=`. A change makes the layer stale.
    *
    * @minItems 1
@@ -770,10 +762,6 @@ export interface Processing1 {
    * Vector only: the drop guard fails the build if a polygon whose largest part covers this many screen pixels is missing from a zoom. Default 1.
    */
   min_visible_px?: number;
-  /**
-   * Raster only: how many evenly spaced shares of cover (0 to 255) the COG keeps, 2 to 256. Fewer compress better. Default 256.
-   */
-  grey_levels?: number;
   /**
    * Advanced, vector only: extra tippecanoe arguments, added after the preset's, for layers the presets do not fit (dense points, detailed lines, large polygon sets), such as `--drop-densest-as-needed`. Each is one argument starting with `--`, its value after `=`. A change makes the layer stale.
    *

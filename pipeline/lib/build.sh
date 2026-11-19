@@ -44,15 +44,9 @@
 #           "calculated_fields": [ { "name": "x", "expression": "a - b",
 #                                    "non_null": 15, "min": 0, "max": 9 } ]
 #   raster: "width": 447240, "height": 290531, "block_size": 256,
-#           "resampling": "near" (the warp's method: "average" when the
-#           max zoom is coarser than the source; lib/raster.sh),
-#           "max_zoom_values": "near" (how the max zoom's 0/255 values
-#           are made: "near" from the source as is, with -r near;
-#           "majority" with -r average: 255 where at least half is
-#           covered),
-#           "grey_levels": 256 (processing.grey_levels: the grey levels
-#           the COG holds, 256 for the full share; only in the overviews
-#           when "majority"; lib/raster.sh),
+#           "resampling": "near" (the warp's method: "mode", the
+#           majority, when the max zoom is coarser than the source;
+#           lib/raster.sh),
 #           "overview_count": 10,
 #           "zooms": [ { "zoom": 12, "width": 447240, "height": 290531 }, ... ]
 #           (the COG's levels, max zoom first; lib/raster.sh).
