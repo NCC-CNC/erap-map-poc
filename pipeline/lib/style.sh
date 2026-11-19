@@ -7,7 +7,8 @@
 #     "metadata": {
 #       "erap:basemap": "light",                 (map config; else absent)
 #       "erap:view": {"minzoom": 2, "maxzoom": 14,
-#                     "bounds": [w, s, e, n]},   (map config's view, those set)
+#                     "bounds": [w, s, e, n]},   (map config's view, those set;
+#                                                 maxzoom else the layers')
 #       "erap:title": "ERAP Map",                (map config; else absent)
 #       "erap:locale": "en-CA",                  (map config; else absent)
 #       "erap:layers": { "<layer>": { "title": ..., "type": "vector",
@@ -31,6 +32,11 @@
 # Sources are relative to the output dir: pmtiles:// for a vector layer,
 # cog://...#dem for a raster COG (ADR 0010). Layers draw in ascending
 # `order`, then by name.
+#
+# Unless the map config's view sets `maxzoom`, the view's maxzoom is the
+# highest built max zoom (build.json) of the layers in the style, vector or
+# raster, so the map stops zooming in where the tiles stop. It is never
+# below the view's minzoom.
 
 # Fonts for symbol layers with text, as the web app's basemaps use.
 GLYPHS_URL='https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf'
@@ -83,7 +89,7 @@ write_style() {
       else {type: "raster-dem", tileSize: 256, url: "cog://\(.file)#dem"} end;
     # fresh(config): a built layer (the input) from its layer file.
     def fresh($c): . as $e | ($e.type // "vector") as $type
-      | {name: $e.name,
+      | {name: $e.name, maxzoom: $e.maxzoom,
          meta: ({title: $c.title, type: $type, order: ($c.order // 0), visible: ($c.visible // false)}
            + ($c.display | with_entries(select(.key | IN("legend", "themes", "popup"))))),
          source: source,
@@ -95,11 +101,14 @@ write_style() {
     [$entries[] | select($configs[.name]) | fresh($configs[.name])]
     | sort_by(.meta.order, .name) as $parts
     | ($parts | map(.layers[])) as $layers
+    | ($parts | map(.maxzoom | numbers) | max) as $tiles_max
+    | ($map | with_entries(select(.key | IN("minzoom", "maxzoom", "bounds")))
+       | if has("maxzoom") or $tiles_max == null then .
+         else . + {maxzoom: ([$tiles_max, ($map.minzoom // 0)] | max)} end) as $view
     | {version: 8, name: "ERAP Map data layers",
        metadata: ({"erap:layers": ($parts | map({key: .name, value: .meta}) | from_entries)}
          + (if $map.basemap then {"erap:basemap": $map.basemap} else {} end)
-         + ($map | with_entries(select(.key | IN("minzoom", "maxzoom", "bounds")))
-            | if . == {} then {} else {"erap:view": .} end)
+         + (if $view == {} then {} else {"erap:view": $view} end)
          + (if $map.title then {"erap:title": $map.title} else {} end)
          + (if $map.locale then {"erap:locale": $map.locale} else {} end))}
       + (if $map.center then {center: $map.center} else {} end)

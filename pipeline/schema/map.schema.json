@@ -29,7 +29,7 @@
           "maximum": 24
         },
         "maxzoom": {
-          "description": "The furthest in the map can zoom.",
+          "description": "The furthest in the map can zoom. Default: the highest max zoom of the layers built.",
           "type": "number",
           "minimum": 0,
           "maximum": 24

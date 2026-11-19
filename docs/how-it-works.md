@@ -83,7 +83,8 @@ does not know about is in `metadata`:
 
 - `erap:layers`: per layer, its title, type, order, visibility, legend,
   colour themes and pop-up.
-- `erap:basemap`, `erap:view` (zoom limits and bounds), `erap:title` and
+- `erap:basemap`, `erap:view` (zoom limits and bounds; the max zoom is
+  the layers' highest unless the map config sets one), `erap:title` and
   `erap:locale`, from the map config; the opening view is the style's
   `center` and `zoom`.
 

@@ -117,7 +117,7 @@ processing:
 | --- | --- | --- |
 | `profile` | all | `default`, `coverage`, `points` or `raster` (default `default`) |
 | `minzoom` | all | lowest zoom built (default 0) |
-| `maxzoom` | all | required. Highest zoom built; the map overzooms past it. Lines and points keep full detail there; polygons are generalised gently (`maxzoom_min_part_px`, `maxzoom_simplify_px`). A raster's resolution too (z12 is about 20 to 27 m across Canada), at most 14. |
+| `maxzoom` | all | required. Highest zoom built; the map overzooms past it up to the map's max zoom (the highest layer max zoom, unless the map config's `view` sets one). Lines and points keep full detail there; polygons are generalised gently (`maxzoom_min_part_px`, `maxzoom_simplify_px`). A raster's resolution too (z12 is about 20 to 27 m across Canada), at most 14. |
 | `min_part_px` | polygons (`coverage`, `default`) | below `maxzoom`, drop polygon parts under this many screen pixels; each feature keeps its largest (default 4; 0 for none) |
 | `simplify_px` | polygons (`coverage`, `default`) | below `maxzoom`, simplify borders by this many pixels (default 1; 0 for none) |
 | `maxzoom_min_part_px` | polygons (`coverage`, `default`) | as `min_part_px`, at `maxzoom` (default 1) |
@@ -313,7 +313,7 @@ require: [protected_areas]
 
 | Key | What |
 | --- | --- |
-| `view` | the opening `center` (`[lon, lat]`) and `zoom` (unless the URL has a view), and optional `minzoom`, `maxzoom` and `bounds` (`[west, south, east, north]`) the map cannot go past |
+| `view` | the opening `center` (`[lon, lat]`) and `zoom` (unless the URL has a view), and optional `minzoom`, `maxzoom` and `bounds` (`[west, south, east, north]`) the map cannot go past. Without `maxzoom`, the map zooms in as far as the highest `processing.maxzoom` of the layers built |
 | `basemap` | `light` or `dark` |
 | `title` | the page title (default ERAP Map) |
 | `locale` | the locale numbers are shown in, such as `en-CA` (default) or `fr-CA`; the app's own text stays English |

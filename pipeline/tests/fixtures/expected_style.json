@@ -184,6 +184,9 @@
           ]
         }
       }
+    },
+    "erap:view": {
+      "maxzoom": 10
     }
   },
   "sources": {

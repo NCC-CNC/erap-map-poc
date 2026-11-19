@@ -7,7 +7,8 @@
 
 # Where the map opens, and on which basemap (light or dark).
 view: { center: [-96, 60], zoom: 3 }
-# Optionally also how far it can zoom, and the box it cannot be panned out
+# Optionally also how far it can zoom (maxzoom defaults to the layers'
+# highest max zoom), and the box it cannot be panned out
 # of, [west, south, east, north]:
 # view: { center: [-96, 60], zoom: 3, minzoom: 2, maxzoom: 14, bounds: [-150, 35, -45, 85] }
 basemap: light

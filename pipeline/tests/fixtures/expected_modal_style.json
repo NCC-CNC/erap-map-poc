@@ -328,6 +328,9 @@
           ]
         }
       }
+    },
+    "erap:view": {
+      "maxzoom": 8
     }
   },
   "sources": {
