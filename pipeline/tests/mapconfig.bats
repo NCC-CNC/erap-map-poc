@@ -280,11 +280,41 @@ notes_of() {
   run jq -e '(has("center") or has("zoom") or (.metadata | has("erap:title") or has("erap:locale"))) | not' "$STYLE"
   [ "$status" -eq 0 ]
 
+  # With no view, only the layers' max zoom.
   config '{}'
   run "$RUN" --style-only
   [ "$status" -eq 0 ]
-  run jq -e '.metadata | has("erap:view") | not' "$STYLE"
+  [ "$(jq -c '.metadata["erap:view"]' "$STYLE")" = '{"maxzoom":4}' ]
+}
+
+@test "the view's maxzoom is the layers' highest max zoom unless the map config sets one" {
+  add_layer alpha beta
+  set_layer "${PIPELINE_LAYERS_DIR}/beta.yaml" '.processing.maxzoom = 6'
+  run "$RUN"
   [ "$status" -eq 0 ]
+  [ "$(jq -c '.metadata["erap:view"]' "$STYLE")" = '{"maxzoom":6}' ]
+
+  # Follows the layers in the style: beta turned off.
+  config 'layers: [alpha]'
+  run "$RUN" --style-only
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.metadata["erap:view"]' "$STYLE")" = '{"maxzoom":4}' ]
+
+  # Set in the map config, that wins, above or below the layers'.
+  config 'view: { maxzoom: 3 }'
+  run "$RUN" --style-only
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.metadata["erap:view"]' "$STYLE")" = '{"maxzoom":3}' ]
+  config 'view: { maxzoom: 14 }'
+  run "$RUN" --style-only
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.metadata["erap:view"]' "$STYLE")" = '{"maxzoom":14}' ]
+
+  # Never below the view's minzoom.
+  config 'view: { minzoom: 8 }'
+  run "$RUN" --style-only
+  [ "$status" -eq 0 ]
+  [ "$(jq -c '.metadata["erap:view"]' "$STYLE")" = '{"minzoom":8,"maxzoom":8}' ]
 }
 
 @test "zoom limits out of order, bounds the wrong way round or a bad locale stop the run" {

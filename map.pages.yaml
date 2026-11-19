@@ -4,8 +4,7 @@
 # pipeline-pages` into data/pages/. Lower max zooms and fewer grey levels
 # keep it small.
 
-# The map zooms no further in than the vector tiles go (their max zoom below).
-view: { center: [-96, 60], zoom: 3, maxzoom: 10 }
+view: { center: [-96, 60], zoom: 3 }
 basemap: light
 
 overrides:

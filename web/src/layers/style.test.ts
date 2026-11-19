@@ -104,8 +104,8 @@ describe("the test layers' style.json, as the pipeline writes it", () => {
     expect(parsed.find((d) => d.id === 'sample_points')?.popup).toBeUndefined();
   });
 
-  it('has no opening view without a map config', () => {
-    expect(parseStyle(expectedStyle(), TILES).map).toBeNull();
+  it('has only the layers\' max zoom without a map config', () => {
+    expect(parseStyle(expectedStyle(), TILES).map).toEqual({ maxZoom: 10 });
   });
 });
 
@@ -174,7 +174,7 @@ describe('parseStyle', () => {
   it('reads the opening view and basemap', () => {
     const style: Record<string, unknown> = { ...expectedStyle(), center: [-100, 55], zoom: 4 };
     (style.metadata as Record<string, unknown>)['erap:basemap'] = 'dark';
-    expect(parseStyle(style, TILES).map).toEqual({ center: [-100, 55], zoom: 4, basemap: 'dark' });
+    expect(parseStyle(style, TILES).map).toEqual({ center: [-100, 55], zoom: 4, maxZoom: 10, basemap: 'dark' });
   });
 
   it('reads the zoom limits, bounds, title and locale, and formats numbers in that locale', () => {

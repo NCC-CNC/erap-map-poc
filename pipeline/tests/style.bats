@@ -90,7 +90,8 @@ yaml_json() {
   cp "${FIXTURES}/raster.yaml" "${PIPELINE_LAYERS_DIR}/cover.yaml"
   PIPELINE_WORK_DIR="${BATS_TEST_TMPDIR}/work" run "$RUN"
   [ "$status" -eq 0 ]
-  run jq -n --slurpfile a "$STYLE" --slurpfile b "${FIXTURES}/expected_style.json" '$a == $b'  [ "$output" = true ]
+  run jq -n --slurpfile a "$STYLE" --slurpfile b "${FIXTURES}/expected_style.json" '$a == $b'
+  [ "$output" = true ]
 
   rm -r "$PIPELINE_LAYERS_DIR" "$PIPELINE_OUTPUT_DIR"
   mkdir -p "$PIPELINE_LAYERS_DIR"
