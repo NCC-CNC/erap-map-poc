@@ -26,7 +26,13 @@
 # the whole archive: no tile-join, and the drop guard and the shared node
 # handling of the coverage profile work as before. The drop guard measures
 # the normalised input, not this one: each feature keeps a part at every
-# zoom, so a feature the guard requires is never lost here.
+# zoom, though simplification can still thin a narrow one away (the
+# protected_areas border slivers), which the guard then reports.
+#
+# Why GDAL and not tippecanoe's own options: tippecanoe has no part
+# threshold that keeps each feature's largest part, and simplifying in
+# tippecanoe instead leaves every zoom's copy at full detail, several times
+# slower to tile. Measured in ADR 0016 (#141).
 #
 # Pixels are at 256 px tiles, as for min_visible_px: at zoom z one
 # pixel is 40075016.686 / (256 * 2^z) m wide in EPSG:3857.
