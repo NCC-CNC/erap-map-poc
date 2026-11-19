@@ -290,16 +290,21 @@ build_raster_tiles() {
   log_info "warp: $((SECONDS - step)) s"
 
   step=$SECONDS
-  local final="${out_dir}/${layer}.cog.tif"
+  # The COG is made and checked in the scratch dir, on the container's own
+  # disk (a Docker Desktop bind mount is several times slower, #141), then
+  # copied to a hidden temp file in the output dir and renamed into place.
+  local final="${out_dir}/${layer}.cog.tif" built="${tmp}/${layer}.cog.tif"
   _BUILD_TILES_TMP="${out_dir}/.${layer}.$$.tmp.cog.tif"
   trap 'rm -f "${_BUILD_TILES_TMP:-}"' EXIT
-  rm -f "$_BUILD_TILES_TMP"
-  raster_cog "$warped" "$maxzoom" "$((maxzoom - minzoom))" "$_BUILD_TILES_TMP" "$tmp"
+  rm -f "$built" "$_BUILD_TILES_TMP"
+  raster_cog "$warped" "$maxzoom" "$((maxzoom - minzoom))" "$built" "$tmp"
   rm -f "$warped"
-  raster_has_cover "$_BUILD_TILES_TMP" "$source" \
+  raster_has_cover "$built" "$source" \
     || die "no cover: no 1 cells in $input"
   [[ -n $cache && $source == "${cache}"/* ]] || rm -f "$source"
-  raster_report "$_BUILD_TILES_TMP" "$maxzoom" "$method" >"$report"
+  raster_report "$built" "$maxzoom" "$method" >"$report"
+  cp "$built" "$_BUILD_TILES_TMP" || die "cannot write $final"
+  rm -f "$built"
   mv -f "$_BUILD_TILES_TMP" "$final"
   _BUILD_TILES_TMP=""
   log_info "cog: $((SECONDS - step)) s"
