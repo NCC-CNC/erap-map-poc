@@ -155,6 +155,8 @@ coverage_gaps() {
   [[ $output == *"--simplify-only-low-zooms"* ]]
   [[ $output != *"--detect-shared-borders"* ]]
   [[ $output != *"--coalesce"* ]]
+  # Built in the scratch dir, not in the output dir (a bind mount; #141).
+  [[ $output == *"--output="* && $output != *"--output=${COVERAGE_DIR}/tiles"* ]]
 
   run jq -r '.layers[0] | "\(.profile) \(.min_visible_px)"' "$BUILD"
   [ "$output" = "coverage 1" ]
