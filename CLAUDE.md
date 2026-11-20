@@ -11,10 +11,10 @@ them, with pop-ups of stats and Chart.js charts on click. Internal for
 now; the brief is `docs/design/00_project_brief.md`, the plan
 `docs/design/03_milestones.md`, how it fits together `docs/how-it-works.md`.
 
-Status: the refactor (`docs/design/04_refactor.md`, ADR 0015) is done on
-`dev`: one `pipeline/layers/<layer>.yaml` per layer, `data/tiles/style.json`
-and `build.json`, `map.config.yaml`. Still to do before `dev` merges into
-`main`: a full build from the real data and a check in the browser. The
+Status: the refactor (`docs/design/04_refactor.md`, ADR 0015) is done
+and merged into `main` (#158), after a full build from the real data and a
+check in the browser: one `pipeline/layers/<layer>.yaml` per layer,
+`data/tiles/style.json` and `build.json`, `map.config.yaml`. The
 four committed layers are `ecoregions` (themes, a dialog), `protected_areas`,
 `forest` and `agriculture` (binary rasters, display only). Licences,
 provenance and stable ids are deferred (#13); `OBJECTID` is the feature id.
