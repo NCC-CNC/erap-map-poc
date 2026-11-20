@@ -30,11 +30,11 @@ Work, action recommendations) and a dialog (Summary, Habitat, Direct
 threats, Opportunities, Action recommendations). Calculations happen in
 the pipeline. The GitHub Pages copy (ADR 0014).
 
-## Refactor (on `dev`)
+## Refactor (done)
 
 One layer file and a MapLibre `style.json` (design note 04, ADR 0015):
-steps 1 to 7 are merged into `dev`. Left before `dev` merges into
-`main`: a full build from the real data and a check in the browser.
+steps 1 to 7 landed on `dev`, and after a full build from the real data
+and a check in the browser `dev` merged into `main` (#158).
 
 ## M4: PoC review
 
