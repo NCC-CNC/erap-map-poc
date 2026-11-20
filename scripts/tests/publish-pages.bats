@@ -4,8 +4,8 @@
 # PATH that logs its arguments to $STUB_LOG. STUB_GH_AUTH=fail makes
 # `gh auth status` fail; STUB_GH_RELEASE=missing makes the release not
 # found; STUB_GH_ASSETS lists the release's files. Also checks that
-# map.config.pages.json is valid for the committed layers and in step with
-# the script. Run in the pipeline test image (it has bats, jq and node),
+# map.pages.yaml is valid for the committed layers and in step with
+# the script. Run in the pipeline test image (it has bats, jq and yq),
 # with the repo mounted read only:
 #   docker build --target test -t erap-map-pipeline:test pipeline
 #   docker run --rm -v "$repo":/repo:ro erap-map-pipeline:test /repo/scripts/tests
@@ -46,15 +46,14 @@ EOF
 }
 
 # pages_build [DIR]: a Pages build in DIR (default data/pages) as the
-# pipeline writes it: manifest.json (by jq, as pipeline/lib/manifest.sh
+# pipeline writes it: build.json (by jq, as pipeline/lib/build.sh
 # does), style.json and the archives, plus files that are not published.
 pages_build() {
   local dir=${1:-$PAGES}
   mkdir -p "$dir"
-  jq -n '{updated_at: "2026-11-16T00:00:00Z", map: {center: [-96, 60], zoom: 3},
+  jq -n '{updated_at: "2026-11-16T00:00:00Z",
     layers: [
       {name: "forest", file: "forest.cog.tif", type: "raster",
-       display: {title: "Forest", layers: [{id: "raster", paint: {}}]},
        provenance: {origin: "committed", source: {path: "Forest.tif", bytes: 1},
                     overrides: {env: {LAYER_MAX_ZOOM: 10}}}},
       {name: "protected_areas", file: "protected_areas.pmtiles", type: "vector",
@@ -65,7 +64,7 @@ pages_build() {
       {name: "ecoregions", file: "ecoregions.pmtiles", type: "vector",
        rules: {file: "/opt/pipeline/layers/ecoregions.rules.json"},
        provenance: {origin: "committed", source: {path: "eco.gdb"}, overrides: null}}
-    ]}' >"$dir/manifest.json"
+    ]}' >"$dir/build.json"
   printf '{"version": 8}\n' >"$dir/style.json"
   printf 'cog' >"$dir/forest.cog.tif"
   printf 'pa' >"$dir/protected_areas.pmtiles"
@@ -75,9 +74,9 @@ pages_build() {
   printf 'x' >"$dir/notes.txt"
 }
 
-# set_entry NAME JQ: change NAME's manifest entry with a jq update.
+# set_entry NAME JQ: change NAME's build.json entry with a jq update.
 set_entry() {
-  local m=$PAGES/manifest.json
+  local m=$PAGES/build.json
   jq --arg n "$1" "(.layers[] | select(.name == \$n)) |= ($2)" "$m" >"$m.new"
   mv "$m.new" "$m"
 }
@@ -113,13 +112,14 @@ changes() {
   run "$PUBLISH" --dry-run
   [ "$status" -eq 0 ]
   [[ $output == *"5 files"* ]]
-  [[ $output == *"upload manifest.json"* ]]
+  [[ $output == *"upload build.json"* ]]
   [[ $output == *"upload style.json"* ]]
   [[ $output == *"upload forest.cog.tif"* ]]
   [[ $output == *"upload protected_areas.pmtiles"* ]]
   [[ $output == *"upload ecoregions.pmtiles"* ]]
   [[ $output == *"remove old_layer.pmtiles"* ]]
   [[ $output == *"dry run: nothing was changed (release pages-data in owner/repo)"* ]]
+  [[ $output == *"remove manifest.json"* ]]
   [[ $output != *".gitkeep"* ]]
   [[ $output != *"tmp.cog.tif"* ]]
   [[ $output != *"notes.txt"* ]]
@@ -133,7 +133,7 @@ changes() {
   [ "$status" -eq 0 ]
   run changes
   [ "${lines[0]}" = "gh release create pages-data --repo owner/repo --latest=false --title GitHub Pages data --notes Map data for the GitHub Pages copy of the map (ADR 0014), uploaded by scripts/publish-pages.sh. Not a software release." ]
-  [ "${lines[1]}" = "gh release upload pages-data manifest.json style.json forest.cog.tif protected_areas.pmtiles ecoregions.pmtiles --repo owner/repo --clobber" ]
+  [ "${lines[1]}" = "gh release upload pages-data build.json style.json forest.cog.tif protected_areas.pmtiles ecoregions.pmtiles --repo owner/repo --clobber" ]
   [ "${lines[2]}" = "gh workflow run pages.yml --repo owner/repo --ref main" ]
   [ "${#lines[@]}" -eq 3 ]
 
@@ -144,7 +144,7 @@ changes() {
   [ "$status" -eq 0 ]
   [[ $output == *"not deployed (--no-deploy)"* ]]
   run changes
-  [ "${lines[0]}" = "gh release upload demo manifest.json style.json forest.cog.tif protected_areas.pmtiles ecoregions.pmtiles --repo other/repo --clobber" ]
+  [ "${lines[0]}" = "gh release upload demo build.json style.json forest.cog.tif protected_areas.pmtiles ecoregions.pmtiles --repo other/repo --clobber" ]
   [ "${lines[1]}" = "gh release delete-asset demo old_layer.pmtiles --repo other/repo --yes" ]
   [ "${#lines[@]}" -eq 2 ]
 }
@@ -178,7 +178,7 @@ changes() {
   [ ! -s "$STUB_LOG" ]
 }
 
-@test "refuses a missing folder, manifest, style or archive" {
+@test "refuses a missing folder, build report, style or archive" {
   rm -rf "$PAGES"
   run "$PUBLISH" --dry-run
   [ "$status" -eq 1 ]
@@ -213,15 +213,15 @@ changes() {
   [[ $output == *"protected_areas: built from '', not ProtectedConservedArea_2025.gdb"* ]]
 
   pages_build
-  jq '.layers |= map(select(.name != "protected_areas"))' "$PAGES/manifest.json" >"$T/m.json"
-  mv "$T/m.json" "$PAGES/manifest.json"
+  jq '.layers |= map(select(.name != "protected_areas"))' "$PAGES/build.json" >"$T/m.json"
+  mv "$T/m.json" "$PAGES/build.json"
   run "$PUBLISH" --dry-run
   [ "$status" -eq 1 ]
-  [[ $output == *"protected_areas: not in the manifest"* ]]
+  [[ $output == *"protected_areas: not in build.json"* ]]
   [ ! -s "$STUB_LOG" ]
 }
 
-@test "refuses local-only layers from a map config" {
+@test "refuses personal layers (layers.local/) and any other layer not committed" {
   pages_build
   set_entry forest '.provenance.origin = "local"'
   set_entry ecoregions '.provenance.origin = "config"'
@@ -247,25 +247,34 @@ changes() {
   [ ! -s "$STUB_LOG" ]
 }
 
-@test "map.config.pages.json is valid for the committed layers and in step with the script" {
-  # The pipeline's own check and resolution (bin/run.sh runs the same).
-  run node /opt/pipeline/style/cli.mjs layers "$SRC/map.config.pages.json" "$SRC/pipeline/layers" "$T/resolved"
-  [ "$status" -eq 0 ]
-  run jq -r '.layers[] | select(.enabled | not) | .name' "$T/resolved/layers.json"
+@test "map.pages.yaml is valid for the committed layers and in step with the script" {
+  # The pipeline's own check (bin/run.sh reads it the same way): the
+  # schema, and every layer it names has a layer file.
+  local json
+  json=$(PIPELINE_MAP_CONFIG="$SRC/map.pages.yaml" PIPELINE_LAYERS_DIR="$SRC/pipeline/layers" \
+    PIPELINE_INPUT_DIR="$T/raw" PIPELINE_OUTPUT_DIR="$T/out" \
+    /opt/pipeline/bin/run.sh --status --json 2>/dev/null)
+  [ "$(jq '.layers | length' <<<"$json")" -eq 4 ]
+  # Every committed layer is in the Pages copy, none invalid.
+  run jq -r '.layers[] | select(.enabled | not) | .name' <<<"$json"
   [ -z "$output" ]
-  # No local-only layers: committed ones only.
-  run jq -r '[.layers[].origin] | unique | join(",")' "$T/resolved/layers.json"
-  [ "$output" = committed ]
+  run jq -r '[.layers[] | select(.state == "invalid") | .name] | join(",")' <<<"$json"
+  [ -z "$output" ]
   # Rasters at max zoom 10.
-  run jq -r '.overrides | [.forest.env.LAYER_MAX_ZOOM, .agriculture.env.LAYER_MAX_ZOOM] | join(",")' \
-    "$SRC/map.config.pages.json"
+  run yq -r '[.overrides.forest.processing.maxzoom, .overrides.agriculture.processing.maxzoom] | join(",")' \
+    "$SRC/map.pages.yaml"
   [ "$output" = "10,10" ]
-  # The protected areas input is the required one, and the script checks it.
-  run jq -r '.overrides.protected_areas.input == .requiredInputs.protected_areas' "$SRC/map.config.pages.json"
+  # The protected areas source is required, and the script checks it.
+  run yq -r '.require | contains(["protected_areas"])' "$SRC/map.pages.yaml"
   [ "$output" = true ]
   local want got
-  want=$(jq -r '.requiredInputs | to_entries[] | "\(.key)=\(.value)"' "$SRC/map.config.pages.json" | sort)
+  want="protected_areas=$(yq -r '.overrides.protected_areas.source.path' "$SRC/map.pages.yaml")"
   got=$(bash -c "source <(sed -n '/^REQUIRED_SOURCES=(/,/^)/p' '$SRC/scripts/publish-pages.sh'); printf '%s\n' \"\${REQUIRED_SOURCES[@]}\"" | sort)
-  [ -n "$want" ]
   [ "$want" = "$got" ]
+}
+
+@test "pipeline-pages builds from map.pages.yaml without your own layers or map config" {
+  run yq -r '.services["pipeline-pages"].environment
+    | [.PIPELINE_MAP_CONFIG, (.PIPELINE_LOCAL_LAYERS_DIR | tostring)] | join(",")' "$SRC/docker-compose.yml"
+  [ "$output" = "/repo/map.pages.yaml," ]
 }

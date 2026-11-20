@@ -1,0 +1,643 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Layer file",
+  "description": "One map layer: pipeline/layers/<layer>.yaml. The layer name is the file name. `source`, `fields` and `processing` say how it is built; `display` how it is drawn. Design note 04.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["title", "source", "processing", "display"],
+  "properties": {
+    "title": {
+      "description": "Layer name shown in the layer panel.",
+      "type": "string",
+      "minLength": 1
+    },
+    "visible": {
+      "description": "Switched on when the map opens. Default false.",
+      "type": "boolean"
+    },
+    "order": {
+      "description": "Draw order: higher on top and first in the layer panel; ties by layer name. Default 0.",
+      "type": "integer"
+    },
+    "source": { "$ref": "#/$defs/source" },
+    "fields": { "$ref": "#/$defs/fields" },
+    "processing": { "$ref": "#/$defs/processing" },
+    "display": { "$ref": "#/$defs/display" }
+  },
+  "allOf": [
+    {
+      "description": "A raster layer: no attributes, no pop-up, no vector settings.",
+      "if": {
+        "required": ["processing"],
+        "properties": { "processing": { "required": ["profile"], "properties": { "profile": { "const": "raster" } } } }
+      },
+      "then": {
+        "properties": {
+          "fields": false,
+          "source": {
+            "properties": { "layer": false, "id": false, "encoding": false, "joins": false }
+          },
+          "processing": {
+            "properties": {
+              "maxzoom": { "maximum": 14 },
+              "min_part_px": false,
+              "simplify_px": false,
+              "maxzoom_min_part_px": false,
+              "maxzoom_simplify_px": false,
+              "min_visible_px": false,
+              "tippecanoe": false
+            }
+          },
+          "display": { "properties": { "popup": false } }
+        }
+      },
+      "else": {
+        "properties": {
+          "source": { "required": ["id"], "properties": { "nodata": false } }
+        }
+      }
+    },
+    {
+      "description": "Generalisation settings belong to the polygon profiles, coverage and default.",
+      "if": {
+        "required": ["processing"],
+        "properties": { "processing": { "required": ["profile"], "properties": { "profile": { "const": "points" } } } }
+      },
+      "then": {
+        "properties": {
+          "processing": {
+            "properties": { "min_part_px": false, "simplify_px": false, "maxzoom_min_part_px": false, "maxzoom_simplify_px": false }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "name": {
+      "description": "An output attribute name: lower case letters, digits and _.",
+      "type": "string",
+      "pattern": "^[a-z_][a-z0-9_]*$"
+    },
+    "sourceField": {
+      "description": "An attribute name in the source data, as it is there.",
+      "type": "string",
+      "minLength": 1
+    },
+    "fieldList": {
+      "description": "Attributes to keep, in order: a name keeps the attribute as it is; a one-key map `{source_name: output_name}` renames it.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/name" },
+          {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 1,
+            "propertyNames": { "minLength": 1 },
+            "additionalProperties": { "$ref": "#/$defs/name" }
+          }
+        ]
+      }
+    },
+    "sourceSettings": {
+      "description": "The source settings, none required (a map config override sets only some).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "The dataset: a path under RAW_DIR, an absolute path, or a GDAL /vsi path. Anything GDAL opens; a .zip is read in place.",
+          "type": "string",
+          "minLength": 1
+        },
+        "layer": {
+          "description": "Vector only: the layer inside the dataset (a geodatabase or GeoPackage). Default the first.",
+          "type": "string",
+          "minLength": 1
+        },
+        "id": {
+          "description": "Vector only, required: the source attribute holding a unique integer, written as the tile feature id (not repeated as an attribute).",
+          "$ref": "#/$defs/sourceField"
+        },
+        "srs": {
+          "description": "The source CRS, for example EPSG:3347, for data without a usable one.",
+          "type": "string",
+          "minLength": 1
+        },
+        "encoding": {
+          "description": "Vector only: the attribute encoding, for example ISO-8859-1, for a shapefile without a .cpg.",
+          "type": "string",
+          "minLength": 1
+        },
+        "nodata": {
+          "description": "Raster only: the source nodata value, for a raster that declares none or the wrong one.",
+          "oneOf": [{ "type": "number" }, { "enum": ["nan", "NaN"] }]
+        },
+        "joins": {
+          "description": "Vector only: attributes added from non-spatial tables (a CSV, or a table in a dataset), matched by key.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/join" }
+        }
+      }
+    },
+    "source": {
+      "description": "Where the data comes from.",
+      "$ref": "#/$defs/sourceSettings",
+      "required": ["path"]
+    },
+    "join": {
+      "description": "One join: rows of `path` (and `layer`) whose `on` attribute equals the source's `on` attribute.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "on"],
+      "properties": {
+        "path": {
+          "description": "The table: a path under RAW_DIR or an absolute path.",
+          "type": "string",
+          "minLength": 1
+        },
+        "layer": {
+          "description": "The table inside the dataset. Default the first.",
+          "type": "string",
+          "minLength": 1
+        },
+        "on": {
+          "description": "The key attribute, by the same name in the source and the table.",
+          "$ref": "#/$defs/sourceField"
+        },
+        "fields": {
+          "description": "Table attributes to add, as in `fields.keep`. Default all but the key.",
+          "$ref": "#/$defs/fieldList"
+        }
+      }
+    },
+    "fields": {
+      "description": "Vector only: the attributes in the tiles. Everything else is dropped.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "keep": {
+          "description": "Source attributes to keep: a name as it is, or `{source_name: output_name}` to rename.",
+          "$ref": "#/$defs/fieldList"
+        },
+        "calculated": {
+          "description": "New attributes: name to a SQLite expression on the kept attributes (output names), run by ogr2ogr -dialect SQLite. A comparison gives 1 or 0, as for an action recommendation.",
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/name" },
+          "additionalProperties": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "processingSettings": {
+      "description": "The processing settings, none required (a map config override sets only some).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "profile": {
+          "description": "The preset. `default`: lines and polygons; lines simplified below the max zoom only, polygons generalised at every zoom (small parts dropped, each feature simplified on its own, as they may overlap). `coverage`: polygons that tile the land without overlaps; shared borders kept identical, the smallest dropped first when a tile is full, and every zoom generalised (small parts dropped, borders simplified once for both neighbours). `points`: every point at every zoom. `raster`: a binary raster, a Web Mercator COG, display only. Default `default`.",
+          "enum": ["default", "coverage", "points", "raster"]
+        },
+        "minzoom": {
+          "description": "Lowest zoom built. Default 0.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 24
+        },
+        "maxzoom": {
+          "description": "Highest zoom built; the map overzooms past it. For a raster, also its resolution (z12 is about 20 to 27 m across Canada), at most 14.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 24
+        },
+        "min_part_px": {
+          "description": "Polygons (coverage and default): below the max zoom, drop polygon parts smaller than this many screen pixels (each feature keeps its largest part); 0 for none. Default 4.",
+          "type": "number",
+          "minimum": 0
+        },
+        "simplify_px": {
+          "description": "Polygons (coverage and default): below the max zoom, simplify borders by this many screen pixels; 0 for none. Default 1.",
+          "type": "number",
+          "minimum": 0
+        },
+        "maxzoom_min_part_px": {
+          "description": "As min_part_px, at the max zoom. Default 1. With maxzoom_simplify_px 0 too, the max zoom keeps full detail.",
+          "type": "number",
+          "minimum": 0
+        },
+        "maxzoom_simplify_px": {
+          "description": "As simplify_px, at the max zoom. Default 0.5.",
+          "type": "number",
+          "minimum": 0
+        },
+        "min_visible_px": {
+          "description": "Vector only: the drop guard fails the build if a polygon whose largest part covers this many screen pixels is missing from a zoom. Default 1.",
+          "type": "number",
+          "minimum": 0
+        },
+        "tippecanoe": {
+          "description": "Advanced, vector only: extra tippecanoe arguments, added after the preset's, for layers the presets do not fit (dense points, detailed lines, large polygon sets), such as `--drop-densest-as-needed`. Each is one argument starting with `--`, its value after `=`. A change makes the layer stale.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^--[a-z0-9]" }
+        }
+      }
+    },
+    "processing": {
+      "description": "How the tiles or the COG are made.",
+      "$ref": "#/$defs/processingSettings",
+      "required": ["maxzoom"]
+    },
+    "display": {
+      "description": "How the layer is drawn and what a click shows.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["layers"],
+      "properties": {
+        "layers": {
+          "description": "MapLibre style layers, in draw order (last on top), as they will appear in style.json. The pipeline adds `source`, `source-layer` and the `<layer>-` id prefix.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/styleLayer" }
+        },
+        "themes": { "$ref": "#/$defs/themes" },
+        "legend": {
+          "description": "An explicit legend, for when the one the app builds from the colour expression is not enough. Not with `themes`, which have their own.",
+          "$ref": "#/$defs/legend"
+        },
+        "popup": { "$ref": "#/$defs/popup" }
+      },
+      "allOf": [
+        {
+          "description": "Themes carry their own legends.",
+          "if": { "required": ["themes"] },
+          "then": { "properties": { "legend": false } }
+        }
+      ]
+    },
+    "styleId": {
+      "description": "A short id, unique within the layer, such as `fill`.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "styleLayer": {
+      "description": "A MapLibre style layer without `source` and `source-layer`. Paint, layout and filter are checked against the MapLibre style spec by the web app's tests.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "$ref": "#/$defs/styleId" },
+        "type": {
+          "description": "The MapLibre layer type. A binary raster is a `color-relief` layer on the COG.",
+          "enum": ["fill", "line", "symbol", "circle", "heatmap", "fill-extrusion", "raster", "hillshade", "color-relief"]
+        },
+        "filter": { "description": "A MapLibre filter expression.", "type": "array" },
+        "minzoom": { "description": "Hidden below this zoom.", "type": "number", "minimum": 0, "maximum": 24 },
+        "maxzoom": { "description": "Hidden from this zoom.", "type": "number", "minimum": 0, "maximum": 24 },
+        "layout": { "description": "MapLibre layout properties.", "type": "object" },
+        "paint": { "description": "MapLibre paint properties.", "type": "object" },
+        "metadata": { "description": "Free-form data, kept as it is.", "type": "object" }
+      }
+    },
+    "themes": {
+      "description": "\"Colour by\" choices in the layer panel. The first is what `layers` draw (it has no `paint`); each other one replaces paint properties of some style layers.",
+      "type": "array",
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "$ref": "#/$defs/theme",
+          "properties": { "paint": false }
+        }
+      ],
+      "items": {
+        "$ref": "#/$defs/theme",
+        "required": ["paint"]
+      }
+    },
+    "theme": {
+      "description": "One colour theme.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": {
+          "description": "Unique within the layer.",
+          "$ref": "#/$defs/styleId"
+        },
+        "label": {
+          "description": "The name in the \"Colour by\" list.",
+          "type": "string",
+          "minLength": 1
+        },
+        "paint": {
+          "description": "Style layer id to the paint properties this theme sets on it.",
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/styleId" },
+          "additionalProperties": { "type": "object", "minProperties": 1 }
+        },
+        "legend": {
+          "description": "This theme's legend, when the derived one is not enough.",
+          "$ref": "#/$defs/legend"
+        }
+      }
+    },
+    "color": {
+      "description": "A CSS colour, as MapLibre accepts it, for example #2c7fb8.",
+      "type": "string",
+      "minLength": 1
+    },
+    "attribute": {
+      "description": "A tile attribute name.",
+      "type": "string",
+      "minLength": 1
+    },
+    "legend": {
+      "description": "A legend, used as it is. Parts left out are taken from the derived legend.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items"],
+      "properties": {
+        "kind": {
+          "description": "`ramp` for classes of a number, `gradient` for a continuous ramp, `categories`, or `single` for one colour.",
+          "enum": ["single", "categories", "ramp", "gradient"]
+        },
+        "shape": {
+          "description": "Swatch shape: `square` for fills, `circle` for points, `line` for lines.",
+          "enum": ["square", "circle", "line"]
+        },
+        "border": { "description": "Swatch border colour.", "$ref": "#/$defs/color" },
+        "opacity": { "description": "Swatch opacity.", "type": "number", "minimum": 0, "maximum": 1 },
+        "items": {
+          "description": "The swatches, in order.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/legendItem" }
+        }
+      }
+    },
+    "legendItem": {
+      "description": "One swatch.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["color", "label"],
+      "properties": {
+        "color": { "$ref": "#/$defs/color" },
+        "label": { "description": "Its text.", "type": "string", "minLength": 1 },
+        "position": {
+          "description": "In a `gradient` legend, where the colour sits on the bar, 0 to 1. Items without one show as separate swatches.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "valueSource": {
+      "description": "Where a value comes from: a tile attribute, or the feature id.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["attribute"],
+          "properties": { "attribute": { "$ref": "#/$defs/attribute" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["featureId"],
+          "properties": { "featureId": { "const": true } }
+        }
+      ]
+    },
+    "formatPreset": {
+      "description": "A named number format, in the map's locale with thousands separators: `number` (decimals as the value has them, up to 3), `integer` (0 decimals), `percent` (a value 0 to 100: 1 decimal and %). Units go in `suffix`.",
+      "enum": ["number", "integer", "percent"]
+    },
+    "numberFormat": {
+      "description": "A number format: a `preset` (default `number`), changed by `decimals`, `grouping` and `suffix`.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "preset": { "$ref": "#/$defs/formatPreset" },
+        "decimals": { "description": "Decimal places, always shown.", "type": "integer", "minimum": 0, "maximum": 20 },
+        "grouping": { "description": "Thousands separators.", "type": "boolean" },
+        "suffix": { "description": "Unit after the number, after a space (`%` directly), such as `ha` or `km`.", "type": "string" }
+      }
+    },
+    "format": {
+      "description": "How a number is shown: a preset name or a number format. Without one, values are shown as they are.",
+      "oneOf": [{ "$ref": "#/$defs/formatPreset" }, { "$ref": "#/$defs/numberFormat" }]
+    },
+    "stat": {
+      "description": "A labelled value.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label", "value"],
+      "properties": {
+        "label": { "description": "Its label.", "type": "string", "minLength": 1 },
+        "value": { "$ref": "#/$defs/valueSource" },
+        "format": { "$ref": "#/$defs/format" }
+      }
+    },
+    "template": {
+      "description": "Text with placeholders: `{attribute}` as it is, `{attribute:preset}` in a format preset, `{$id}` the feature id.",
+      "type": "string",
+      "minLength": 1
+    },
+    "cellAttribute": {
+      "description": "The attribute for one value, or null for an empty cell.",
+      "oneOf": [{ "$ref": "#/$defs/attribute" }, { "type": "null" }]
+    },
+    "attributesBlock": {
+      "description": "Labelled values. Items without a value are hidden, and the block with none left.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "items"],
+      "properties": {
+        "type": { "const": "attributes" },
+        "items": { "description": "The values.", "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/stat" } }
+      }
+    },
+    "tableBlock": {
+      "description": "A table of rows by columns; each row gives one attribute per column. Rows with no values are hidden, and the table with none left.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "columns", "rows"],
+      "properties": {
+        "type": { "const": "table" },
+        "caption": { "description": "Table caption.", "type": "string", "minLength": 1 },
+        "rowHeader": { "description": "Heading of the row label column.", "type": "string", "minLength": 1 },
+        "columns": {
+          "description": "The columns.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label"],
+            "properties": {
+              "label": { "description": "Column heading.", "type": "string", "minLength": 1 },
+              "format": { "$ref": "#/$defs/format" }
+            }
+          }
+        },
+        "rows": {
+          "description": "The rows.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "values"],
+            "properties": {
+              "label": { "description": "Row label.", "type": "string", "minLength": 1 },
+              "values": {
+                "description": "One attribute per column.",
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/cellAttribute" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "chartBlock": {
+      "description": "A Chart.js chart over `categories`. `bar` and `line` take one or more series (several make a grouped bar chart or several lines, with a legend); `pie` and `doughnut` exactly one. Each series gives one attribute per category. Hidden with no values.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "chart", "title", "valueLabel", "categories", "series"],
+      "properties": {
+        "type": { "const": "chart" },
+        "chart": { "description": "Chart type.", "enum": ["bar", "line", "pie", "doughnut"] },
+        "title": { "description": "Heading above the chart.", "type": "string", "minLength": 1 },
+        "valueLabel": { "description": "What the values are, for the accessible summary.", "type": "string", "minLength": 1 },
+        "format": { "$ref": "#/$defs/format" },
+        "categories": {
+          "description": "Bar, point or slice labels.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "series": {
+          "description": "The series.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["label", "attributes"],
+            "properties": {
+              "label": { "description": "Series name.", "type": "string", "minLength": 1 },
+              "attributes": {
+                "description": "One attribute per category.",
+                "type": "array",
+                "minItems": 1,
+                "items": { "$ref": "#/$defs/cellAttribute" }
+              },
+              "color": { "$ref": "#/$defs/color" }
+            }
+          }
+        },
+        "colors": {
+          "description": "Slice colours of a pie or doughnut, one per category.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/color" }
+        }
+      }
+    },
+    "textBlock": {
+      "description": "A paragraph; hidden when a placeholder has no value.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "text"],
+      "properties": {
+        "type": { "const": "text" },
+        "text": { "$ref": "#/$defs/template" }
+      }
+    },
+    "listBlock": {
+      "description": "A bulleted list, such as recommended actions. An item shows when its `when` attribute is true (not 0, empty, false or no) and its placeholders have values; with none, `empty` shows.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "items", "empty"],
+      "properties": {
+        "type": { "const": "list" },
+        "items": {
+          "description": "The items.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["text"],
+            "properties": {
+              "text": { "$ref": "#/$defs/template" },
+              "when": { "description": "Show only when this attribute is true.", "$ref": "#/$defs/attribute" }
+            }
+          }
+        },
+        "empty": { "description": "Shown when no item applies.", "type": "string", "minLength": 1 }
+      }
+    },
+    "block": {
+      "description": "One block of a pop-up section.",
+      "type": "object",
+      "required": ["type"],
+      "properties": { "type": { "enum": ["attributes", "table", "chart", "text", "list"] } },
+      "allOf": [
+        { "if": { "properties": { "type": { "const": "attributes" } } }, "then": { "$ref": "#/$defs/attributesBlock" } },
+        { "if": { "properties": { "type": { "const": "table" } } }, "then": { "$ref": "#/$defs/tableBlock" } },
+        { "if": { "properties": { "type": { "const": "chart" } } }, "then": { "$ref": "#/$defs/chartBlock" } },
+        { "if": { "properties": { "type": { "const": "text" } } }, "then": { "$ref": "#/$defs/textBlock" } },
+        { "if": { "properties": { "type": { "const": "list" } } }, "then": { "$ref": "#/$defs/listBlock" } }
+      ]
+    },
+    "section": {
+      "description": "An optional heading and description, then blocks. Hidden when every block is.",
+      "type": "object",
+      "additionalProperties": false,
+      "anyOf": [{ "required": ["description"] }, { "required": ["blocks"] }],
+      "properties": {
+        "heading": { "description": "Section heading; required in a dialog.", "type": "string", "minLength": 1 },
+        "tab": { "description": "A shorter tab label in a dialog; default the heading. Tab labels are unique.", "type": "string", "minLength": 1 },
+        "description": { "$ref": "#/$defs/template" },
+        "blocks": { "description": "The blocks, in order.", "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/block" } }
+      }
+    },
+    "popupSize": {
+      "description": "`small` (default): one section in a pop-up at the click; `dialog`: sections in a dialog over the map.",
+      "enum": ["small", "dialog"]
+    },
+    "popupLayout": {
+      "description": "How a dialog shows its sections: `tabs` (default), one at a time; `scroll`, all in one scrolling dialog.",
+      "enum": ["tabs", "scroll"]
+    },
+    "popup": {
+      "description": "What a click on a feature shows, filled from its attributes: a small pop-up at the click or a dialog. Without one the layer is not clickable.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "sections"],
+      "properties": {
+        "title": { "description": "The heading; the layer title when a placeholder has no value.", "$ref": "#/$defs/template" },
+        "subtitle": { "description": "A line under the heading; hidden when a placeholder has no value.", "$ref": "#/$defs/template" },
+        "size": { "$ref": "#/$defs/popupSize" },
+        "layout": { "$ref": "#/$defs/popupLayout" },
+        "sections": { "description": "The sections, in order.", "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/section" } }
+      },
+      "if": { "required": ["size"], "properties": { "size": { "const": "dialog" } } },
+      "then": {
+        "description": "A dialog: every section has a heading.",
+        "properties": { "sections": { "items": { "required": ["heading"] } } }
+      },
+      "else": {
+        "description": "A small pop-up: one section, no layout or tabs.",
+        "properties": {
+          "layout": false,
+          "sections": { "maxItems": 1, "items": { "properties": { "tab": false } } }
+        }
+      }
+    }
+  }
+}

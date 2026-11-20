@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=./pipeline/schema/map.schema.json
+#
+# Your map config: copy to map.config.yaml (git-ignored). Every key is
+# optional. Your own layers go in pipeline/layers.local/ (git-ignored), in
+# the same format as pipeline/layers/; a name that repeats a committed layer
+# is an error.
+
+# Where the map opens, and on which basemap (light or dark).
+view: { center: [-96, 60], zoom: 3 }
+# Optionally also how far it can zoom (maxzoom defaults to the layers'
+# highest max zoom), and the box it cannot be panned out
+# of, [west, south, east, north]:
+# view: { center: [-96, 60], zoom: 3, minzoom: 2, maxzoom: 14, bounds: [-150, 35, -45, 85] }
+basemap: light
+
+# The page title (default ERAP Map) and the locale numbers are formatted in
+# (default en-CA). The app's own text stays in English.
+# title: ERAP Map
+# locale: fr-CA
+
+# The layers to build; leave out for every layer.
+# layers: [ecoregions, protected_areas, forest]
+
+# Per layer, a different source or processing, for example a quicker build.
+# overrides:
+#   forest: { processing: { maxzoom: 10 } }
+
+# Layers whose source must exist: fail rather than skip them.
+# require: [ecoregions]

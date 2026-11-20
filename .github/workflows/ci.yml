@@ -104,8 +104,8 @@ jobs:
       - name: shellcheck
         run: |
           shellcheck --version
-          shellcheck -x pipeline/bin/*.sh pipeline/lib/*.sh pipeline/layers/*.env \
-            pipeline/tests/layers/*.env pipeline/tests/fixtures/*.sh pipeline/tests/*.bats scripts/screenshot.sh \
+          shellcheck -x pipeline/bin/*.sh pipeline/lib/*.sh \
+            pipeline/tests/fixtures/*.sh pipeline/tests/*.bats pipeline/tests/*.bash scripts/screenshot.sh \
             scripts/check-tiles-cache.sh scripts/setup.sh scripts/publish-pages.sh scripts/tests/*.bats
 
       - name: hadolint
@@ -125,6 +125,12 @@ jobs:
 
       - name: bats
         run: docker run --rm erap-map-pipeline:test
+
+      # The repo's map configs against their schema, with jv from the image.
+      - name: Map configs
+        run: |
+          docker run --rm -v "$PWD":/repo:ro --entrypoint jv erap-map-pipeline:test \
+            /opt/pipeline/schema/map.schema.json /repo/map.pages.yaml /repo/map.config.example.yaml
 
       # scripts/setup.sh, with stub docker, wsl.exe and friends (no Windows
       # needed), in the same image for its bats.
@@ -166,6 +172,9 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # scripts/screenshot.cjs runs in the Playwright image; the pipeline
+      # image has no Node any more, so its syntax is checked here.
+      - run: node --check ../scripts/screenshot.cjs
 
       # Runtime dependencies only: the known moderate findings are dev-only
       # (eslint toolchain) and nothing from them ships in the bundle.
@@ -221,7 +230,7 @@ jobs:
           curl -fsS -o /dev/null -D "$RUNNER_TEMP/worker.headers" "$base/$worker"
           cat "$RUNNER_TEMP/worker.headers"
           grep -qi '^content-type: application/javascript' "$RUNNER_TEMP/worker.headers"
-          # A reload picks up a new manifest.json and style.json (#53).
+          # A reload picks up a new style.json and build.json (#53).
           ../scripts/check-tiles-cache.sh "$base" "$tiles"
           docker rm -f web
 
@@ -283,5 +292,7 @@ jobs:
         run: |
           test -f CLAUDE.md
           test -f docs/decisions/README.md
-          test -f docs/handoffs/HANDOFF_TEMPLATE.md
+          test -f docs/how-it-works.md
+          test -f docs/guide.md
+          test -f docs/layer-file.md
           test -d docs/design

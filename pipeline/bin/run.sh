@@ -1,69 +1,74 @@
 #!/usr/bin/env bash
 # shellcheck source-path=SCRIPTDIR/..
 # Pipeline entry point: build tiles (vector tiles in a .pmtiles archive, or
-# one COG for a raster layer, ADR 0010) for every enabled layer, or only the layers named on the command line. Each
-# layer is <layer>.env (processing; LAYER_TYPE picks vector or raster) plus
-# <layer>.style.json (display, ADR 0007; rasters, ADR 0008), committed in
-# pipeline/layers/. A local map config (ADR 0009; PIPELINE_MAP_CONFIG,
-# map.config.json at the repo root under compose) can select the layers,
-# override their settings and display, add local-only layers and set the
-# map's opening view; without one every committed layer is built as it is.
+# one COG for a raster layer, ADR 0010) for every layer, or only the layers
+# named on the command line. Each layer is one file, <layer>.yaml in
+# pipeline/layers/, or pipeline/layers.local/ for your own (git-ignored;
+# schema/layer.schema.json, design note 04): its source,
+# fields, processing preset and display. A map config (PIPELINE_MAP_CONFIG;
+# map.config.yaml at the repo root under compose, map.pages.yaml for the
+# GitHub Pages copy; schema/map.schema.json) can pick the layers, override
+# their source and processing, require sources and set the view, title and
+# number locale of the map;
+# without one every layer is built as it is.
 #
 # Usage: run.sh [-h|--help] [layer ...]
 #        run.sh --status [--json] [layer ...]
 #        run.sh --style-only [layer ...]
 #        run.sh --remove layer ...
 #
-#   (no option)  build the named layers, or every enabled layer. With no
-#                names, a layer whose source data is not found is skipped
-#                with a warning (the run fails only if nothing could be
-#                built); a named layer with no source data fails.
-#                The map config's `requiredInputs`, if any, is checked
-#                first: a layer it names that would read another source
-#                (or, in a full build, has none) stops the run before
-#                anything is built (map.config.pages.json, ADR 0014).
-#   --style-only update the named layers' display from their .style.json
-#                (with the map config's display overrides), or every built
-#                and enabled layer's, without re-tiling: check each config,
-#                replace the display block of its manifest.json entry (the
-#                build report is kept) and rewrite style.json. For a display
-#                change (colours, legend, pop-up, title, order, visibility)
-#                of a vector or raster layer, or a change to the map
-#                config's layer selection or map view. A config with
-#                `breaks` (or a gradient range from the data) re-reads the
-#                source data, but not the tiles.
+#   (no option)  build the named layers, or every layer the map config
+#                picks. With no names, a layer whose source data is not
+#                found is skipped with a warning (the run fails only if
+#                nothing could be built), unless the map config's `require`
+#                names it: then nothing is built. A named layer with no
+#                source data fails.
+#   --style-only rewrite style.json from the layer files for every built
+#                and enabled layer, without re-tiling (named layers are
+#                only checked: built, with a layer file, enabled). For a
+#                change to a layer file's `display`, `title`, `visible` or
+#                `order` (of a vector or raster layer), or to the map
+#                config's layer selection or view. Every run, a build or
+#                --remove too, rewrites style.json the same way; a layer
+#                file with problems is left out and fails the run.
 #   --status     list every configured or built layer (or the named ones)
-#                with its state: current, stale (the .env, the map config's
-#                input or env, or the source data changed since the build),
-#                restyle (only the display config changed: --style-only is
-#                enough), not built, source missing (a full build skips it),
-#                invalid (cannot be built as configured), disabled (left
-#                out by the map config) or orphan (built, config gone), plus
-#                build time, archive size, zooms, feature count (size in
-#                pixels for a raster layer) and largest tile. Read only.
-#                --list is the same.
+#                with its state: current, stale (the layer file's source,
+#                fields or processing, the map config's overrides of them,
+#                or the source data changed since the build), not built,
+#                source missing (a full build skips it), invalid (the layer
+#                file has problems or is gone), plus build time,
+#                archive size, zooms, feature count (size in pixels for a
+#                raster layer) and largest tile. Read only. --list is the
+#                same.
 #   --json       with --status: print JSON instead of a table.
-#   --remove     delete the named layers' archives and manifest entries
-#                and rewrite style.json. The configs are not touched: delete
-#                them first (git rm, or from the map config), or the next
-#                full build makes the layer again.
+#   --remove     delete the named layers' archives and build.json entries
+#                and rewrite style.json. The layer files are not touched:
+#                delete them first (git rm), or the next full build makes
+#                the layer again.
 #
 # Environment (defaults match the docker-compose mounts):
 #   PIPELINE_INPUT_DIR   source data, read only        (default /data/raw)
-#   PIPELINE_OUTPUT_DIR  .pmtiles, .cog.tif, manifest.json and style.json
+#   PIPELINE_OUTPUT_DIR  .pmtiles, .cog.tif, style.json (read by the map,
+#                        lib/style.sh) and build.json (the build report,
+#                        lib/build.sh)
 #                                                      (default /data/tiles)
-#   PIPELINE_LAYERS_DIR  layer configs                 (default <pipeline>/layers)
-#   PIPELINE_MAP_CONFIG  local map config; none if unset or the file is
-#                        missing                       (default unset)
+#   PIPELINE_LAYERS_DIR  layer files                   (default <pipeline>/layers)
+#   PIPELINE_LOCAL_LAYERS_DIR
+#                        your own layer files (layers.local/, git-ignored),
+#                        built like the others; a name that repeats a
+#                        committed layer is an error. Empty for none.
+#                                                      (default <pipeline>/layers.local)
+#   PIPELINE_MAP_CONFIG  map config; none if unset or the file is missing
+#                                                      (default unset)
 #   PIPELINE_WORK_DIR    cache kept between runs: raster sources prepared
 #                        once (raster/; lib/raster.sh). Empty for no cache.
 #                                                      (default /data/work)
 #   TMPDIR               parent of the scratch dir     (default /tmp)
 #
-# A build or style-only run attempts every layer; the exit status is 1 if
-# any layer failed (or anything else went wrong), 2 for a usage error
-# (including a layer with no config to build, a problem in the map config,
-# nothing built to restyle or remove), 0 otherwise.
+# A build run attempts every layer; the exit status is 1 if any layer
+# failed or was left out of style.json (or anything else went wrong), 2
+# for a usage error (including a layer with no layer file, a problem in
+# the map config, nothing built to restyle or remove), 0 otherwise.
 set -euo pipefail
 
 PIPELINE_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -71,32 +76,33 @@ export PIPELINE_ROOT
 
 # shellcheck source=lib/log.sh
 source "${PIPELINE_ROOT}/lib/log.sh"
-# shellcheck source=lib/config.sh
-source "${PIPELINE_ROOT}/lib/config.sh"
+# shellcheck source=lib/layerfile.sh
+source "${PIPELINE_ROOT}/lib/layerfile.sh"
 # shellcheck source=lib/normalise.sh
 source "${PIPELINE_ROOT}/lib/normalise.sh"
+# shellcheck source=lib/joins.sh
+source "${PIPELINE_ROOT}/lib/joins.sh"
+# shellcheck source=lib/calculated.sh
+source "${PIPELINE_ROOT}/lib/calculated.sh"
 # shellcheck source=lib/tiles.sh
 source "${PIPELINE_ROOT}/lib/tiles.sh"
 # shellcheck source=lib/guard.sh
 source "${PIPELINE_ROOT}/lib/guard.sh"
 # shellcheck source=lib/generalise.sh
 source "${PIPELINE_ROOT}/lib/generalise.sh"
-# shellcheck source=lib/manifest.sh
-source "${PIPELINE_ROOT}/lib/manifest.sh"
-# shellcheck source=lib/display.sh
-source "${PIPELINE_ROOT}/lib/display.sh"
+# shellcheck source=lib/build.sh
+source "${PIPELINE_ROOT}/lib/build.sh"
+# shellcheck source=lib/style.sh
+source "${PIPELINE_ROOT}/lib/style.sh"
 # shellcheck source=lib/raster.sh
 source "${PIPELINE_ROOT}/lib/raster.sh"
 # shellcheck source=lib/status.sh
 source "${PIPELINE_ROOT}/lib/status.sh"
-# shellcheck source=lib/mapconfig.sh
-source "${PIPELINE_ROOT}/lib/mapconfig.sh"
-# shellcheck source=lib/derive.sh
-source "${PIPELINE_ROOT}/lib/derive.sh"
 
 PIPELINE_INPUT_DIR=${PIPELINE_INPUT_DIR:-/data/raw}
 PIPELINE_OUTPUT_DIR=${PIPELINE_OUTPUT_DIR:-/data/tiles}
 PIPELINE_LAYERS_DIR=${PIPELINE_LAYERS_DIR:-${PIPELINE_ROOT}/layers}
+PIPELINE_LOCAL_LAYERS_DIR=${PIPELINE_LOCAL_LAYERS_DIR-${PIPELINE_ROOT}/layers.local}
 PIPELINE_WORK_DIR=${PIPELINE_WORK_DIR-/data/work}
 
 usage() {
@@ -104,74 +110,41 @@ usage() {
   awk 'NR > 2 && /^#/ { sub(/^# ?/, ""); print; next } NR > 2 { exit }' "${BASH_SOURCE[0]}"
 }
 
-# build_layer NAME SCRATCH: run in a subshell, so `die` (and the config's
-# variables) stay inside one layer. The settings and display config are
-# the layer set's (lib/mapconfig.sh): the committed files, or copies with
-# the map config's overrides.
+# build_layer NAME SCRATCH: run in a subshell, so `die` (and the layer's
+# variables) stay inside one layer. The layer is its effective layer file
+# (lib/layerfile.sh): the file with the map config's overrides.
 build_layer() {
   local name=$1 scratch=$2
   PIPELINE_LOG_PREFIX=$name
-  local env style
-  env=$(layer_get "$name" env)
-  style=$(layer_get "$name" style)
-
-  load_layer_config "$env"
+  load_layer "$name"
   source_mtime "$LAYER_INPUT" >/dev/null || die "input not found: $LAYER_INPUT"
 
   local layer_scratch="${scratch}/${name}"
   mkdir -p "$layer_scratch"
   local started=$SECONDS
-  local display="${layer_scratch}/display.json" report="${layer_scratch}/report.json"
+  local report="${layer_scratch}/report.json"
   local header="${layer_scratch}/header.json" header_json=""
-  # Set by build_vector_layer for a layer with a rules table (lib/derive.sh).
-  local rules_sha=""
 
   if [[ $LAYER_TYPE == raster ]]; then
-    build_raster_layer
+    build_raster_tiles "$name" "$LAYER_INPUT" "$LAYER_SOURCE_SRS" "$LAYER_NODATA" \
+      "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" "$PIPELINE_OUTPUT_DIR" "$layer_scratch" "$report" \
+      "$header" "${PIPELINE_WORK_DIR:+${PIPELINE_WORK_DIR}/raster}"
     header_json=$(jq -c '.' "$header")
   else
     build_vector_layer
   fi
 
-  # The rules table's hash joins the provenance, so --status sees a change.
-  local provenance
-  provenance=$(layer_provenance "$name" "$LAYER_INPUT" \
-    | jq -c --arg r "$rules_sha" '.rules_sha256 = (if $r == "" then null else $r end)')
-  manifest_update "$PIPELINE_OUTPUT_DIR" "$name" "$LAYER_TYPE" "$display" \
-    "$(jq -c '.' "$report")" "$((SECONDS - started))" "$provenance" "$header_json"
-  remove_other_archives "$name" "$(layer_archive_file "$name" "$LAYER_TYPE")"
-}
-
-# remove_other_archives NAME KEEP: delete NAME's archives other than KEEP
-# (a file name in the output dir), such as a raster layer's .pmtiles from
-# before COGs (ADR 0010), once the manifest no longer names them.
-remove_other_archives() {
-  local name=$1 keep=$2 path
-  while IFS= read -r path; do
-    [[ -n $path && ${path##*/} != "$keep" ]] || continue
-    rm -f -- "$path"
-    log_info "removed the old archive ${path##*/}"
-  done < <(layer_archives "$PIPELINE_OUTPUT_DIR" "$name" || true)
+  build_update "$PIPELINE_OUTPUT_DIR" "$name" "$LAYER_TYPE" \
+    "$(jq -c '.' "$report")" "$((SECONDS - started))" \
+    "$(layer_provenance "$name" "$LAYER_INPUT")" "$header_json"
 }
 
 # build_vector_layer: the vector steps of build_layer, whose locals (name,
-# style, layer_scratch, display, report) it reads and writes.
+# layer_scratch, report) it reads and writes.
 build_vector_layer() {
   local normalised="${layer_scratch}/${name}.geojsonl"
-
-  # Calculated fields and rules (lib/derive.sh): checked before the source
-  # data is read, added to the normalised data, then tiled like the rest.
-  local plan="" derived=()
-  if layer_derives; then
-    plan="${layer_scratch}/derive.json"
-    derive_plan "$name" "$name" "$plan"
-    mapfile -t derived < <(jq -r '.attributes[]' "$plan")
-    rules_sha=$(jq -r '.rules.sha256 // empty' "$plan")
-  fi
-
   normalise "$LAYER_INPUT" "$LAYER_SOURCE_LAYER" "$LAYER_SOURCE_SRS" \
     "$LAYER_ENCODING" "$normalised" "${LAYER_FIELDS[@]}"
-  if [[ -n $plan ]]; then derive_apply "$normalised" "$plan"; fi
 
   local count
   count=$(wc -l <"$normalised")
@@ -179,35 +152,47 @@ build_vector_layer() {
   ((count > 0)) || die "no features after normalising $LAYER_INPUT"
   log_info "$count features"
 
-  # The display config is checked before tiling, so a bad one costs nothing
-  # and leaves the previous archive and manifest entry in place.
-  resolve_display "$name" "$style" "$normalised" "$display"
+  # Calculated fields (lib/calculated.sh), added to the normalised data and
+  # then tiled like the rest.
+  local calculated=""
+  if ((${#LAYER_CALCULATED_NAMES[@]} > 0)); then
+    calculated="${layer_scratch}/calculated.json"
+    add_calculated_fields "$normalised" "${layer_scratch}/${name}.calculated.geojsonl" "$calculated"
+    mv -f -- "${layer_scratch}/${name}.calculated.geojsonl" "$normalised"
+    log_info "$(calculated_summary "$calculated")"
+  fi
 
   local sizes="${layer_scratch}/sizes.tsv" stats="${layer_scratch}/zoom_stats.json"
   feature_sizes "$normalised" "$LAYER_FEATURE_ID" "$sizes"
 
-  # With low-zoom generalisation, tippecanoe reads the generalised zooms
-  # and the full input from one file (lib/generalise.sh); the drop guard
-  # still measures the full input.
-  local tile_input=$normalised
-  if [[ -n $LAYER_GENERALISE_MAX_ZOOM ]]; then
+  # The coverage and default presets generalise a polygon layer at every
+  # zoom: tippecanoe reads every zoom's features from one file
+  # (lib/generalise.sh). Only a layer whose every feature is a polygon (one
+  # with a size) is generalised; points and lines are tiled as they are. The
+  # drop guard still measures the normalised input.
+  local tile_input=$normalised polygons
+  polygons=$(wc -l <"$sizes")
+  polygons=${polygons//[[:space:]]/}
+  if [[ -n $LAYER_GENERALISE ]] && ((polygons > 0 && polygons < count)); then
+    log_info "not generalised: only ${polygons} of ${count} features are polygons"
+  elif [[ -n $LAYER_GENERALISE ]] && ((polygons == count)); then
+    local field attributes=()
+    for field in "${LAYER_FIELDS[@]}"; do attributes+=("${field#*:}"); done
     tile_input="${layer_scratch}/${name}.generalised.geojsonl"
-    generalised_input "$normalised" "$tile_input" "$LAYER_MIN_ZOOM" \
-      "$LAYER_GENERALISE_MAX_ZOOM" "$LAYER_FEATURE_ID" "$LAYER_GENERALISE_MIN_PART_PX" \
-      "$LAYER_GENERALISE_SIMPLIFY_PX" "$layer_scratch" "${LAYER_FIELDS[@]}" "${derived[@]}"
+    generalised_input "$normalised" "$tile_input" "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" \
+      "$LAYER_FEATURE_ID" "$LAYER_GENERALISE" \
+      "$LAYER_GENERALISE_MIN_PART_PX" "$LAYER_GENERALISE_SIMPLIFY_PX" \
+      "$LAYER_GENERALISE_MAX_MIN_PART_PX" "$LAYER_GENERALISE_MAX_SIMPLIFY_PX" \
+      "$layer_scratch" "${attributes[@]}" "${LAYER_CALCULATED_NAMES[@]}"
   fi
 
   build_tiles "$name" "$tile_input" "$PIPELINE_OUTPUT_DIR" \
     "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" "$LAYER_FEATURE_ID" "$layer_scratch" \
     check_layer_tiles "${LAYER_TIPPECANOE_FLAGS[@]}"
 
-  vector_report "$count" "$stats" "$LAYER_PROFILE" "$LAYER_MIN_VISIBLE_PX" \
-    "$LAYER_SIMPLIFY_MAX_ZOOM" >"$report"
-  if [[ -n $plan ]]; then
-    local derive_json
-    derive_json=$(derive_report "$normalised" "$plan")
-    log_info "$(derive_summary "$derive_json")"
-    jq -c --argjson d "$derive_json" '. + $d' "$report" >"${report}.tmp"
+  vector_report "$count" "$stats" "$LAYER_PROFILE" "$LAYER_MIN_VISIBLE_PX" >"$report"
+  if [[ -n $calculated ]]; then
+    jq -c --slurpfile c "$calculated" '. + {calculated_fields: $c[0]}' "$report" >"${report}.tmp"
     mv -- "${report}.tmp" "$report"
   fi
 }
@@ -219,184 +204,47 @@ check_layer_tiles() {
     "$LAYER_MIN_VISIBLE_PX" "$stats"
 }
 
-# build_raster_layer: the raster steps of build_layer (lib/raster.sh), whose
-# locals (name, style, layer_scratch, display, report) it reads and writes.
-build_raster_layer() {
-  # Checked first, as for a vector layer, so a bad config costs nothing. The
-  # colour is not in the tiles (lib/raster.sh), only in the display block.
-  resolve_display "$name" "$style" - "$display" raster
-
-  build_raster_tiles "$name" "$LAYER_INPUT" "$LAYER_SOURCE_SRS" "$LAYER_NODATA" \
-    "$LAYER_MIN_ZOOM" "$LAYER_MAX_ZOOM" "$PIPELINE_OUTPUT_DIR" "$layer_scratch" "$report" \
-    "$header" "$LAYER_GREY_LEVELS" "${PIPELINE_WORK_DIR:+${PIPELINE_WORK_DIR}/raster}"
-}
-
-# restyle_layer NAME SCRATCH: the --style-only steps for one built layer, in
-# a subshell like build_layer: resolve its display config (with the map
-# config's overrides) for the type the archive was built as, and put it in
-# the manifest entry. The archive is not touched; a bad config fails the
-# layer and keeps its entry as it was.
-restyle_layer() {
-  local name=$1 scratch=$2
-  PIPELINE_LOG_PREFIX=$name
-  local manifest="${PIPELINE_OUTPUT_DIR}/manifest.json"
-  local style
-  style=$(layer_get "$name" style)
-  style=${style:-${PIPELINE_LAYERS_DIR}/${name}.style.json}
-  local layer_scratch="${scratch}/${name}" type data=-
-  mkdir -p "$layer_scratch"
-  local display="${layer_scratch}/display.json"
-
-  type=$(jq -er --arg n "$name" 'first(.layers[] | select(.name == $n)) | .type // "vector"' \
-    "$manifest") || die "no entry for $name in $manifest"
-
-  # `breaks`, and a gradient's range when not given, are computed from the
-  # data, which the tiles do not give back. Any colour rule counts: the one
-  # `color` or each of the colour `themes`.
-  if [[ $type == vector ]] \
-    && jq -e 'any((.symbology.color?, .symbology.themes[]?.color) | objects;
-        .breaks != null or (.type == "interpolated" and .stops == null
-          and (.min == null or .max == null)))' "$style" >/dev/null 2>&1; then
-    data="${layer_scratch}/${name}.geojsonl"
-    restyle_data "$name" "$manifest" "$data"
-  fi
-
-  resolve_display "$name" "$style" "$data" "$display" "$type"
-  manifest_set_display "$PIPELINE_OUTPUT_DIR" "$name" "$display" \
-    "$(layer_display_provenance "$name")"
-}
-
-# restyle_data NAME MANIFEST OUT: normalise NAME's source data to OUT, as
-# its build did, for a display config with `breaks`. Fails if the .env, the
-# map config's input or env, or the source data changed since the build, as
-# the breaks would then not match the tiles: rebuild the layer instead.
-restyle_data() {
-  local name=$1 manifest=$2 out=$3
-  local env env_source
-  env=$(layer_get "$name" env)
-  env_source=$(layer_get "$name" envSource)
-  [[ -n $env && -f $env ]] \
-    || die "the display config has breaks, which need ${name}.env and the source data"
-  load_layer_config "$env"
-
-  local built_at changed src recorded current
-  built_at=$(jq -r --arg n "$name" \
-    'first(.layers[] | select(.name == $n)) | (.built_at | fromdateiso8601?) // 0' "$manifest")
-  recorded=$(jq -r --arg n "$name" \
-    'first(.layers[] | select(.name == $n)) | .provenance.env_sha256 // ""' "$manifest")
-  current=$(layer_get "$name" envSha256)
-  src=$(source_mtime "$LAYER_INPUT") || die "input not found: $LAYER_INPUT"
-  changed=$(_newest_mtime "$env_source")
-  if ((${src:-0} > ${changed:-0})); then changed=$src; fi
-  ((${changed:-0} <= built_at)) && [[ -z $recorded || $recorded == "$current" ]] \
-    || die "the display config has breaks, computed from the data, and ${name}.env, the map config's input or env, or the source data changed since the build: rebuild the layer"
-
-  # Breaks may be on a calculated field (lib/derive.sh), so they are added
-  # as the build added them, from the same rules table.
-  local plan=""
-  if layer_derives; then
-    plan="${out%/*}/derive.json"
-    derive_plan "$name" "$(basename "$out" .geojsonl)" "$plan"
-    recorded=$(jq -r --arg n "$name" \
-      'first(.layers[] | select(.name == $n)) | .provenance.rules_sha256 // ""' "$manifest")
-    [[ $(jq -r '.rules.sha256 // ""' "$plan") == "$recorded" ]] \
-      || die "the display config has breaks, computed from the data, and the rules table changed since the build: rebuild the layer"
-  fi
-
-  log_info "reading the source data for breaks (no tiling)"
-  normalise "$LAYER_INPUT" "$LAYER_SOURCE_LAYER" "$LAYER_SOURCE_SRS" \
-    "$LAYER_ENCODING" "$out" "${LAYER_FIELDS[@]}"
-  if [[ -n $plan ]]; then derive_apply "$out" "$plan"; fi
-}
-
-# finish_manifest: apply the map config's layer selection and map view to
-# the manifest (lib/manifest.sh) and rewrite style.json from it. Returns 1
-# if either fails.
-finish_manifest() {
+# finish_style: rewrite style.json (lib/style.sh) from build.json, the
+# layer files and the map config. Returns 1 if it fails.
+finish_style() {
   set +e
-  (
-    manifest_apply_config "$PIPELINE_OUTPUT_DIR" "$LAYERS_JSON"
-    write_style "$PIPELINE_OUTPUT_DIR"
-  )
+  (write_style "$PIPELINE_OUTPUT_DIR")
   local status=$?
   set -e
   return "$status"
 }
 
-# style_only_main SCRATCH LAYER...: the --style-only mode. With no names,
-# every enabled layer in the manifest whose archive and display config
-# exist. Every named layer is checked before any is updated; then each is
-# attempted, as in a build, and style.json is rewritten from the manifest.
+# style_only_main LAYER...: the --style-only mode: rewrite style.json for
+# every built and enabled layer, no tiling. Named layers are only checked:
+# each must be built, have a layer file and be enabled.
 style_only_main() {
-  local scratch=$1
-  shift
-  local manifest="${PIPELINE_OUTPUT_DIR}/manifest.json" layers=("$@") name style
-  if ((${#layers[@]} == 0)); then
-    if [[ ! -s $manifest ]]; then
-      log_error "no layers built in $PIPELINE_OUTPUT_DIR: build them first"
-      return 2
-    fi
-    local built
-    built=$(jq -r '.layers[]?.name' "$manifest") || die "cannot read $manifest"
-    while IFS= read -r name; do
-      [[ -n $name ]] || continue
-      style=$(layer_get "$name" style)
-      if ! layer_archive "$PIPELINE_OUTPUT_DIR" "$name" >/dev/null; then
-        log_warn "skipping $name: archive missing (rebuild it)"
-      elif [[ -z $style || ! -f $style ]]; then
-        log_warn "skipping $name: no ${name}.style.json in $PIPELINE_LAYERS_DIR"
-      elif ! layer_enabled "$name"; then
-        log_info "skipping $name: not enabled in the map config"
-      else
-        layers+=("$name")
-      fi
-    done <<<"$built"
-    if ((${#layers[@]} == 0)); then
-      log_error "no built layers with a display config to update"
-      return 2
-    fi
+  local name
+  if [[ ! -s "${PIPELINE_OUTPUT_DIR}/build.json" ]]; then
+    log_error "no layers built in $PIPELINE_OUTPUT_DIR: build them first"
+    return 2
   fi
-
-  for name in "${layers[@]}"; do
+  for name in "$@"; do
     if ! layer_name_valid "$name"; then
       log_error "invalid layer name: $name"
       return 2
     fi
     if ! layer_archive "$PIPELINE_OUTPUT_DIR" "$name" >/dev/null \
-      || ! jq -e --arg n "$name" 'any(.layers[]?; .name == $n)' "$manifest" >/dev/null 2>&1; then
+      || ! build_has "$PIPELINE_OUTPUT_DIR" "$name"; then
       log_error "layer '$name' is not built yet: build it first (run.sh $name)"
       return 2
     fi
-    if layer_known "$name" && ! layer_enabled "$name"; then
+    if ! layer_known "$name"; then
+      log_error "no layer file for '$name' in $(layer_dirs)"
+      return 2
+    fi
+    if ! layer_enabled "$name"; then
       log_error "layer '$name' is not enabled in the map config"
       return 2
     fi
   done
   [[ -w $PIPELINE_OUTPUT_DIR ]] || die "output dir not writable: $PIPELINE_OUTPUT_DIR"
-
-  local failed=() status
-  for name in "${layers[@]}"; do
-    set +e
-    (restyle_layer "$name" "$scratch")
-    status=$?
-    set -e
-    if ((status == 0)); then
-      log_info "layer $name: display updated"
-    else
-      log_error "layer $name: display not updated (exit $status)"
-      failed+=("$name")
-    fi
-  done
-
-  local style_status=0
-  finish_manifest || style_status=$?
-
-  if ((${#failed[@]} > 0)); then
-    log_error "${#failed[@]} of ${#layers[@]} layer(s) failed: ${failed[*]}"
-    return 1
-  fi
-  ((style_status == 0)) || return 1
-  log_info "display updated for ${#layers[@]} layer(s), no tiles rebuilt"
+  finish_style || return 1
+  log_info "style.json rewritten from the layer files, no tiles rebuilt"
 }
 
 # require_tools TOOL...: fail unless every TOOL is on the PATH.
@@ -417,9 +265,8 @@ status_main() {
       return 2
     fi
     if ! layer_known "$name" && ! layer_archives "$PIPELINE_OUTPUT_DIR" "$name" >/dev/null \
-      && ! jq -e --arg n "$name" 'any(.layers[]?; .name == $n)' \
-        "${PIPELINE_OUTPUT_DIR}/manifest.json" >/dev/null 2>&1; then
-      log_error "no config or build for layer '$name'"
+      && ! build_has "$PIPELINE_OUTPUT_DIR" "$name"; then
+      log_error "no layer file or build for layer '$name'"
       return 2
     fi
   done
@@ -434,21 +281,21 @@ status_main() {
 }
 
 # remove_main LAYER...: the --remove mode. Every layer is checked before any
-# is removed. Each manifest entry goes before its archive, so the map never
-# lists a layer whose archive is gone.
+# is removed: its build.json entry, then its archives; style.json is then
+# rewritten without it.
 remove_main() {
   if (($# == 0)); then
     log_error "--remove needs at least one layer name"
     return 2
   fi
-  local manifest="${PIPELINE_OUTPUT_DIR}/manifest.json" name
+  local name file path
   for name in "$@"; do
     if ! layer_name_valid "$name"; then
       log_error "invalid layer name: $name"
       return 2
     fi
     if ! layer_archives "$PIPELINE_OUTPUT_DIR" "$name" >/dev/null \
-      && ! jq -e --arg n "$name" 'any(.layers[]; .name == $n)' "$manifest" >/dev/null 2>&1; then
+      && ! build_has "$PIPELINE_OUTPUT_DIR" "$name"; then
       log_error "nothing built for layer '$name' in $PIPELINE_OUTPUT_DIR"
       return 2
     fi
@@ -456,28 +303,53 @@ remove_main() {
   [[ -w $PIPELINE_OUTPUT_DIR ]] || die "output dir not writable: $PIPELINE_OUTPUT_DIR"
 
   for name in "$@"; do
-    manifest_remove "$PIPELINE_OUTPUT_DIR" "$name"
-    remove_other_archives "$name" ""
+    build_remove "$PIPELINE_OUTPUT_DIR" "$name"
+    while IFS= read -r path; do
+      rm -f -- "$path"
+    done < <(layer_archives "$PIPELINE_OUTPUT_DIR" "$name" || true)
     log_info "removed layer $name"
-    if [[ $(layer_get "$name" origin) == committed ]]; then
-      log_warn "${name}.env is still in ${PIPELINE_LAYERS_DIR}: delete its configs, or the next full build makes the layer again"
-    elif layer_enabled "$name"; then
-      log_warn "layer $name is still configured ($(layer_where "$name")): remove it there or disable it in the map config, or the next full build makes it again"
+    if layer_enabled "$name"; then
+      file=$(layer_get "$name" file)
+      log_warn "${name}.yaml is still in ${file%/*}: delete it (or leave it out of the map config's layers), or the next full build makes the layer again"
     fi
   done
   (write_style "$PIPELINE_OUTPUT_DIR")
 }
 
 # missing_source NAME: print why NAME's source data is not found, or
-# nothing (and return 1) if it is there or the config does not load (the
-# build then reports that).
+# nothing (and return 1) if it is there or the layer file has problems
+# (the build then reports those).
 missing_source() {
-  local cfg input
-  cfg=$(_config_input "$(layer_get "$1" env)")
-  [[ ${cfg%%$'\t'*} == ok ]] || return 1
-  input=${cfg##*$'\t'}
-  ! source_mtime "$input" >/dev/null || return 1
-  printf 'source data not found: %s\n' "${input#"${PIPELINE_INPUT_DIR}"/}"
+  local input join
+  input=$(layer_get "$1" input)
+  [[ -n $input ]] || return 1
+  if ! source_mtime "$input" >/dev/null; then
+    printf 'source data not found: %s\n' "${input#"${PIPELINE_INPUT_DIR}"/}"
+    return 0
+  fi
+  while IFS= read -r join; do
+    if ! source_mtime "$join" >/dev/null; then
+      printf 'join table not found: %s\n' "${join#"${PIPELINE_INPUT_DIR}"/}"
+      return 0
+    fi
+  done < <(layer_joins "$1")
+  return 1
+}
+
+# check_required: the map config's `require`, before a build: every layer it
+# names must have its source data, or nothing is built (for the GitHub
+# Pages copy, which must use the public protected areas source, ADR 0014).
+# Returns 1, after naming each missing one.
+check_required() {
+  local name why bad=0
+  while IFS= read -r name; do
+    [[ -n $name ]] || continue
+    if why=$(missing_source "$name"); then
+      log_error "$name: $why, and the map config requires it (require): nothing was built"
+      bad=1
+    fi
+  done < <(jq -r '.require[]' "$LAYERS_JSON")
+  ((bad == 0))
 }
 
 # build_main SCRATCH LAYER...: the build mode.
@@ -495,7 +367,7 @@ build_main() {
       if [[ -n $(layer_names) ]]; then
         die "no layers are enabled in the map config"
       fi
-      die "no layer configs in $PIPELINE_LAYERS_DIR"
+      die "no layer files in $(layer_dirs)"
     fi
   fi
 
@@ -506,20 +378,16 @@ build_main() {
       return 2
     fi
     if ! layer_known "$name"; then
-      log_error "no config for layer '$name' in $PIPELINE_LAYERS_DIR or the map config"
+      log_error "no layer file for layer '$name' in $(layer_dirs)"
       return 2
     fi
     if ! layer_enabled "$name"; then
-      log_error "layer '$name' is not enabled in the map config: enable it there to build it"
+      log_error "layer '$name' is not enabled in the map config: add it to its layers to build it"
       return 2
     fi
   done
 
-  # The map config's requiredInputs guard (a Pages build, ADR 0014):
-  # nothing is built if a layer it names would read another source.
-  local guard=0
-  check_required_inputs || guard=$?
-  ((guard == 0)) || return "$guard"
+  check_required || return 1
 
   mkdir -p "$PIPELINE_OUTPUT_DIR" || die "cannot create $PIPELINE_OUTPUT_DIR"
   [[ -w $PIPELINE_OUTPUT_DIR ]] || die "output dir not writable: $PIPELINE_OUTPUT_DIR"
@@ -531,10 +399,6 @@ build_main() {
     local to_build=()
     for name in "${layers[@]}"; do
       if why=$(missing_source "$name"); then
-        if required_input "$name" >/dev/null; then
-          log_error "$name: $why, and the map config requires it (requiredInputs): nothing was built"
-          return 1
-        fi
         log_warn "skipping $name: $why"
         skipped+=("$name")
       else
@@ -563,10 +427,10 @@ build_main() {
     fi
   done
 
-  # The combined style follows the manifest, including entries kept from
-  # earlier runs, so it is rewritten even when a layer failed.
+  # The style follows build.json, including layers kept from earlier runs,
+  # so it is rewritten even when a layer failed.
   local style_status=0
-  finish_manifest || style_status=$?
+  finish_style || style_status=$?
 
   if ((${#skipped[@]} > 0)); then
     log_warn "${#skipped[@]} layer(s) skipped, source data not found: ${skipped[*]}"
@@ -617,14 +481,14 @@ main() {
     return 2
   fi
 
-  require_tools jq node
+  require_tools jq yq jv
   local scratch
   scratch=$(mktemp -d "${TMPDIR:-/tmp}/pipeline.XXXXXX")
   # shellcheck disable=SC2064 # expand now: scratch is local to main.
   trap "rm -rf '${scratch}'" EXIT
 
-  # The layer set: the committed configs plus the map config, if any. A
-  # problem in the map config stops every mode before anything changes.
+  # The layer files and the map config, checked. A problem in the map
+  # config stops every mode before anything changes.
   local status=0
   resolve_layers "${scratch}/resolved" || status=$?
   ((status == 0)) || return "$status"
@@ -632,7 +496,7 @@ main() {
   case $mode in
     status) status_main "$json" "${layers[@]}" ;;
     remove) remove_main "${layers[@]}" ;;
-    style) style_only_main "$scratch" "${layers[@]}" ;;
+    style) style_only_main "${layers[@]}" ;;
     *) build_main "$scratch" "${layers[@]}" ;;
   esac
 }

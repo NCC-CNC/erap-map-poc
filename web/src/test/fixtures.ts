@@ -3,24 +3,23 @@
  * outside `web/`, so it is left out of the app build, see
  * `tsconfig.app.json`).
  *
- * - `expectedDisplay`: the `display` blocks the pipeline writes for the
- *   `sample` and `sample_points` layers. The pipeline's tests check its
- *   output against this same file, so the app is tested against what the
- *   pipeline really produces.
- * - `expectedRasterDisplay`: the same for the synthetic raster layer of the
- *   pipeline's raster tests (`pipeline/tests/raster.bats`).
- * - `expectedModalDisplay`: the `sample` layer with colour themes and a
- *   click modal (`pipeline/tests/fixtures/sample_modal.style.json`, ADR
- *   0012), as the pipeline resolves it.
- * - `layerStyleSchema`: the shared JSON Schema.
- * - `mapConfigSchema` and `mapConfigExample`: the local map config's schema
- *   and the committed example (ADR 0009).
+ * - `expectedStyle`: the style.json the pipeline writes for the test
+ *   layers `sample` and `sample_points` and the synthetic raster `cover`
+ *   of its raster tests. The pipeline's tests check its output against
+ *   this same file (`pipeline/tests/style.bats`), so the app is tested
+ *   against what the pipeline really produces.
+ * - `expectedModalStyle`: the same for the `sample` layer with colour
+ *   themes and a dialog pop-up (`pipeline/tests/fixtures/sample_modal.yaml`,
+ *   ADR 0012).
+ * - `ecoregionsExample`: the themes and pop-up of the committed `ecoregions`
+ *   layer file (`pipeline/tests/style.bats` checks they agree).
+ * - `mapConfigSchema`: the map config's schema, for the basemap names.
  */
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseManifest } from '../layers/manifest';
-import type { Display, LayerDefinition, ModalDefinition } from '../layers/types';
+import { parseStyle } from '../layers/style';
+import type { LayerDefinition, PopupDefinition, ThemeConfig } from '../layers/types';
 
 // A path, not `new URL(..., import.meta.url)`: in a jsdom test Vite would
 // turn that into asset imports of the whole repo.
@@ -28,81 +27,43 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const repoFile = (path: string) => resolve(repoRoot, path);
 const readJson = (path: string): unknown => JSON.parse(readFileSync(repoFile(path), 'utf8'));
 
-export const layerStyleSchema = readJson('pipeline/schema/layer-style.schema.json') as {
-  $id: string;
-  $defs: Record<string, { properties?: Record<string, unknown> }>;
+/** The map config's JSON Schema (design note 04). */
+export const mapConfigSchema = readJson('pipeline/schema/map.schema.json') as {
+  properties: { basemap: { enum: string[] } };
 };
 
-/** The local map config's JSON Schema (ADR 0009). */
-export const mapConfigSchema = readJson('pipeline/schema/map-config.schema.json') as {
-  $id: string;
-  properties: { map: { properties: { basemap: { enum: string[] } } } };
-};
+/** The tiles URL the fixtures are read against. */
+export const TILES = 'http://localhost/tiles/';
 
-/** The committed example map config, `map.config.example.json`. */
-export const mapConfigExample = readJson('map.config.example.json');
-
-export const expectedDisplay = readJson('pipeline/tests/fixtures/expected_display.json') as {
-  sample: Display;
-  sample_points: Display;
-};
-
-export const expectedRasterDisplay = readJson(
-  'pipeline/tests/fixtures/expected_raster_display.json',
-) as Display;
-
-export const expectedModalDisplay = readJson(
-  'pipeline/tests/fixtures/expected_modal_display.json',
-) as Display;
-
-/** A manifest as the pipeline writes it for the two sample layers. */
-export function sampleManifest() {
-  return {
-    updated_at: '2026-01-01T00:00:00Z',
-    layers: [
-      { name: 'sample', file: 'sample.pmtiles', display: structuredClone(expectedDisplay.sample) },
-      {
-        name: 'sample_points',
-        file: 'sample_points.pmtiles',
-        display: structuredClone(expectedDisplay.sample_points),
-      },
-    ],
-  };
+/** A fresh copy of the test layers' style.json. */
+export function expectedStyle(): Record<string, unknown> {
+  return readJson('pipeline/tests/fixtures/expected_style.json') as Record<string, unknown>;
 }
 
-/** The manifest entry the pipeline writes for a raster layer `cover`. */
-export function rasterEntry() {
-  return {
-    name: 'cover',
-    file: 'cover.cog.tif',
-    type: 'raster',
-    format: 'cog',
-    display: structuredClone(expectedRasterDisplay),
-  };
+/** A fresh copy of the style.json of the sample layer with themes and a dialog. */
+export function expectedModalStyle(): Record<string, unknown> {
+  return readJson('pipeline/tests/fixtures/expected_modal_style.json') as Record<string, unknown>;
 }
 
-const parsed = parseManifest(sampleManifest()).layers;
+const parsed = parseStyle(expectedStyle(), TILES).layers;
+const byId = (defs: readonly LayerDefinition[], id: string) => defs.find((d) => d.id === id) as LayerDefinition;
 
-/** The sample layers as the app reads them, in draw order. */
+/** The test layers as the app reads them, in draw order. */
 export const sampleLayers: readonly LayerDefinition[] = parsed;
-export const sample = parsed.find((d) => d.id === 'sample') as LayerDefinition;
-export const samplePoints = parsed.find((d) => d.id === 'sample_points') as LayerDefinition;
-
+export const sample = byId(parsed, 'sample');
+export const samplePoints = byId(parsed, 'sample_points');
 /** The raster layer `cover` as the app reads it. */
-export const raster = parseManifest({ layers: [rasterEntry()] }).layers[0] as LayerDefinition;
+export const raster = byId(parsed, 'cover');
 
-/** The sample layer with colour themes and a click modal, as the app reads it. */
-export const sampleModal = parseManifest({
-  layers: [{ name: 'sample', file: 'sample.pmtiles', display: structuredClone(expectedModalDisplay) }],
-}).layers[0] as LayerDefinition;
+/** The sample layer with colour themes and a dialog pop-up, as the app reads it. */
+export const sampleModal = byId(parseStyle(expectedModalStyle(), TILES).layers, 'sample');
 
 /**
- * The committed ecoregion display config
- * (`pipeline/layers/ecoregions.style.json`): its modal and themes read
- * calculated fields and rule attributes (ADR 0011, ADR 0012). The pipeline
- * copies a modal into the manifest as it is.
+ * The themes and dialog pop-up of the committed ecoregion layer
+ * (`pipeline/layers/ecoregions.yaml`): its pop-up and themes read
+ * calculated fields, such as the action recommendations (ADR 0012).
  */
-export const ecoregionsExample = readJson('pipeline/layers/ecoregions.style.json') as {
-  modal: ModalDefinition;
-  symbology: { themes: { id: string; color: { attribute: string } }[] };
+export const ecoregionsExample = readJson('pipeline/tests/fixtures/ecoregions_display.json') as {
+  popup: PopupDefinition;
+  themes: ThemeConfig[];
 };

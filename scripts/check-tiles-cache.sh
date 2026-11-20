@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Check that the web server makes the browser revalidate manifest.json and
+# Check that the web server makes the browser revalidate build.json and
 # style.json, so a page reload picks up a rebuild or `pipeline --style-only`
 # (#53): each is served with `Cache-Control: no-cache` and an ETag, answers
 # 304 to that ETag while unchanged, and 200 with the new content once the
@@ -9,7 +9,7 @@
 #   BASE_URL   the web app, for example http://127.0.0.1:8080
 #   TILES_DIR  a scratch host directory, not data/tiles, mounted as the
 #              web container's /srv/tiles. The script writes a test
-#              manifest.json and style.json into it.
+#              build.json and style.json into it.
 set -euo pipefail
 
 if (($# != 2)); then
@@ -61,21 +61,21 @@ etag_of() {
   printf '%s\n' "$etag"
 }
 
-put manifest.json '{"layers": []}'
+put build.json '{"layers": []}'
 put style.json '{"version": 8, "sources": {}, "layers": []}'
 
-manifest_etag=$(etag_of manifest.json)
+build_etag=$(etag_of build.json)
 style_etag=$(etag_of style.json)
-[[ $(status_of "$(fetch manifest.json "$manifest_etag")") == 304 ]] \
-  || fail "manifest.json: no 304 while unchanged"
+[[ $(status_of "$(fetch build.json "$build_etag")") == 304 ]] \
+  || fail "build.json: no 304 while unchanged"
 [[ $(status_of "$(fetch style.json "$style_etag")") == 304 ]] \
   || fail "style.json: no 304 while unchanged"
 
-# A changed manifest is served in full; the unchanged style still gets 304.
-put manifest.json '{"layers": [], "updated_at": "changed by check-tiles-cache"}'
-response=$(fetch manifest.json "$manifest_etag")
-[[ $(status_of "$response") == 200 ]] || fail "manifest.json: a change was not served on revalidation"
-[[ $response == *'changed by check-tiles-cache'* ]] || fail "manifest.json: served stale after a change"
+# A changed build.json is served in full; the unchanged style still gets 304.
+put build.json '{"layers": [], "updated_at": "changed by check-tiles-cache"}'
+response=$(fetch build.json "$build_etag")
+[[ $(status_of "$response") == 200 ]] || fail "build.json: a change was not served on revalidation"
+[[ $response == *'changed by check-tiles-cache'* ]] || fail "build.json: served stale after a change"
 [[ $(status_of "$(fetch style.json "$style_etag")") == 304 ]] \
   || fail "style.json: no 304 while unchanged"
-echo "manifest.json and style.json: no-cache, revalidated, changes served"
+echo "build.json and style.json: no-cache, revalidated, changes served"

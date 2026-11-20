@@ -4,47 +4,39 @@
 #   docker build --target test -t erap-pipeline-test pipeline
 #   docker run --rm erap-pipeline-test
 
+load helpers
+
 setup() {
   PIPELINE_ROOT=$(cd "${BATS_TEST_DIRNAME}/.." && pwd)
   RUN="${PIPELINE_ROOT}/bin/run.sh"
   export PIPELINE_INPUT_DIR="${BATS_TEST_TMPDIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
-  # The synthetic test layers (read only); a test that edits configs makes
-  # its own layers dir with make_layers_dir or copy_layers.
+  # The synthetic test layers (read only); a test that edits layer files
+  # makes its own layers dir with make_layers_dir or copy_layers.
   export PIPELINE_LAYERS_DIR="${PIPELINE_ROOT}/tests/layers"
   export PIPELINE_WORK_DIR="${BATS_TEST_TMPDIR}/work"
   mkdir -p "$PIPELINE_INPUT_DIR"
 }
 
-# A layers dir holding copies of sample.env and sample.style.json under the
-# given names.
+# A layers dir holding copies of sample.yaml under the given names.
 make_layers_dir() {
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
   mkdir -p "$PIPELINE_LAYERS_DIR"
   local name
   for name in "$@"; do
-    cp "${PIPELINE_ROOT}/tests/layers/sample.env" "${PIPELINE_LAYERS_DIR}/${name}.env"
-    cp "${PIPELINE_ROOT}/tests/layers/sample.style.json" "${PIPELINE_LAYERS_DIR}/${name}.style.json"
+    cp "${PIPELINE_ROOT}/tests/layers/sample.yaml" "${PIPELINE_LAYERS_DIR}/${name}.yaml"
   done
 }
 
-# A layers dir holding the test layer configs (tests/layers/) of the given
+# A layers dir holding the test layer files (tests/layers/) of the given
 # layers, as they are.
 copy_layers() {
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
   mkdir -p "$PIPELINE_LAYERS_DIR"
   local name
   for name in "$@"; do
-    cp "${PIPELINE_ROOT}/tests/layers/${name}.env" "${PIPELINE_ROOT}/tests/layers/${name}.style.json" \
-      "$PIPELINE_LAYERS_DIR"
+    cp "${PIPELINE_ROOT}/tests/layers/${name}.yaml" "$PIPELINE_LAYERS_DIR"
   done
-}
-
-# No temp files left in the output dir.
-assert_no_temp_files() {
-  run find "$PIPELINE_OUTPUT_DIR" -name '*.tmp*'
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
 }
 
 @test "fixture matches its generator" {
@@ -81,7 +73,8 @@ assert_no_temp_files() {
 
   run bash -c "pmtiles show --metadata '${PIPELINE_OUTPUT_DIR}/sample.pmtiles' \
     | jq -r '.tilestats.layers[0].count'"
-  [ "$output" = "15" ]
+  # 15 polygons, generalised once per zoom (z0 to z8, lib/generalise.sh).
+  [ "$output" = "$((15 * 9))" ]
 
   # Feature ids survive into the tiles.
   run bash -c "tippecanoe-decode '${PIPELINE_OUTPUT_DIR}/sample.pmtiles' 0 0 0 \
@@ -90,38 +83,37 @@ assert_no_temp_files() {
   [ "$output" = "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15" ]
 }
 
-@test "writes a valid manifest.json listing the layer" {
+@test "writes a valid build.json listing the layer" {
   run "$RUN" sample
   [ "$status" -eq 0 ]
 
-  local manifest="${PIPELINE_OUTPUT_DIR}/manifest.json"
+  local report="${PIPELINE_OUTPUT_DIR}/build.json"
   run jq -e '
     (.updated_at | type == "string")
     and (.layers | length == 1)
     and (.layers[0] | .name == "sample" and .file == "sample.pmtiles"
          and .minzoom == 0 and .maxzoom == 8 and .feature_count == 15
-         and (.built_at | type == "string") and .display_updated_at == .built_at
+         and (.built_at | type == "string")
          and .bounds == [-125, 46, -66, 56]
-         and .profile == null and .min_visible_px == 1
-         and .simplify_max_zoom == false
+         and .profile == "default" and .min_visible_px == 1
          and ([.zooms[].zoom] == [range(9)])
          and all(.zooms[]; .input == 15 and .present == 15
                  and .required == 15 and .required_present == 15)
-         and .max_tile_bytes == ([.zooms[].max_tile_bytes] | max))' "$manifest"
+         and .max_tile_bytes == ([.zooms[].max_tile_bytes] | max))' "$report"
   [ "$status" -eq 0 ]
 }
 
-@test "no arguments builds every layer config and merges the manifest" {
+@test "no arguments builds every layer config and merges build.json" {
   make_layers_dir alpha beta
   run "$RUN"
   [ "$status" -eq 0 ]
   [ -s "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles" ]
   [ -s "${PIPELINE_OUTPUT_DIR}/beta.pmtiles" ]
 
-  # Rebuilding one layer keeps the other's manifest entry.
+  # Rebuilding one layer keeps the other's build.json entry.
   run "$RUN" beta
   [ "$status" -eq 0 ]
-  run jq -r '[.layers[].name] | join(",")' "${PIPELINE_OUTPUT_DIR}/manifest.json"
+  run jq -r '[.layers[].name] | join(",")' "${PIPELINE_OUTPUT_DIR}/build.json"
   [ "$output" = "alpha,beta" ]
 }
 
@@ -188,7 +180,7 @@ assert_no_temp_files() {
   done
 }
 
-@test "no arguments builds sample and sample_points into one manifest" {
+@test "no arguments builds sample and sample_points into one build.json" {
   # The two synthetic test layers (tests/layers/).
   copy_layers sample sample_points
   run "$RUN"
@@ -200,21 +192,19 @@ assert_no_temp_files() {
     ([.layers[].name] == ["sample", "sample_points"])
     and (.layers[1] | .file == "sample_points.pmtiles"
          and .minzoom == 0 and .maxzoom == 10 and .feature_count == 30)' \
-    "${PIPELINE_OUTPUT_DIR}/manifest.json"
+    "${PIPELINE_OUTPUT_DIR}/build.json"
   [ "$status" -eq 0 ]
 }
 
 @test "missing input fails and leaves no partial pmtiles" {
   make_layers_dir
-  printf '%s\n' 'LAYER_INPUT=missing.geojson' 'LAYER_FIELDS=(id)' \
-    'LAYER_FEATURE_ID=id' 'LAYER_MIN_ZOOM=0' 'LAYER_MAX_ZOOM=4' \
-    >"${PIPELINE_LAYERS_DIR}/broken.env"
+  layer_file "${PIPELINE_LAYERS_DIR}/broken.yaml" '.source.path = "missing.geojson"'
 
   run "$RUN" broken
   [ "$status" -eq 1 ]
   [[ $output == *"input not found: ${PIPELINE_INPUT_DIR}/missing.geojson"* ]]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/broken.pmtiles" ]
-  [ ! -e "${PIPELINE_OUTPUT_DIR}/manifest.json" ]
+  [ ! -e "${PIPELINE_OUTPUT_DIR}/build.json" ]
   assert_no_temp_files
 }
 
@@ -222,10 +212,7 @@ assert_no_temp_files() {
   make_layers_dir good
   # Source data that is there (a full build skips a layer whose source is
   # missing, tests/mapconfig.bats), but a field that is not.
-  printf '%s\n' "LAYER_INPUT=${PIPELINE_ROOT}/tests/fixtures/sample.geojson" \
-    'LAYER_FIELDS=(nope)' 'LAYER_FEATURE_ID=nope' 'LAYER_MIN_ZOOM=0' 'LAYER_MAX_ZOOM=4' \
-    >"${PIPELINE_LAYERS_DIR}/broken.env"
-  cp "${PIPELINE_LAYERS_DIR}/good.style.json" "${PIPELINE_LAYERS_DIR}/broken.style.json"
+  layer_file "${PIPELINE_LAYERS_DIR}/broken.yaml" '.source.id = "nope"'
 
   run "$RUN"
   [ "$status" -eq 1 ]
@@ -241,9 +228,12 @@ assert_no_temp_files() {
   local before
   before=$(sha256sum "${PIPELINE_OUTPUT_DIR}/sample.pmtiles")
 
-  # Make tippecanoe itself fail, after normalising has succeeded.
-  echo 'LAYER_TIPPECANOE_FLAGS=(--no-such-flag)' >>"${PIPELINE_LAYERS_DIR}/sample.env"
-  run "$RUN" sample
+  # Make tippecanoe itself fail, after normalising has succeeded: a stub
+  # earlier on the PATH.
+  mkdir -p "${BATS_TEST_TMPDIR}/bin"
+  printf '%s\n' '#!/bin/sh' 'echo "tippecanoe: no" >&2' 'exit 1' >"${BATS_TEST_TMPDIR}/bin/tippecanoe"
+  chmod +x "${BATS_TEST_TMPDIR}/bin/tippecanoe"
+  PATH="${BATS_TEST_TMPDIR}/bin:${PATH}" run "$RUN" sample
   [ "$status" -eq 1 ]
   [[ $output == *"tippecanoe failed"* ]]
   [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}/sample.pmtiles")" = "$before" ]
@@ -253,7 +243,7 @@ assert_no_temp_files() {
 @test "unknown layer is a usage error and builds nothing" {
   run "$RUN" sample nope
   [ "$status" -eq 2 ]
-  [[ $output == *"no config for layer 'nope'"* ]]
+  [[ $output == *"no layer file for layer 'nope'"* ]]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/sample.pmtiles" ]
 }
 

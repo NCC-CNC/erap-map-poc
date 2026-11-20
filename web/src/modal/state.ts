@@ -1,17 +1,16 @@
 import { isVisible, type LayerDefinition, type VisibilityState } from '../layers';
-import type { PopupFeature } from '../popup/content';
-import { buildModalContent, type ModalContent } from './template';
+import { buildPopupContent, type PopupContent, type PopupFeature } from '../popup/content';
 
 /** The open modal: the layer it belongs to and what it shows. */
 export interface OpenModal {
   layerId: string;
-  content: ModalContent;
+  content: PopupContent;
 }
 
-/** The modal for a clicked feature of a layer with a modal template. */
+/** The dialog for a clicked feature of a layer whose pop-up is a `dialog`. */
 export function openModal(def: LayerDefinition, feature: PopupFeature): OpenModal | null {
-  if (!def.modal) return null;
-  return { layerId: def.id, content: buildModalContent(def.modal, feature, def.title) };
+  if (def.popup?.size !== 'dialog') return null;
+  return { layerId: def.id, content: buildPopupContent(def.popup, feature, def.title) };
 }
 
 /**

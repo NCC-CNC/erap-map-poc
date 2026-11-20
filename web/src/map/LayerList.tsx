@@ -10,14 +10,16 @@ import {
 import { BASEMAP_GROUND, DEFAULT_BASEMAP_THEME, type BasemapTheme } from './basemap';
 import { LegendView } from './LegendView';
 
+const NO_FAILURES: ReadonlySet<string> = new Set();
+
 interface LayerListProps {
-  /** The layers from the manifest, in draw order; `null` while loading. */
+  /** The layers from style.json, in draw order; `null` while loading. */
   layers: readonly LayerDefinition[] | null;
-  /** A problem with the manifest to show above the list, if any. */
+  /** A problem with style.json to show above the list, if any. */
   problem: string | null;
   visibility: VisibilityState;
-  /** Ids of the layers whose archive could be read; `null` while checking. */
-  available: ReadonlySet<string> | null;
+  /** Ids of the layers MapLibre reported an error for (see `createMap`). */
+  failed?: ReadonlySet<string>;
   onChange: (layerId: string, visible: boolean) => void;
   /** The colour theme chosen per layer (ADR 0012). */
   themes?: ThemeState;
@@ -30,15 +32,15 @@ interface LayerListProps {
  * The data layers as labelled checkboxes, topmost first, each with its
  * inline legend. A layer with more than one colour theme gets a "Colour
  * by" choice above its legend, and the legend follows the theme. A layer
- * whose archive is missing is shown disabled with a short note; a missing
- * or invalid manifest is reported in a status message, and the map still
+ * MapLibre could not draw is shown disabled with a short note; a missing
+ * or invalid style.json is reported in a status message, and the map still
  * shows the basemap.
  */
 export function LayerList({
   layers,
   problem,
   visibility,
-  available,
+  failed = NO_FAILURES,
   onChange,
   themes = {},
   onThemeChange = () => {},
@@ -52,11 +54,12 @@ export function LayerList({
       </p>
       <ul>
         {listOrder(layers ?? []).map((def) => {
-          const missing = available !== null && !available.has(def.id);
+          const missing = failed.has(def.id);
           const inputId = `layer-toggle-${def.id}`;
           const noteId = `${inputId}-note`;
           const themeId = `layer-theme-${def.id}`;
           const theme = activeTheme(themes, def);
+          const legend = activeLegend(themes, def);
           return (
             <li key={def.id} className={missing ? 'layer-missing' : undefined}>
               <label htmlFor={inputId}>
@@ -72,7 +75,7 @@ export function LayerList({
               </label>
               {missing && (
                 <p id={noteId} className="layer-note">
-                  Not available: tiles not found.
+                  Not available: the layer could not be loaded.
                 </p>
               )}
               {theme && def.themes && def.themes.length > 1 && (
@@ -92,11 +95,13 @@ export function LayerList({
                   </select>
                 </div>
               )}
-              <LegendView
-                legend={activeLegend(themes, def)}
-                ground={BASEMAP_GROUND[basemap]}
-                label={theme ? `${def.title} legend: ${theme.label}` : `${def.title} legend`}
-              />
+              {legend && (
+                <LegendView
+                  legend={legend}
+                  ground={BASEMAP_GROUND[basemap]}
+                  label={theme ? `${def.title} legend: ${theme.label}` : `${def.title} legend`}
+                />
+              )}
             </li>
           );
         })}

@@ -10,20 +10,19 @@ export type ThemeState = Readonly<Record<string, string>>;
 
 /**
  * The layer's theme in use: the chosen one if the layer has it, else its
- * default. Undefined for a layer without themes.
+ * first. Undefined for a layer without themes.
  */
 export function activeTheme(state: ThemeState, def: LayerDefinition): Theme | undefined {
   const { themes } = def;
   if (!themes?.length) return undefined;
   const chosen = state[def.id];
-  return (
-    themes.find((t) => t.id === chosen) ?? themes.find((t) => t.id === def.defaultTheme) ?? themes[0]
-  );
+  return themes.find((t) => t.id === chosen) ?? themes[0];
 }
 
-/** The legend to show: the active theme's, or the layer's own. */
-export function activeLegend(state: ThemeState, def: LayerDefinition): Legend {
-  return activeTheme(state, def)?.legend ?? def.legend;
+/** The legend to show: the active theme's, or the layer's own; undefined for none. */
+export function activeLegend(state: ThemeState, def: LayerDefinition): Legend | undefined {
+  const theme = activeTheme(state, def);
+  return theme ? theme.legend : def.legend;
 }
 
 /** A new state with one layer's theme chosen. */

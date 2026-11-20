@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Visibility-aware drop guard: after tiling, check that no feature big enough
 # to see at a zoom was dropped at that zoom, and gather per-zoom stats for
-# manifest.json.
+# build.json.
 #
 # Size: each feature's largest polygon part, measured once in Web Mercator
 # (EPSG:3857, the tiles' own projection) from the normalised GeoJSONSeq.
@@ -15,11 +15,16 @@
 # features are only counted and logged. Tippecanoe's tiny polygon reduction
 # only touches polygons under about 1/64 of a pixel, far below the default
 # MIN_PX of 1, so it never trips the guard; dropping (for example
-# --drop-smallest-as-needed, or a tile size limit) can.
+# --drop-smallest-as-needed, or a tile size limit) and simplification that
+# collapses a thin polygon (lib/generalise.sh) can. No tippecanoe option
+# promises a visible polygon stays (ADR 0016).
 #
 # Cost: one GDAL pass over the input for the sizes, then each zoom of the
-# archive is read once through GDAL's PMTiles driver (feature ids only, no
-# output geometry) and once by `tippecanoe-decode --stats` for tile sizes.
+# archive is read once through GDAL's PMTiles driver for the feature ids,
+# with the geometry ignored (`-nlt NONE`: the same rows, features only in
+# a tile's buffer still left out, in about half the time), and once by
+# `tippecanoe-decode --stats` for tile sizes. Most of it is the max zoom:
+# about 3.5 minutes for the Canada-wide ecoregions at z12 (#141).
 
 # Width of the z0 tile in EPSG:3857 metres (2 * pi * 6378137).
 GUARD_WORLD_M=40075016.68557849
@@ -63,10 +68,10 @@ drop_guard() {
     || die "cannot read tile sizes from $archive"
 
   local ids_file="${out}.ids"
-  local sql z failed=0 lines=()
-  sql="SELECT DISTINCT mvt_id FROM $(ogr_quote "$layer")"
+  local z failed=0 lines=()
   for ((z = minzoom; z <= maxzoom; z++)); do
-    ogr2ogr -f CSV /vsistdout/ -oo "ZOOM_LEVEL=${z}" "$archive" -sql "$sql" >"$ids_file" \
+    ogr2ogr -f CSV /vsistdout/ -oo "ZOOM_LEVEL=${z}" "$archive" "$layer" \
+      -select mvt_id -nlt NONE >"$ids_file" \
       || die "cannot read feature ids at z${z} from $archive"
 
     # present required required_present missing_count missing_ids(first 20)
@@ -107,6 +112,6 @@ drop_guard() {
 
   printf '%s\n' "${lines[@]}" | jq -s '.' >"$out" || die "cannot write $out"
   ((failed == 0)) \
-    || die "drop guard: required features missing (LAYER_MIN_VISIBLE_PX=${min_px}); keeping the previous archive"
+    || die "drop guard: required features missing (processing.min_visible_px ${min_px}); keeping the previous archive"
   log_info "drop guard passed for z${minzoom}-z${maxzoom}"
 }

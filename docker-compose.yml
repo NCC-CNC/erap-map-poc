@@ -1,5 +1,5 @@
-# ERAP Map PoC stack (ADR 0004). Usage is in README.md; the design is in
-# docs/design/01_architecture.md (Docker Compose section).
+# ERAP Map PoC stack (ADR 0004). Usage is in README.md; how it fits together in
+# docs/how-it-works.md.
 #
 #   docker compose run --rm pipeline [layer ...]   build tiles into data/tiles/
 #   docker compose run --rm pipeline --status      what is built, what is stale
@@ -67,26 +67,28 @@ services:
       # 0/1 GeoTIFFs, about 0.1 GB per Canada-wide 30 m layer), reused
       # until the source changes. Safe to delete. See pipeline/lib/raster.sh.
       - ./data/work:/data/work
-      # The layer configs (.env and .style.json) from the repo, so editing a
-      # layer needs no image rebuild: rerun the pipeline and reload the map.
+      # The layer files (<layer>.yaml) from the repo, so editing a layer
+      # needs no image rebuild: rerun the pipeline and reload the map.
       - ./pipeline/layers:/opt/pipeline/layers:ro
-      # The repo, read only, for your local map config (map.config.json,
-      # git-ignored, ADR 0009) and the local-only layer folders it names.
+      # The repo, read only, for your map config (map.config.yaml) and your
+      # own layers (pipeline/layers.local/), both
+      # git-ignored (design note 04).
       # The folder rather than the file: a bind mount of a missing file
       # would make a directory in its place, and the config is optional.
       - .:/repo:ro
     environment:
       # MAP_CONFIG (in .env) picks another config file, relative to the
-      # repo root. No file there means every committed layer, as they are.
-      PIPELINE_MAP_CONFIG: /repo/${MAP_CONFIG:-map.config.json}
+      # repo root. No file there means every layer, as it is.
+      PIPELINE_MAP_CONFIG: /repo/${MAP_CONFIG:-map.config.yaml}
+      # Your own layers (git-ignored, design note 04), in the repo mount.
+      PIPELINE_LOCAL_LAYERS_DIR: /repo/pipeline/layers.local
 
   # The GitHub Pages copy (ADR 0014): the pipeline with the committed
-  # map.config.pages.json (smaller rasters, the public protected areas
-  # source and its requiredInputs guard) into data/pages/, never
-  # data/tiles/. MAP_CONFIG and your map.config.json are not read. The
-  # raster work dir is shared, so prepared sources are reused. Run on
-  # demand: `docker compose run --rm pipeline-pages [layer ...]`, then
-  # scripts/publish-pages.sh.
+  # map.pages.yaml (smaller rasters, the public protected areas source,
+  # which it requires) into data/pages/, never data/tiles/. MAP_CONFIG
+  # and your map.config.yaml are not read. The raster work dir is shared,
+  # so prepared sources are reused. Run on demand: `docker compose run
+  # --rm pipeline-pages [layer ...]`, then scripts/publish-pages.sh.
   pipeline-pages:
     extends:
       service: pipeline
@@ -94,7 +96,9 @@ services:
       # Replaces the data/tiles mount (volumes merge by container path).
       - ./data/pages:/data/tiles
     environment:
-      PIPELINE_MAP_CONFIG: /repo/map.config.pages.json
+      PIPELINE_MAP_CONFIG: /repo/map.pages.yaml
+      # The public copy has committed layers only: not your layers.local/.
+      PIPELINE_LOCAL_LAYERS_DIR: ""
 
   # Frontend development: Vite with hot reload on http://localhost:5173,
   # serving data/tiles/ at /tiles/ like the web image.
@@ -123,14 +127,12 @@ services:
       - web-dev-node-modules:/repo/web/node_modules
       # Same layout as the repo, so vite.config.ts finds ../data/tiles.
       - ./data/tiles:/repo/data/tiles:ro
-      # The web tests read the display config schema, the expected
-      # display fixtures (vector and raster) and the committed ecoregion
-      # display config from ../pipeline (web/src/test/fixtures.ts).
+      # The web tests read the style.json the pipeline writes for the test
+      # layers (pipeline/tests/fixtures), the ecoregions themes and modal,
+      # and the schemas (the layer file types, web/vite/layerTypes.ts) from
+      # ../pipeline (web/src/test/fixtures.ts).
       - ./pipeline/schema:/repo/pipeline/schema:ro
       - ./pipeline/tests/fixtures:/repo/pipeline/tests/fixtures:ro
-      - ./pipeline/layers:/repo/pipeline/layers:ro
-      # ...and check the example map config against its schema.
-      - ./map.config.example.json:/repo/map.config.example.json:ro
 
 volumes:
   web-dev-node-modules:

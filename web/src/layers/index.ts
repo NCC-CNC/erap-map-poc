@@ -1,7 +1,7 @@
 /**
  * The data layers. None is defined in the app: they are read at runtime
- * from the pipeline's `manifest.json` (`./manifest.ts`, ADR 0007), so
- * changing or adding a layer means editing its `pipeline/layers/` files and
+ * from the pipeline's `style.json` (`./style.ts`, design note 04), so
+ * changing or adding a layer means editing its `pipeline/layers/` file and
  * rerunning the pipeline, with no change here.
  */
 export type {
@@ -9,51 +9,45 @@ export type {
   ChartBlock,
   ChartSeries,
   Color,
-  Display,
   Format,
   FormatPreset,
+  LayerDefinition,
+  LayerMetadata,
+  LayerType,
+  Legend,
+  LegendConfig,
+  LegendItem,
+  Block,
   ListBlock,
-  ModalBlock,
-  ModalDefinition,
-  ModalLayout,
-  ModalSection,
+  BasemapName,
+  MapDefaults,
+  NumberFormat,
+  PopupDefinition,
+  PopupLayout,
+  PopupSize,
+  PopupStat,
+  Section,
   TableBlock,
   Template,
   TextBlock,
   Theme,
-  LayerDefinition,
-  LayerType,
-  Legend,
-  LegendItem,
-  BasemapName,
-  MapDefaults,
-  NumberFormat,
-  PopupChart,
-  PopupChartPoint,
-  PopupDefinition,
-  PopupStat,
-  StyleLayer,
+  ThemeConfig,
   ValueSource,
 } from './types';
 export {
-  MESSAGES,
-  ManifestError,
-  displayProblems,
-  drawOrder,
-  loadManifest,
-  mapDefaults,
   BASEMAP_NAMES,
-  FORMAT_PRESETS,
-  MODAL_LAYOUTS,
-  manifestUrl,
-  parseManifest,
+  MESSAGES,
+  StyleError,
+  loadStyle,
+  mapDefaults,
+  parseStyle,
+  styleUrl,
   type LoadOptions,
-  type ManifestLayers,
-} from './manifest';
+  type StyleLayers,
+} from './style';
+export { colorItems, deriveLegend, formatBound, resolveLegend } from './legend';
 export {
-  RASTER_PNG_SOURCE,
-  RASTER_SOURCE,
-  isCog,
+  resolveSourceUrl,
   styleLayerId,
   styleLayerIds,
   toMapLibre,

@@ -1,36 +1,37 @@
 #!/usr/bin/env bats
 # shellcheck source-path=SCRIPTDIR/..
-# Raster layer tests (LAYER_TYPE=raster, lib/raster.sh, ADR 0008 and 0010)
+# Raster layer tests (the raster profile, lib/raster.sh, ADR 0008 and 0010)
 # on synthetic binary GeoTIFFs made at test time by fixtures/make_raster.sh
 # (no committed .tif). Run in the test image with the other bats files:
 #   docker build --target test -t erap-pipeline-test pipeline
 #   docker run --rm erap-pipeline-test
 
+load helpers
+
 setup() {
   PIPELINE_ROOT=$(cd "${BATS_TEST_DIRNAME}/.." && pwd)
   RUN="${PIPELINE_ROOT}/bin/run.sh"
   MAKE="${PIPELINE_ROOT}/tests/fixtures/make_raster.sh"
-  TOOL="${PIPELINE_ROOT}/style/cli.mjs"
-  EXPECTED="${PIPELINE_ROOT}/tests/fixtures/expected_raster_display.json"
   export PIPELINE_INPUT_DIR="${BATS_TEST_TMPDIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
   export PIPELINE_WORK_DIR="${BATS_TEST_TMPDIR}/work"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
-  MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
+  BUILD="${PIPELINE_OUTPUT_DIR}/build.json"
   STYLE="${PIPELINE_OUTPUT_DIR}/style.json"
   COG="${PIPELINE_OUTPUT_DIR}/cover.cog.tif"
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR"
 }
 
-# raster_layer NAME KIND [SETTING...]: make a KIND raster (make_raster.sh)
-# and a raster layer config for it, z3 to z8, with the test display config.
+# raster_layer NAME KIND [EXPR...]: make a KIND raster (make_raster.sh) and
+# a raster layer file for it (fixtures/raster.yaml, z3 to z8), changed by
+# any yq EXPRs.
 raster_layer() {
-  local name=$1 kind=$2
+  local name=$1 kind=$2 file
   shift 2
   "$MAKE" "$kind" "${PIPELINE_INPUT_DIR}/${name}.tif"
-  printf '%s\n' 'LAYER_TYPE=raster' "LAYER_INPUT=${name}.tif" \
-    'LAYER_MIN_ZOOM=3' 'LAYER_MAX_ZOOM=8' "$@" >"${PIPELINE_LAYERS_DIR}/${name}.env"
-  cp "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" "${PIPELINE_LAYERS_DIR}/${name}.style.json"
+  file="${PIPELINE_LAYERS_DIR}/${name}.yaml"
+  cp "${PIPELINE_ROOT}/tests/fixtures/raster.yaml" "$file"
+  set_layer "$file" ".source.path = \"${name}.tif\"" "$@"
 }
 
 # level_opts LEVEL: the open option for COG level LEVEL (0 the full
@@ -51,12 +52,12 @@ value_at() {
 }
 
 # level_values COG LEVEL: every pixel value in level LEVEL of COG within
-# the layer's bounds (the manifest's, of its only entry), one per line. The
+# the layer's bounds (build.json's, of its only entry), one per line. The
 # COG itself is padded to the tile grid, mostly empty.
 level_values() {
   local opts bounds
   mapfile -t opts < <(level_opts "$2")
-  bounds=$(jq -r '.layers[0].bounds | "\(.[0]) \(.[3]) \(.[2]) \(.[1])"' "$MANIFEST")
+  bounds=$(jq -r '.layers[0].bounds | "\(.[0]) \(.[3]) \(.[2]) \(.[1])"' "$BUILD")
   # shellcheck disable=SC2086 # bounds is four numbers.
   gdal_translate -q -of XYZ "${opts[@]}" -projwin $bounds -projwin_srs EPSG:4326 \
     "$1" /vsistdout/ | awk '{ print $3 }'
@@ -68,11 +69,6 @@ level_sum() {
   level_values "$1" "$2" | awk '{ s += $1 } END { printf "%d\n", s }'
 }
 
-assert_no_temp_files() {
-  run find "$PIPELINE_OUTPUT_DIR" -name '*.tmp*'
-  [ "$status" -eq 0 ]
-  [ -z "$output" ]
-}
 
 @test "the raster fixture is a binary Byte raster in the strip layout" {
   "$MAKE" byte "${BATS_TEST_TMPDIR}/b.tif"
@@ -91,6 +87,8 @@ assert_no_temp_files() {
 
   run jq -e '.metadata.IMAGE_STRUCTURE.LAYOUT == "COG"
     and .metadata.IMAGE_STRUCTURE.COMPRESSION == "ZSTD"
+    and (.metadata.IMAGE_STRUCTURE | has("PREDICTOR") | not)
+    and .metadata.TILING_SCHEME == {NAME: "GoogleMapsCompatible", ZOOM_LEVEL: "8"}
     and .stac["proj:epsg"] == 3857
     and (.bands | length) == 1
     and (.bands[0] | .type == "Byte" and .block == [256, 256]
@@ -132,7 +130,7 @@ assert_no_temp_files() {
   ((output > 0 && output % 255 != 0))
 }
 
-@test "the manifest entry says raster and cog, with the COG's build report" {
+@test "the build.json entry says raster and cog, with the COG's build report" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
@@ -145,16 +143,21 @@ assert_no_temp_files() {
       and .center[2] == 3
       and (.build_seconds | type == "number")
       and .bytes > 0 and .block_size == 256 and .overview_count == 5
-      and .resampling == "near" and .max_zoom_values == "near" and .grey_levels == 256
+      and .resampling == "near" and (has("max_zoom_values") | not) and (has("grey_levels") | not)
       and .width > 0 and .height > 0
       and ([.zooms[].zoom] == [8, 7, 6, 5, 4, 3])
       and .zooms[0].width == .width and .zooms[0].height == .height
       and .zooms[5].width * 32 == .width
-      and (has("tile_count") | not) and (has("feature_count") | not)' "$MANIFEST"
+      and (has("tile_count") | not) and (has("feature_count") | not)' "$BUILD"
   [ "$status" -eq 0 ]
-  [ "$(jq '.layers[0].bytes' "$MANIFEST")" -eq "$(stat -c %s "$COG")" ]
+  [ "$(jq '.layers[0].bytes' "$BUILD")" -eq "$(stat -c %s "$COG")" ]
 
-  run jq -e --slurpfile want "$EXPECTED" '.layers[0].display == $want[0]' "$MANIFEST"
+  run jq -e '.layers[0] | (has("display") or has("enabled")) | not' "$BUILD"
+  [ "$status" -eq 0 ]
+  run jq -e --argjson f "$(yq -o json -I 0 . "${PIPELINE_LAYERS_DIR}/cover.yaml")" '
+    .metadata["erap:layers"].cover == {title: $f.title, type: "raster", order: ($f.order // 0),
+      visible: ($f.visible // false), legend: $f.display.legend}
+    and .layers[0].paint == $f.display.layers[0].paint' "$STYLE"
   [ "$status" -eq 0 ]
 }
 
@@ -174,7 +177,7 @@ assert_no_temp_files() {
   ((float_sum > 0 && float_sum < byte_sum))
 }
 
-@test "LAYER_NODATA sets the nodata of a source that does not declare it" {
+@test "source.nodata sets the nodata of a source that does not declare it" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
@@ -187,7 +190,7 @@ assert_no_temp_files() {
   [ "$status" -eq 0 ]
   (($(level_sum "$COG" 5) > declared))
 
-  echo 'LAYER_NODATA=255' >>"${PIPELINE_LAYERS_DIR}/cover.env"
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.source.nodata = 255'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [ "$(level_sum "$COG" 5)" -eq "$declared" ]
@@ -199,23 +202,23 @@ assert_no_temp_files() {
   [ "$status" -eq 1 ]
   [[ $output == *"no cover"* ]]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/empty.cog.tif" ]
-  [ ! -e "$MANIFEST" ]
+  [ ! -e "$BUILD" ]
   assert_no_temp_files
 }
 
 @test "building one raster layer keeps the vector layer's entry; style.json has both" {
-  cp "${PIPELINE_ROOT}"/tests/layers/sample.env "${PIPELINE_ROOT}"/tests/layers/sample.style.json "$PIPELINE_LAYERS_DIR"
+  cp "${PIPELINE_ROOT}/tests/layers/sample.yaml" "$PIPELINE_LAYERS_DIR"
   run "$RUN" sample
   [ "$status" -eq 0 ]
   local before
-  before=$(jq -c '.layers[] | select(.name == "sample")' "$MANIFEST")
+  before=$(jq -c '.layers[] | select(.name == "sample")' "$BUILD")
 
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output != *"layer sample: start"* ]]
-  [ "$(jq -c '.layers[] | select(.name == "sample")' "$MANIFEST")" = "$before" ]
-  run jq -r '[.layers[] | "\(.name):\(.type)"] | join(",")' "$MANIFEST"
+  [ "$(jq -c '.layers[] | select(.name == "sample")' "$BUILD")" = "$before" ]
+  run jq -r '[.layers[] | "\(.name):\(.type)"] | join(",")' "$BUILD"
   [ "$output" = "cover:raster,sample:vector" ]
 
   # style.json: a cog:// raster-dem source and the color-relief layer, under
@@ -236,8 +239,8 @@ assert_no_temp_files() {
   local before
   before=$(level_sum "$COG" 0)
 
-  jq '.symbology.color = "#ff0000"' "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" \
-    >"${PIPELINE_LAYERS_DIR}/cover.style.json"
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" \
+    '.display.layers[0].paint["color-relief-color"][6] = "rgba(255, 0, 0, 1)"'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [ "$(level_sum "$COG" 0)" -eq "$before" ]
@@ -245,110 +248,66 @@ assert_no_temp_files() {
   [ "$output" = "255 rgba(255, 0, 0, 1)" ]
 }
 
-@test "a bad raster display config fails before tiling and keeps the previous COG" {
+@test "a bad raster layer file fails before preparing and keeps the previous COG" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
   local before
   before=$(sha256sum "$COG")
 
-  # A vector shorthand on a raster layer.
-  cp "${PIPELINE_ROOT}/tests/fixtures/minimal.style.json" "${PIPELINE_LAYERS_DIR}/cover.style.json"
+  # A pop-up on a raster layer.
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.display.popup = {"title": "{x}", "sections": [{"description": "x"}]}'
   run "$RUN" cover
   [ "$status" -eq 1 ]
-  [[ $output == *'needs "symbology" with "geometry": "raster"'* ]]
+  [[ $output == *"cover.yaml: at '/display/popup'"* ]]
   [[ $output != *"preparing"* ]]
 
-  # A pop-up on a raster layer.
-  jq '.popup = {title: {attribute: "x"}, stats: []}' "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" \
-    >"${PIPELINE_LAYERS_DIR}/cover.style.json"
+  # Vector settings on a raster layer.
+  raster_layer cover byte '.fields.keep = ["a"]' '.source.id = "id"'
   run "$RUN" cover
   [ "$status" -eq 1 ]
-  [[ $output == *"raster layers are display only"* ]]
-
-  # A colour that is not #rrggbb.
-  jq '.symbology.color = "green"' "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" \
-    >"${PIPELINE_LAYERS_DIR}/cover.style.json"
-  run "$RUN" cover
-  [ "$status" -eq 1 ]
-  [[ $output == *"/symbology/color must match pattern"* ]]
+  [[ $output == *"cover.yaml: at '/fields'"* ]]
+  [[ $output == *"cover.yaml: at '/source/id'"* ]]
 
   [ "$(sha256sum "$COG")" = "$before" ]
   assert_no_temp_files
 }
 
-@test "the raster shorthand on a vector layer is rejected" {
-  cp "${PIPELINE_ROOT}/tests/layers/sample.env" "$PIPELINE_LAYERS_DIR"
-  cp "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" "${PIPELINE_LAYERS_DIR}/sample.style.json"
-  run "$RUN" sample
-  [ "$status" -eq 1 ]
-  [[ $output == *'"geometry": "raster" is for raster layers only'* ]]
-}
-
-@test "raster config checks: LAYER_TYPE, max zoom limit, LAYER_NODATA" {
-  raster_layer cover byte 'LAYER_TYPE=grid'
+@test "raster layer checks: max zoom limit, nodata" {
+  raster_layer cover byte '.processing.maxzoom = 15'
   run "$RUN" cover
   [ "$status" -eq 1 ]
-  [[ $output == *"LAYER_TYPE must be vector or raster"* ]]
+  [[ $output == *"cover.yaml: at '/processing/maxzoom'"* ]]
 
-  raster_layer cover byte 'LAYER_MAX_ZOOM=15'
+  raster_layer cover byte '.source.nodata = "none"'
   run "$RUN" cover
   [ "$status" -eq 1 ]
-  [[ $output == *"LAYER_MAX_ZOOM must be at most 14"* ]]
+  [[ $output == *"cover.yaml: at '/source/nodata'"* ]]
 
-  raster_layer cover byte 'LAYER_NODATA=none'
+  raster_layer cover byte '.processing.minzoom = 9'
   run "$RUN" cover
   [ "$status" -eq 1 ]
-  [[ $output == *"LAYER_NODATA must be a number or nan"* ]]
+  [[ $output == *"processing: minzoom (9) is above maxzoom (8)"* ]]
 }
 
-@test "the repo's raster layer configs pass the pre-check" {
-  run node "$TOOL" check "${PIPELINE_ROOT}/layers/forest.style.json" \
-    "${PIPELINE_ROOT}/layers/agriculture.style.json"
-  [ "$status" -eq 0 ]
-  [[ $output == *"forest.style.json: ok"* ]]
-  [[ $output == *"agriculture.style.json: ok"* ]]
-}
-
-@test "a raster built as PNG tiles before COGs is stale, and a rebuild replaces it" {
+@test "--style-only of a layer built as raster but now vector is an error" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  # Make the build look like one from before COGs (ADR 0008).
-  mv "$COG" "${PIPELINE_OUTPUT_DIR}/cover.pmtiles"
-  jq '.layers[0] |= (.file = "cover.pmtiles" | .format = "png" | .tile_count = 10
-    | .max_tile_bytes = 100 | del(.width, .height, .block_size, .overview_count, .zooms))' \
-    "$MANIFEST" >"${MANIFEST}.new"
-  mv "${MANIFEST}.new" "$MANIFEST"
-
-  run "$RUN" --status --json cover
-  [ "$status" -eq 0 ]
-  run jq -e '.layers[0] | .state == "stale" and .format == "png" and .tile_count == 10
-    and .archive_bytes > 0 and any(.notes[]; test("rebuild it as a COG"))' <<<"$output"
-  [ "$status" -eq 0 ]
-
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  [[ $output == *"removed the old archive cover.pmtiles"* ]]
-  [ -s "$COG" ]
-  [ ! -e "${PIPELINE_OUTPUT_DIR}/cover.pmtiles" ]
-  run "$RUN" --status --json cover
-  [ "$status" -eq 0 ]
-  run jq -e '.layers[0] | .state == "current" and .format == "cog" and .width > 0
-    and .tile_count == null' <<<"$output"
-  [ "$status" -eq 0 ]
+  layer_file "${PIPELINE_LAYERS_DIR}/cover.yaml"
+  run "$RUN" --style-only cover
+  [ "$status" -eq 1 ]
+  [[ $output == *"built as a raster layer, but cover.yaml is a vector layer now: rebuild it"* ]]
 }
 
-@test "--remove deletes a raster layer's COG and any older .pmtiles" {
+@test "--remove deletes a raster layer's COG" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  echo old >"${PIPELINE_OUTPUT_DIR}/cover.pmtiles"
   run "$RUN" --remove cover
   [ "$status" -eq 0 ]
   [ ! -e "$COG" ]
-  [ ! -e "${PIPELINE_OUTPUT_DIR}/cover.pmtiles" ]
-  run jq -e '.layers == []' "$MANIFEST"
+  run jq -e '.layers == []' "$BUILD"
   [ "$status" -eq 0 ]
 }
 
@@ -392,11 +351,11 @@ assert_no_temp_files() {
   local prepared before levels sum
   prepared=$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')
   before=$(stat -c %y "$prepared")
-  levels=$(jq -c '.layers[0].zooms' "$MANIFEST")
+  levels=$(jq -c '.layers[0].zooms' "$BUILD")
   sum=$(level_sum "$COG" 0)
 
   # Another zoom range: the same prepared source.
-  sed -i 's/^LAYER_MAX_ZOOM=8$/LAYER_MAX_ZOOM=7/' "${PIPELINE_LAYERS_DIR}/cover.env"
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.processing.maxzoom = 7'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output == *"prepared source cached"* ]]
@@ -404,19 +363,19 @@ assert_no_temp_files() {
   [ "$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')" = "$prepared" ]
   [ "$(stat -c %y "$prepared")" = "$before" ]
 
-  sed -i 's/^LAYER_MAX_ZOOM=7$/LAYER_MAX_ZOOM=8/' "${PIPELINE_LAYERS_DIR}/cover.env"
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.processing.maxzoom = 8'
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  [ "$(jq -c '.layers[0].zooms' "$MANIFEST")" = "$levels" ]
+  [ "$(jq -c '.layers[0].zooms' "$BUILD")" = "$levels" ]
   [ "$(level_sum "$COG" 0)" -eq "$sum" ]
 }
 
-@test "prepare: a changed source or LAYER_NODATA is prepared again, replacing the old file" {
+@test "prepare: a changed source or source.nodata is prepared again, in place" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  local first
-  first=$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')
+  local cache="${PIPELINE_WORK_DIR}/raster" first
+  first=$(jq -c . "${cache}/cover.json")
 
   # Same path, new modification time.
   touch -d '2020-01-01' "${PIPELINE_INPUT_DIR}/cover.tif"
@@ -424,16 +383,16 @@ assert_no_temp_files() {
   [ "$status" -eq 0 ]
   [[ $output == *"preparing"* ]]
   local second
-  second=$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')
-  [ -n "$second" ] && [ "$second" != "$first" ]
-  [ "$(find "${PIPELINE_WORK_DIR}/raster" -type f | wc -l)" -eq 2 ] # .tif and .json
+  second=$(jq -c . "${cache}/cover.json")
+  [ "$second" != "$first" ]
+  [ "$(find "$cache" -type f | sort | paste -sd' ')" = "${cache}/cover.json ${cache}/cover.tif" ]
 
-  echo 'LAYER_NODATA=255' >>"${PIPELINE_LAYERS_DIR}/cover.env"
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.source.nodata = 255'
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output == *"preparing"* ]]
-  [ "$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif' | wc -l)" -eq 1 ]
-  [ "$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')" != "$second" ]
+  [ "$(jq -r .nodata "${cache}/cover.json")" = 255 ]
+  [ "$(find "$cache" -name '*.tif' | wc -l)" -eq 1 ]
 }
 
 @test "prepare: an empty PIPELINE_WORK_DIR caches nothing" {
@@ -468,6 +427,7 @@ assert_no_temp_files() {
 }
 
 # raster_fn FUNCTION ARG...: run a lib/raster.sh function in a subshell.
+# raster_fn FUNCTION ARG...: run a lib/raster.sh function in a subshell.
 raster_fn() {
   (
     # shellcheck source=lib/log.sh
@@ -478,216 +438,113 @@ raster_fn() {
   )
 }
 
-@test "resampling: average when the max zoom's pixel is coarser on the ground than the source's" {
-  # 30 m data at Canada's middle (62.4 N): z12 is 17.7 m on the ground, z11
-  # 35.4 m.
-  run raster_fn raster_resampling 30 62.4 12
+@test "raster_method: mode when the max zoom's pixel is coarser than the source's" {
+  # A 30 m source at about 46 N is about 43 m in EPSG:3857: z12 is 38.2 m,
+  # z11 76.4 m.
+  run raster_fn raster_method 43.2 12
   [ "$status" -eq 0 ]
   [ "$output" = near ]
-  run raster_fn raster_resampling 30 62.4 11
-  [ "$output" = average ]
-  # At the equator z12 is 38.2 m: coarser than 30 m, finer than 40 m.
-  run raster_fn raster_resampling 30 0 12
-  [ "$output" = average ]
-  run raster_fn raster_resampling 40 0 12
-  [ "$output" = near ]
-  # The 1 km fixture near 52 N: z6 is about 1500 m, z7 about 750 m.
-  run raster_fn raster_resampling 1000 52 6
-  [ "$output" = average ]
-  run raster_fn raster_resampling 1000 52 7
-  [ "$output" = near ]
+  run raster_fn raster_method 43.2 11
+  [ "$output" = mode ]
 }
 
-@test "the source pixel's ground size and centre latitude, projected or geographic" {
+@test "raster_extent: GDAL's extent widened to whole tiles at the max zoom" {
+  local tile=156543.03392804097 # z8: 40075016.68557849 / 2^8
+  run raster_fn raster_extent 8 -9000000.5 5000000.5 -8000000.5 6000000.5
+  [ "$status" -eq 0 ]
+  read -r x0 y0 x1 y1 <<<"$output"
+  awk -v t="$tile" -v x0="$x0" -v y0="$y0" -v x1="$x1" -v y1="$y1" 'BEGIN {
+    o = 20037508.342789244
+    for (i = 1; i <= 4; i++) {
+      v = (i == 1 ? x0 + o : i == 2 ? o - y0 : i == 3 ? x1 + o : o - y1) / t
+      if (v - int(v + 0.5) > 1e-6 || int(v + 0.5) - v > 1e-6) exit 1
+    }
+    exit !(x0 <= -9000000.5 && x0 > -9000000.5 - t && y0 <= 5000000.5 && y0 > 5000000.5 - t \
+      && x1 >= -8000000.5 && x1 < -8000000.5 + t && y1 >= 6000000.5 && y1 < 6000000.5 + t)
+  }'
+  # Already on whole tiles: unchanged.
+  run raster_fn raster_extent 8 "$x0" "$y0" "$x1" "$y1"
+  [ "$output" = "$x0 $y0 $x1 $y1" ]
+}
+
+@test "the source's pixel and extent come from GDAL's suggested Web Mercator grid" {
   "$MAKE" byte "${BATS_TEST_TMPDIR}/b.tif"
-  run raster_fn raster_ground_pixel "${BATS_TEST_TMPDIR}/b.tif"
+  run raster_fn raster_suggested "${BATS_TEST_TMPDIR}/b.tif" "$BATS_TEST_TMPDIR"
   [ "$status" -eq 0 ]
-  read -r size lat <<<"$output"
-  awk -v s="$size" -v l="$lat" 'BEGIN { exit !(s == 1000 && l > 45 && l < 60) }'
-
-  # Geographic, 0.01 degrees: about 1113 m north to south, the larger side.
-  gdalwarp -q -t_srs EPSG:4326 -tr 0.01 0.01 "${BATS_TEST_TMPDIR}/b.tif" "${BATS_TEST_TMPDIR}/g.tif"
-  run raster_fn raster_ground_pixel "${BATS_TEST_TMPDIR}/g.tif"
-  [ "$status" -eq 0 ]
-  read -r size lat <<<"$output"
-  awk -v s="$size" -v l="$lat" 'BEGIN { exit !(s > 1110 && s < 1115 && l > 45 && l < 60) }'
-
-  # No CRS in the file: the one given (LAYER_SOURCE_SRS) is used.
-  local crs
-  crs=$(gdalsrsinfo -o proj4 "${BATS_TEST_TMPDIR}/b.tif")
-  cp "${BATS_TEST_TMPDIR}/b.tif" "${BATS_TEST_TMPDIR}/n.tif"
-  gdal raster edit --crs none "${BATS_TEST_TMPDIR}/n.tif"
-  [ "$(gdalinfo -json "${BATS_TEST_TMPDIR}/n.tif" | jq -r '.coordinateSystem.wkt // ""')" = "" ]
-  run raster_fn raster_ground_pixel "${BATS_TEST_TMPDIR}/n.tif" "$crs"
-  [ "$status" -eq 0 ]
-  read -r size lat <<<"$output"
-  awk -v s="$size" -v l="$lat" 'BEGIN { exit !(s == 1000 && l > 45 && l < 60) }'
+  read -r res x0 y0 x1 y1 <<<"$output"
+  # 1 km cells near 52 N: about 1.6 km in EPSG:3857; around Winnipeg.
+  awk -v r="$res" -v x0="$x0" -v x1="$x1" -v y0="$y0" -v y1="$y1" \
+    'BEGIN { exit !(r > 1400 && r < 1800 && x0 < x1 && y0 < y1 && x0 > -11000000 && x1 < -9500000) }'
+  [ ! -e "${BATS_TEST_TMPDIR}/suggested.vrt" ]
 }
 
-@test "a max zoom coarser than the source averages, binary by majority, overviews like a finer build's" {
+@test "a max zoom coarser than the source: mode, binary, overviews close to a finer build's" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
   [[ $output == *"resampling near"* ]]
-  [[ $output != *"majority"* ]]
-  [ "$(jq -r '.layers[0] | "\(.resampling) \(.max_zoom_values)"' "$MANIFEST")" = "near near" ]
+  [ "$(jq -r '.layers[0].resampling' "$BUILD")" = near ]
   # z5 in the z8 build: three overviews down.
   local overview
   overview=$(level_sum "$COG" 3)
 
-  # z6 is about 1500 m on the ground, coarser than the 1 km source.
-  sed -i 's/^LAYER_MAX_ZOOM=8$/LAYER_MAX_ZOOM=6/' "${PIPELINE_LAYERS_DIR}/cover.env"
+  # z7 (about 1.2 km in EPSG:3857) is finer than the source (about 1.6 km),
+  # z6 (about 2.4 km) coarser.
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.processing.maxzoom = 7'
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  [[ $output == *"resampling average"* ]]
-  [[ $output == *"binary by majority"* ]]
-  [ "$(jq -r '.layers[0] | "\(.resampling) \(.max_zoom_values)"' "$MANIFEST")" = "average majority" ]
+  [[ $output == *"resampling near"* ]]
+  set_layer "${PIPELINE_LAYERS_DIR}/cover.yaml" '.processing.maxzoom = 6'
+  run "$RUN" cover
+  [ "$status" -eq 0 ]
+  [[ $output == *"resampling mode"* ]]
+  [ "$(jq -r '.layers[0].resampling' "$BUILD")" = mode ]
   # Only 0 and 255 at the max zoom ...
   run level_values "$COG" 0
   [ "$status" -eq 0 ]
   [ "$(sort -nu <<<"$output" | paste -sd' ')" = "0 255" ]
-  # ... and the first overview has the same share covered as the z8
-  # build's z5 overview, within 2%.
-  local averaged
-  averaged=$(level_sum "$COG" 1)
-  awk -v a="$averaged" -v b="$overview" 'BEGIN { d = a - b; if (d < 0) d = -d; exit !(d <= b * 0.02) }'
+  # ... and the first overview has about the share covered of the z8
+  # build's z5 overview, within 5%.
+  local coarse
+  coarse=$(level_sum "$COG" 1)
+  awk -v a="$coarse" -v b="$overview" 'BEGIN { d = a - b; if (d < 0) d = -d; exit !(d <= b * 0.05) }'
 }
 
-# reference_warp MAX_ZOOM METHOD OUT: the cover layer's prepared source
-# (in the work dir) warped and given overviews down to z3 as the pipeline
-# does before the COG copy (raster_warp, raster_overviews).
-reference_warp() {
-  local prepared
-  prepared=$(find "${PIPELINE_WORK_DIR}/raster" -name '*.tif')
-  [ "$(wc -l <<<"$prepared")" -eq 1 ]
-  raster_fn raster_warp "$prepared" "$(raster_fn raster_snap_zoom 3 "$1")" "$1" "$3" "$2"
-  raster_fn raster_overviews "$3" "$(($1 - 3))"
-}
-
-@test "majority: 255 where the averaged share is at least 128; the overviews are the full averaged shares" {
-  raster_layer cover byte 'LAYER_MAX_ZOOM=6'
+@test "mode: the max zoom is 255 where most of the pixel is covered" {
+  raster_layer cover byte '.processing.maxzoom = 6'
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  run jq -e '.metadata.IMAGE_STRUCTURE.LAYOUT == "COG" and (.bands[0] | .type == "Byte"
-    and .block == [256, 256] and (has("noDataValue") | not) and (.overviews | length) == 3)' \
-    <<<"$(gdalinfo -json "$COG")"
-  [ "$status" -eq 0 ]
-  local ref="${BATS_TEST_TMPDIR}/ref.tif"
-  reference_warp 6 average "$ref"
+  # The share covered on the same grid, by GDAL's average.
+  local prepared="${PIPELINE_WORK_DIR}/raster/cover.tif" ref="${BATS_TEST_TMPDIR}/ref.tif" grid
+  grid=$(raster_fn raster_suggested "$prepared" "$BATS_TEST_TMPDIR")
+  read -r -a grid <<<"$grid"
+  # shellcheck disable=SC2046 # four numbers.
+  raster_fn raster_warp "$prepared" 6 average "$ref" $(raster_fn raster_extent 6 "${grid[@]:1}")
 
-  # The max zoom: the averaged share, 0/255 by majority. Shares below and
-  # above half, not only 0 and 255, are in the averaged raster.
-  run paste <(level_values "$ref" 0) <(level_values "$COG" 0)
+  run paste <(gdal_translate -q -of XYZ "$ref" /vsistdout/ | awk '{ print $3 }') \
+    <(gdal_translate -q -of XYZ "$COG" /vsistdout/ | awk '{ print $3 }')
   [ "$status" -eq 0 ]
-  run awk '$2 != ($1 >= 128 ? 255 : 0) { bad++ }
-    $1 > 0 && $1 < 128 { low++ } $1 >= 128 && $1 < 255 { high++ }
-    END { printf "%d %d %d %d\n", bad, low, high, NR }' <<<"$output"
-  read -r bad low high count <<<"$output"
-  ((bad == 0 && low > 0 && high > 0 && count > 1000))
-
-  # Every overview: the averaged one, value for value, with partial shares
-  # (so averaged from the full shares, not from the binary max zoom).
-  local level
-  for level in 1 2 3; do
-    cmp <(level_values "$ref" "$level") <(level_values "$COG" "$level")
-  done
-  [ "$(level_values "$COG" 3 | awk '$1 > 0 && $1 < 255' | wc -l)" -gt 0 ]
-  assert_no_temp_files
+  # Clearly more or less than half covered: 255 or 0. Shares near half may
+  # go either way.
+  run awk '($1 > 140 && $2 != 255) || ($1 < 115 && $2 != 0) { bad++ }
+    $1 > 0 && $1 < 255 { partial++ } END { printf "%d %d %d\n", bad, partial, NR }' <<<"$output"
+  read -r bad partial count <<<"$output"
+  ((bad == 0 && partial > 100 && count > 1000))
 }
 
-@test "near: the COG is the warped raster and its overviews as they are" {
+@test "the COG driver does not warp again: the warped raster is on its tiling scheme" {
   raster_layer cover byte
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  local ref="${BATS_TEST_TMPDIR}/ref.tif"
-  reference_warp 8 near "$ref"
-  raster_fn raster_cog "$ref" "${BATS_TEST_TMPDIR}/ref.cog.tif"
-  [ "$(sha256sum <"${BATS_TEST_TMPDIR}/ref.cog.tif")" = "$(sha256sum <"$COG")" ]
-}
-
-# The 8 grey levels of LAYER_GREY_LEVELS=8: round(k * 255 / 7), k = 0 to 7.
-GREY8="0 36 73 109 146 182 219 255"
-
-@test "LAYER_GREY_LEVELS must be an integer from 2 to 256" {
-  local bad
-  for bad in 1 257 abc 08 ''; do
-    raster_layer cover byte "LAYER_GREY_LEVELS=${bad}"
-    run "$RUN" cover
-    [ "$status" -eq 1 ]
-    [[ $output == *"LAYER_GREY_LEVELS must be an integer from 2 to 256"* ]]
-  done
-  [ ! -e "$COG" ]
-}
-
-@test "the default of 256 grey levels adds no step and gives the same COG" {
-  raster_layer cover byte 'LAYER_MAX_ZOOM=6'
-  run "$RUN" cover
+  local prepared="${PIPELINE_WORK_DIR}/raster/cover.tif" warped="${BATS_TEST_TMPDIR}/w.tif" grid
+  grid=$(raster_fn raster_suggested "$prepared" "$BATS_TEST_TMPDIR")
+  read -r -a grid <<<"$grid"
+  # shellcheck disable=SC2046 # four numbers.
+  raster_fn raster_warp "$prepared" 8 near "$warped" $(raster_fn raster_extent 8 "${grid[@]:1}")
+  run env CPL_DEBUG=COG bash -c "source '${PIPELINE_ROOT}/lib/log.sh' &&
+    source '${PIPELINE_ROOT}/lib/raster.sh' &&
+    raster_cog '$warped' 8 5 '${BATS_TEST_TMPDIR}/c.cog.tif' '$BATS_TEST_TMPDIR'"
   [ "$status" -eq 0 ]
-  [[ $output != *"grey levels"* ]]
-  [ "$(jq '.layers[0].grey_levels' "$MANIFEST")" -eq 256 ]
-  local before
-  before=$(sha256sum <"$COG")
-
-  echo 'LAYER_GREY_LEVELS=256' >>"${PIPELINE_LAYERS_DIR}/cover.env"
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  [[ $output != *"grey levels"* ]]
-  [ "$(sha256sum <"$COG")" = "$before" ]
-}
-
-@test "LAYER_GREY_LEVELS=8: every overview holds only 8 values, from the full shares, and cover never becomes 0" {
-  # z6 averages at the max zoom (coarser than the 1 km source), so the max
-  # zoom is binary by majority and the 8 levels are in the overviews.
-  raster_layer cover byte 'LAYER_MAX_ZOOM=6'
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  cp "$COG" "${BATS_TEST_TMPDIR}/full.cog.tif"
-
-  echo 'LAYER_GREY_LEVELS=8' >>"${PIPELINE_LAYERS_DIR}/cover.env"
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  [[ $output == *"8 grey levels"* ]]
-  [ "$(jq '.layers[0].grey_levels' "$MANIFEST")" -eq 8 ]
-  # Still a valid COG: the same layout, block size and overviews.
-  run jq -e '.metadata.IMAGE_STRUCTURE.LAYOUT == "COG" and (.bands[0] | .type == "Byte"
-    and .block == [256, 256] and (has("noDataValue") | not) and (.overviews | length) == 3)' \
-    <<<"$(gdalinfo -json "$COG")"
-  [ "$status" -eq 0 ]
-
-  # The max zoom: binary by majority, as with 256 levels.
-  cmp <(level_values "${BATS_TEST_TMPDIR}/full.cog.tif" 0) <(level_values "$COG" 0)
-  [ "$(level_values "$COG" 0 | sort -nu | paste -sd' ')" = "0 255" ]
-
-  local level small=0
-  for level in 1 2 3; do
-    # Only the 8 values in every overview ...
-    run level_values "$COG" "$level"
-    [ "$status" -eq 0 ]
-    run comm -23 <(sort -u <<<"$output") <(tr ' ' '\n' <<<"$GREY8" | sort)
-    [ "$status" -eq 0 ]
-    [ -z "$output" ]
-    # ... each the level nearest the full share of the 256-level build
-    # (within half a step, 18.2), so the overviews average the full shares;
-    # 0 only where that is 0, and any cover at least 36.
-    run paste <(level_values "${BATS_TEST_TMPDIR}/full.cog.tif" "$level") \
-      <(level_values "$COG" "$level")
-    [ "$status" -eq 0 ]
-    run awk '{ d = $2 - $1; if (d < 0) d = -d }
-      ($1 == 0) != ($2 == 0) || ($1 > 0 && $1 < 18 && $2 != 36) || ($1 >= 18 && d > 18.3) { bad++ }
-      $1 > 0 && $1 < 18 { small++ }
-      END { printf "%d %d\n", bad, small }' <<<"$output"
-    [ "${output% *}" -eq 0 ]
-    small=$((small + ${output#* }))
-  done
-  # Some cover was small enough to round to 0, and did not.
-  ((small > 0))
-  assert_no_temp_files
-}
-
-@test "raster_grey_lut: the nearest level, any cover at least the first level above 0" {
-  run raster_fn raster_grey_lut 8
-  [ "$status" -eq 0 ]
-  [ "$output" = "0:0,1:36,54:36,55:73,91:73,92:109,127:109,128:146,163:146,164:182,200:182,201:219,236:219,237:255,255:255" ]
-  run raster_fn raster_grey_lut 2
-  [ "$output" = "0:0,1:255,255:255" ]
+  [[ $output == *"Skipping reprojection step"* ]]
+  [ "$(sha256sum <"${BATS_TEST_TMPDIR}/c.cog.tif")" = "$(sha256sum <"$COG")" ]
 }

@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 #
-# Pipeline image: GDAL/OGR, tippecanoe, the pmtiles CLI (ADR 0002) and Node
-# for the display config tool (ADR 0007).
+# Pipeline image: GDAL/OGR, tippecanoe, the pmtiles CLI (ADR 0002), and yq,
+# jq and jv to read and check the YAML layer files (design note 04). No
+# Node.
 # Every tool is pinned. Base images are pinned by tag and digest (the
 # multi-arch index) in literal `FROM` lines so Dependabot can propose
 # updates; it does not resolve `ARG` values in `FROM`. To upgrade a tool,
-# change its ARG (and commit or checksum) here. Note upgrades in
-# CHANGELOG.md.
+# change its ARG (and commit or checksum) here.
 
 # ---------------------------------------------------------------------------
 # GDAL base. Every GDAL-based stage below builds from this one, so the pin
@@ -51,6 +51,32 @@ RUN curl -fsSL -o /tmp/pmtiles.tar.gz \
  && rm /tmp/pmtiles.tar.gz
 
 # ---------------------------------------------------------------------------
+# Fetch yq (mikefarah/yq), to read the YAML layer files, and jv
+# (santhosh-tekuri/jsonschema), to check them and the map configs against
+# their JSON Schemas. Static Go binaries, each checked against its checksum.
+FROM gdal AS layerfile
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ARG YQ_VERSION=4.54.1
+ARG YQ_SHA256=8e34fc298390875de416e6a4afcb8cabeceb25d9aa8506c1a2f9353cf702ea5f
+ARG JV_VERSION=6.0.3
+ARG JV_SHA256=36e9ab8481cc8e2cb27c8336decc9abdcbd606b05792ca88d6188e01ec28766b
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL -o /usr/local/bin/yq \
+      "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" \
+ && echo "${YQ_SHA256}  /usr/local/bin/yq" | sha256sum --check --strict - \
+ && chmod +x /usr/local/bin/yq \
+ && curl -fsSL -o /tmp/jv.tar.gz \
+      "https://github.com/santhosh-tekuri/jsonschema/releases/download/v${JV_VERSION}/jv-v${JV_VERSION}-linux-amd64.tar.gz" \
+ && echo "${JV_SHA256}  /tmp/jv.tar.gz" | sha256sum --check --strict - \
+ && tar -xzf /tmp/jv.tar.gz -C /usr/local/bin jv \
+ && rm /tmp/jv.tar.gz
+
+# ---------------------------------------------------------------------------
 # Fetch bats-core (test stage only) from a pinned release tag, checked
 # against its commit.
 FROM gdal AS bats
@@ -69,36 +95,26 @@ RUN git clone --depth 1 --branch "v${BATS_VERSION}" \
  && /src/bats-core/install.sh /opt/bats
 
 # ---------------------------------------------------------------------------
-# The display config tool's packages (ajv, the MapLibre style spec), from
-# its committed lockfile. Plain JavaScript, so they run on the GDAL base.
-FROM node:26.13.1-bookworm-slim@sha256:5df79989ed685e09f0a98019db4cebfb22fb9df1a53c0161664a011f7ff6b0f1 AS style
-WORKDIR /opt/pipeline/style
-COPY style/package.json style/package-lock.json style/.npmrc ./
-RUN npm ci --omit=dev --no-audit --no-fund
-
-# ---------------------------------------------------------------------------
 # Shared base for the runtime and test images.
 FROM gdal AS base
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# jq: write and read manifest.json. libsqlite3/zlib: tippecanoe runtime libs.
-# libatomic1: Node runtime lib.
+# jq: the layer files as JSON, build.json and style.json.
+# libsqlite3/zlib: tippecanoe runtime libs.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends jq libatomic1 libsqlite3-0 zlib1g \
+ && apt-get install -y --no-install-recommends jq libsqlite3-0 zlib1g \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=tippecanoe /opt/tippecanoe/bin/ /usr/local/bin/
 COPY --from=pmtiles /usr/local/bin/pmtiles /usr/local/bin/pmtiles
-COPY --from=style /usr/local/bin/node /usr/local/bin/node
+COPY --from=layerfile /usr/local/bin/yq /usr/local/bin/jv /usr/local/bin/
 
-# Pipeline scripts, layer configs, the display schema and tool, and the
-# synthetic fixture, from the build context (pipeline/).
+# Pipeline scripts, layer files, their schemas and the synthetic fixtures,
+# from the build context (pipeline/).
 COPY bin/ /opt/pipeline/bin/
 COPY lib/ /opt/pipeline/lib/
 COPY layers/ /opt/pipeline/layers/
 COPY schema/ /opt/pipeline/schema/
-COPY style/ /opt/pipeline/style/
-COPY --from=style /opt/pipeline/style/node_modules/ /opt/pipeline/style/node_modules/
 COPY tests/ /opt/pipeline/tests/
 
 # bin/ on the PATH, so the helpers run by name, for example

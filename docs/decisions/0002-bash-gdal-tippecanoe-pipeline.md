@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted (amended by 0007-data-driven-layer-styles: the pipeline image also carries a small pinned Node tool for style validation)
+Accepted. Amended by 0007-data-driven-layer-styles.md (a Node tool in the
+image), which 0015-one-layer-file-and-a-maplibre-style.md reverses: the
+image has no Node, and reads the YAML layer files with `yq`, `jq` and
+`jv`.
 
 ## Context
 

@@ -1,55 +1,10 @@
-import type {
-  LayerSpecification,
-  RasterDEMSourceSpecification,
-  VectorSourceSpecification,
-} from '@maplibre/maplibre-gl-style-spec';
-import type { LayerDefinition } from './types';
+import type { LayerSpecification, SourceSpecification } from '@maplibre/maplibre-gl-style-spec';
+import type { LayerDefinition, Theme } from './types';
 
-/** How the map reads a layer's archive: the protocol its source URL uses. */
-export type ArchiveKind = 'pmtiles' | 'cog';
-
-/** A layer definition turned into the MapLibre source and layers to add. */
+/** A layer's MapLibre sources and style layers, ready to add to the map. */
 export interface MapLibreLayer {
-  sourceId: string;
-  source: (VectorSourceSpecification | RasterDEMSourceSpecification) & { url: string };
-  /** The archive URL without the protocol prefix, as fetched. */
-  archiveUrl: string;
-  /** `cog` for a raster layer's COG, `pmtiles` otherwise. */
-  archiveKind: ArchiveKind;
+  sources: Record<string, SourceSpecification>;
   layers: LayerSpecification[];
-}
-
-/**
- * How a raster layer's COG is read (ADR 0010): through the `cog://`
- * protocol (`@geomatico/maplibre-cog-protocol`, see `../map/cog.ts`), whose
- * `#dem` mode encodes each pixel value, the grey level 0 to 255 that is
- * the share of the pixel covered by 1 cells, as a Terrain-RGB "elevation"
- * for the `color-relief` layer. The pipeline's style.json uses the same
- * source (`pipeline/style/display.mjs`).
- */
-export const RASTER_SOURCE = {
-  type: 'raster-dem',
-  tileSize: 256,
-} as const satisfies Omit<RasterDEMSourceSpecification, 'url'>;
-
-/**
- * How a raster layer built before COGs is read (ADR 0008): grey PNG tiles
- * in a .pmtiles archive, the red channel being the grey level 0 to 255.
- * Kept so an older build still shows until it is rebuilt.
- */
-export const RASTER_PNG_SOURCE = {
-  type: 'raster-dem',
-  tileSize: 256,
-  encoding: 'custom',
-  redFactor: 1,
-  greenFactor: 0,
-  blueFactor: 0,
-  baseShift: 0,
-} as const satisfies Omit<RasterDEMSourceSpecification, 'url'>;
-
-/** Whether an archive file name is a raster layer's COG. */
-export function isCog(file: string): boolean {
-  return file.endsWith('.cog.tif');
 }
 
 /** MapLibre's layout `visibility` value for a shown or hidden layer. */
@@ -58,9 +13,9 @@ export function visibilityValue(visible: boolean): 'visible' | 'none' {
 }
 
 /**
- * The id of a style layer on the map: the configured id prefixed with the
- * layer id, so ids from different layers never clash. The pipeline's
- * `style.json` uses the same rule (`pipeline/style/display.mjs`).
+ * The id of a style layer on the map: the id in the layer file prefixed
+ * with the layer name, so ids from different layers never clash. The
+ * pipeline's `style.json` uses the same rule (`pipeline/lib/style.sh`).
  */
 export function styleLayerId(layerId: string, id: string): string {
   return `${layerId}-${id}`;
@@ -68,56 +23,45 @@ export function styleLayerId(layerId: string, id: string): string {
 
 /** The map ids of a layer's style layers, in draw order (last on top). */
 export function styleLayerIds(def: LayerDefinition): string[] {
-  return def.layers.map((layer) => styleLayerId(def.id, layer.id));
+  return def.layers.map((layer) => layer.id);
 }
 
 /**
- * Builds the MapLibre source and style layers for a definition: each
- * configured style layer with its id prefixed, wired to the layer's source
- * (and, for a vector layer, its source layer), and with its layout
- * `visibility` set. A raster layer gets a `raster-dem` source, read from
- * its COG through `cog://` (or, built before COGs, from PNG tiles in a
- * .pmtiles archive); a vector layer a `vector` source through `pmtiles://`.
+ * A source URL from style.json with its archive resolved against the
+ * tiles URL: the pipeline writes `pmtiles://<layer>.pmtiles` and
+ * `cog://<layer>.cog.tif#dem` relative to style.json (ADR 0010), so the
+ * same file works wherever it is served. A URL with an absolute archive,
+ * or of another protocol, is kept as it is.
  *
- * @param tilesBaseUrl absolute URL of the folder holding the archives,
+ * @param tilesBaseUrl absolute URL of the folder holding style.json,
  *   ending in a slash, for example `http://localhost:5173/tiles/`.
- * @param visible whether the layers start shown; defaults to the
- *   definition's `defaultVisible`.
- * @param themeId the colour theme to draw (ADR 0012), for a layer with
- *   themes: its paint is laid over the style layers'. Defaults to the
- *   layers as given, which are the default theme's.
  */
-export function toMapLibre(
-  def: LayerDefinition,
-  tilesBaseUrl: string,
-  visible: boolean = def.defaultVisible,
-  themeId?: string,
-): MapLibreLayer {
-  const theme = def.themes?.find((t) => t.id === themeId);
-  const archiveUrl = new URL(def.file, tilesBaseUrl).href;
-  const raster = def.type === 'raster';
-  const archiveKind: ArchiveKind = raster && isCog(def.file) ? 'cog' : 'pmtiles';
-  const source: MapLibreLayer['source'] =
-    archiveKind === 'cog'
-      ? { ...RASTER_SOURCE, url: `cog://${archiveUrl}#dem` }
-      : raster
-        ? { ...RASTER_PNG_SOURCE, url: `pmtiles://${archiveUrl}` }
-        : { type: 'vector', url: `pmtiles://${archiveUrl}` };
+export function resolveSourceUrl(url: string, tilesBaseUrl: string): string {
+  const match = /^(pmtiles|cog):\/\/(.*)$/.exec(url);
+  if (!match) return new URL(url, tilesBaseUrl).href;
+  const [, protocol, rest] = match as unknown as [string, string, string];
+  if (/^[a-z][a-z0-9+.-]*:/i.test(rest)) return url;
+  const hash = rest.indexOf('#');
+  const path = hash < 0 ? rest : rest.slice(0, hash);
+  const fragment = hash < 0 ? '' : rest.slice(hash);
+  return `${protocol}://${new URL(path, tilesBaseUrl).href}${fragment}`;
+}
+
+/**
+ * A layer's sources and style layers to add to the map, with their layout
+ * `visibility` set and, for a layer with colour themes (ADR 0012), the
+ * paint of `theme` laid over theirs.
+ */
+export function toMapLibre(def: LayerDefinition, visible: boolean, theme?: Theme): MapLibreLayer {
+  const prefix = `${def.id}-`;
   return {
-    sourceId: def.id,
-    archiveUrl,
-    archiveKind,
-    source,
-    layers: def.layers.map(
-      (layer) =>
-        ({
-          ...layer,
-          id: styleLayerId(def.id, layer.id),
-          source: def.id,
-          ...(raster ? {} : { 'source-layer': def.sourceLayer }),
-          layout: { ...layer.layout, visibility: visibilityValue(visible) },
-          ...(theme?.paint[layer.id] ? { paint: { ...layer.paint, ...theme.paint[layer.id] } } : {}),
-        }) as LayerSpecification,
-    ),
+    sources: def.sources,
+    layers: def.layers.map((layer) => {
+      const set = theme?.paint[layer.id.startsWith(prefix) ? layer.id.slice(prefix.length) : layer.id];
+      // A property left undefined (not set by the style layer) is not added.
+      const paint = set && Object.fromEntries(Object.entries(set).filter(([, v]) => v !== undefined));
+      const styled = paint ? { ...layer, paint: { ...(layer as { paint?: object }).paint, ...paint } } : layer;
+      return { ...styled, layout: { ...styled.layout, visibility: visibilityValue(visible) } } as LayerSpecification;
+    }),
   };
 }

@@ -5,28 +5,23 @@
 # stats, feature id candidates and, for polygons, geometry and coverage
 # checks. Read only; GDAL/OGR based.
 #
-# Usage: inspect.sh [-h|--help] [--json] [--layer NAME] [--no-checks]
+# Usage: inspect.sh [-h|--help] [--json | --starter] [--layer NAME] [--no-checks]
 #                   [--gap-width METRES] INPUT
-#        inspect.sh [-h|--help] [--json] [--no-checks] [--gap-width METRES]
-#                   --config LAYER
 #
 #   INPUT        source dataset. Relative paths are resolved against
-#                PIPELINE_INPUT_DIR (default /data/raw), like LAYER_INPUT. A
+#                PIPELINE_INPUT_DIR (default /data/raw), like a layer's source. A
 #                `.zip`, or a file inside one (`data.zip/dir/file.shp`), is
 #                read in place.
 #   --json       print JSON instead of the human-readable summary.
+#   --starter    print a starter layer file (<layer>.yaml) for the dataset
+#                instead: source, every field (renamed to lower case where
+#                needed), a profile and zooms from the geometry and extent,
+#                one colour and a pop-up listing the fields. It is valid as
+#                printed; check every value before building.
 #   --layer      layer inside the dataset (default: the first one).
 #   --no-checks  skip the geometry and coverage checks (slow on big data).
 #   --gap-width  narrowest gap between neighbours that is not flagged by
 #                the coverage check, in Web Mercator metres (default 100).
-#   --config     inspect configured layer LAYER as its build sees it, instead
-#                of an INPUT: its source data (LAYER_INPUT and
-#                LAYER_SOURCE_LAYER) normalised (the LAYER_FIELDS kept,
-#                renamed, in EPSG:4326, made valid) with its calculated
-#                fields and rule attributes added (ADR 0011), with the map
-#                config's overrides, if any. Each calculated field shows its
-#                expression; the rules table, how many features each action
-#                is recommended for. Checks expressions before a build.
 #
 # Fields: per scalar field the non-null count, distinct count, min and max,
 # and the values with their counts when there are at most 12 distinct ones.
@@ -34,7 +29,7 @@
 # -makevalid), the union of all polygons (parts, holes, overlap as a share of
 # the summed area) and GDAL's coverage check (edges of neighbours that
 # overlap or leave a gap narrower than --gap-width). A contiguous coverage
-# (touching polygons, no overlaps) suits LAYER_PROFILE=coverage.
+# (touching polygons, no overlaps) suits the coverage processing profile.
 #
 # Exit status: 0 on success, 1 if the dataset cannot be read, 2 for a usage
 # error.
@@ -46,18 +41,8 @@ PIPELINE_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 source "${PIPELINE_ROOT}/lib/log.sh"
 # shellcheck source=lib/normalise.sh
 source "${PIPELINE_ROOT}/lib/normalise.sh"
-# For --config: the layer set, its settings and the derived attributes.
-# shellcheck source=lib/config.sh
-source "${PIPELINE_ROOT}/lib/config.sh"
-# shellcheck source=lib/display.sh
-source "${PIPELINE_ROOT}/lib/display.sh"
-# shellcheck source=lib/mapconfig.sh
-source "${PIPELINE_ROOT}/lib/mapconfig.sh"
-# shellcheck source=lib/derive.sh
-source "${PIPELINE_ROOT}/lib/derive.sh"
 
 PIPELINE_INPUT_DIR=${PIPELINE_INPUT_DIR:-/data/raw}
-PIPELINE_LAYERS_DIR=${PIPELINE_LAYERS_DIR:-${PIPELINE_ROOT}/layers}
 
 # Fields with at most this many distinct values get their values listed.
 INSPECT_MAX_VALUES=12
@@ -242,15 +227,15 @@ inspect() {
       }
     | .warnings = ([
         (if .crs == null and .geometry_type != null then
-          "no CRS: set LAYER_SOURCE_SRS (for example EPSG:3347)" else empty end),
+          "no CRS: set source.srs in the layer file (for example EPSG:3347)" else empty end),
         (if .encoding != null and .encoding.source == null then
-          "no encoding declared (.cpg or DBF language id): if text looks wrong, set LAYER_ENCODING (for example ISO-8859-1)" else empty end),
+          "no encoding declared (.cpg or DBF language id): if text looks wrong, set source.encoding in the layer file (for example ISO-8859-1)" else empty end),
         (if $driver == "ESRI Shapefile" then
           (.fields[] | select(.name | length == 10)
-           | "field \(.name) is 10 characters long, maybe cut short by the shapefile format: rename with src:dest in LAYER_FIELDS")
+           | "field \(.name) is 10 characters long, maybe cut short by the shapefile format: rename it with {source_name: output_name} in fields.keep")
          else empty end),
         (if (.id_candidates | length) == 0 then
-          "no unique non-null integer field for LAYER_FEATURE_ID" else empty end),
+          "no unique non-null integer field for source.id" else empty end),
         (if $checks != null and $checks.invalid_geometries > 0 then
           "\($checks.invalid_geometries) invalid geometry location(s): the pipeline makes them valid, but check the source" else empty end),
         (if $checks != null and ($checks.overlap_pct // 0) > 0.001 then
@@ -262,45 +247,134 @@ inspect() {
         ($checks.union_parts < $count and ($checks.overlap_pct // 0) <= 0.001) end)'
 }
 
-# config_data NAME OUT_DIR: for --config, write configured layer NAME's data
-# as its build sees it to OUT_DIR/NAME.geojsonl: normalised, with its
-# calculated fields and rule attributes added (lib/derive.sh), and its plan
-# to OUT_DIR/derive.json if it has any. Prints LAYER_INPUT. Run in a
-# subshell: it loads the layer's settings.
-config_data() {
-  local name=$1 out=$2
-  layer_known "$name" || die "no layer named $name (layers: $(layer_names | paste -sd ' '))"
-  PIPELINE_LOG_PREFIX=$name
-  load_layer_config "$(layer_get "$name" env)"
-  [[ $LAYER_TYPE == vector ]] || die "$name is a $LAYER_TYPE layer: inspect its LAYER_INPUT instead"
-  local data="${out}/${name}.geojsonl" plan=""
-  if layer_derives; then
-    plan="${out}/derive.json"
-    derive_plan "$name" "$name" "$plan"
-  fi
-  normalise "$LAYER_INPUT" "$LAYER_SOURCE_LAYER" "$LAYER_SOURCE_SRS" "$LAYER_ENCODING" \
-    "$data" "${LAYER_FIELDS[@]}"
-  if [[ -n $plan ]]; then derive_apply "$data" "$plan"; fi
-  printf '%s\n' "$LAYER_INPUT"
-}
+# starter JSON: a starter layer file (YAML) from the summary JSON, valid
+# against schema/layer.schema.json as printed. `source` with the path
+# (relative to PIPELINE_INPUT_DIR when under it), the layer and an id (a
+# unique integer field, preferring id, objectid or fid); `fields.keep` with
+# every other scalar field, renamed to a lower case output name where
+# needed (OwnerType: owner_type); the profile from the geometry type (and
+# the coverage check), the max zoom from the extent (z where the extent
+# fills one tile, plus 10, kept to 8 to 14: 12 for Canada); one style
+# layer per geometry type with a one-colour legend and a pop-up listing the
+# fields.
+starter() {
+  local layer_file
+  layer_file=$(jq --arg dir "${PIPELINE_INPUT_DIR%/}/" '
+    def snake:
+      gsub("(?<a>[a-z0-9])(?<b>[A-Z])"; "\(.a)_\(.b)")
+      | gsub("(?<a>[A-Z])(?<b>[A-Z][a-z])"; "\(.a)_\(.b)")
+      | ascii_downcase | gsub("[^a-z0-9]+"; "_") | gsub("^_+|_+$"; "")
+      | if . == "" then "field" elif test("^[0-9]") then "f_" + . else . end;
+    def nice: gsub("_"; " ") | (.[0:1] | ascii_upcase) + .[1:];
+    def scalar: .type | test("^(Integer|Integer64|Real|String|Date|DateTime|Time)$");
 
-# with_config SUMMARY OUT_DIR NAME INPUT: SUMMARY (the JSON from inspect on
-# config_data's output) with `config`: the layer, its input, and its
-# calculated fields and rules with their counts (derive_report), and each
-# calculated field's `calculated` expression.
-with_config() {
-  local summary=$1 out=$2 name=$3 input=$4 plan='{"calculated": [], "rules": null}'
-  local derived='{"calculated_fields": null, "rules": null}'
-  if [[ -s "${out}/derive.json" ]]; then
-    plan=$(jq -c '.' "${out}/derive.json")
-    derived=$(derive_report "${out}/${name}.geojsonl" "${out}/derive.json")
-  fi
-  jq -c --arg name "$name" --arg input "$input" --argjson plan "$plan" --argjson d "$derived" '
-    .driver = "as built" | .config = {layer: $name, input: $input,
-               calculated_fields: $d.calculated_fields, rules: $d.rules}
-    | .fields |= map(.name as $n
-        | ([$plan.calculated[] | select(.name == $n) | .expression] | first) as $e
-        | if $e then . + {calculated: $e} else . end)' <<<"$summary"
+    (.layer | nice) as $title
+    | (.geometry_type // "None") as $g
+    | (if $g | test("Point") then "point" elif $g | test("Line|Curve") then "line"
+       elif $g | test("Polygon|Surface") then "polygon" else "mixed" end) as $kind
+    | ([.id_candidates[] | select(test("^(id|objectid|fid)$"; "i"))] + .id_candidates
+       + [.fields[] | select(.type | test("^Integer")) | .name]
+       + [.fields[] | select(scalar) | .name] | first) as $id
+    # Output names unique: a later clash gets _2, _3, ...
+    | (reduce (.fields[] | select(scalar and .name != $id)) as $f ([];
+         [.[].out] as $used | ($f.name | snake) as $n
+         | . + [$f + {out: (first(range(1; 1000)
+             | if . == 1 then $n else "\($n)_\(.)" end
+             | select(. as $c | $used | index($c) | not)))}])) as $keep
+    | (.extent_wgs84 // null) as $e
+    | (if $e == null then 12
+       else ([($e[2] - $e[0]), ($e[3] - $e[1])] | max) as $span
+         | if $span <= 0 then 14
+           else ((360 / $span | log2 | floor) + 10) | if . < 8 then 8 elif . > 14 then 14 else . end
+           end
+       end) as $maxzoom
+    | {color: "#3182bd", dark: "#08519c"} as $c
+    | {
+        title: $title,
+        visible: true,
+        order: 0,
+        source: ({path: (if .input | startswith($dir) then .input[($dir | length):] else .input end),
+                  layer: .layer}
+                 + (if $id then {id: $id} else {} end)),
+      }
+      + (if ($keep | length) > 0 then
+          {fields: {keep: [$keep[] | if .out == .name then .name else {(.name): .out} end]}}
+         else {} end)
+      + {
+        processing: {
+          profile: (if $kind == "point" then "points"
+                    elif $kind == "polygon" and .coverage_like == true then "coverage"
+                    else "default" end),
+          minzoom: 0,
+          maxzoom: $maxzoom
+        },
+        display: {
+          layers: (
+            [ {id: "fill", type: "fill", geom: ["Polygon", "MultiPolygon"],
+               paint: {"fill-color": $c.color, "fill-opacity": 0.6}},
+              {id: "outline", type: "line", geom: ["Polygon", "MultiPolygon"],
+               paint: {"line-color": $c.dark, "line-width": 0.5}},
+              {id: "line", type: "line", geom: ["LineString", "MultiLineString"],
+               paint: {"line-color": $c.color, "line-width": 1.5}},
+              {id: "circle", type: "circle", geom: ["Point", "MultiPoint"],
+               paint: {"circle-color": $c.color, "circle-radius": 5,
+                       "circle-stroke-color": "#ffffff", "circle-stroke-width": 1}} ]
+            | map(select(.id as $l
+                | {polygon: ["fill", "outline"], line: ["line"], point: ["circle"],
+                   mixed: ["fill", "outline", "line", "circle"]}[$kind] | index($l)))
+            | map((if $kind == "mixed" then
+                    {id, type, filter: ["match", ["geometry-type"], .geom, true, false], paint}
+                   else {id, type, paint} end))),
+          legend: {
+            kind: "single",
+            shape: ({polygon: "square", line: "line", point: "circle", mixed: "square"}[$kind]),
+            items: [{color: $c.color, label: $title}]
+          },
+          popup: {
+            title: ([$keep[] | select(.type == "String") | "{\(.out)}"] | first // "{$id}"),
+            sections: [{blocks: [{type: "attributes",
+              items: ([{label: "ID", value: {featureId: true}}]
+                + [$keep[] | {label: (.out | nice), value: {attribute: .out}}
+                    + (if .type | test("^Integer(64)?$") then {format: "integer"}
+                       elif .type == "Real" then {format: "number"} else {} end)])}]}]
+          }
+        }
+      }' <<<"$1") || die "cannot write a starter layer file"
+  [[ $(jq -r '.source.id // ""' <<<"$layer_file") != "" ]] \
+    || die "no attribute for source.id (the feature id): a vector layer needs a unique integer field"
+
+  # Comments: how it was made and what to check, the summary's warnings,
+  # and notes on the settings that are guesses.
+  local name
+  name=$(jq -r '.layer | ascii_downcase | gsub("[^a-z0-9_-]+"; "_")' <<<"$1")
+  printf '%s\n' "# yaml-language-server: \$schema=../schema/layer.schema.json" "#" \
+    "# A starter layer file printed by inspect.sh --starter: check every value" \
+    "# (title, id, fields, zooms, colours, pop-up). Save it as" \
+    "# pipeline/layers/${name}.yaml, or pipeline/layers.local/ for your own map."
+  jq -r 'if (.warnings | length) > 0 then "#", "# inspect.sh warnings:", (.warnings[] | "# - \(.)") else empty end' <<<"$1"
+  printf '\n'
+  local id_note profile_note zoom_note
+  id_note=$(jq -r 'if (.id_candidates | length) == 0
+    then "not unique and non-null in every feature: check, or add an id to the source"
+    else "" end' <<<"$1")
+  profile_note=$(jq -r '
+    if .geometry_type == null or (.geometry_type | test("Point|Line|Curve|Polygon|Surface") | not)
+      then "mixed or unknown geometry: one style layer per geometry type"
+    elif (.geometry_type | test("Polygon|Surface")) and .coverage_like == null
+      then "coverage not checked (--no-checks): use coverage if the polygons tile the land"
+    else "" end' <<<"$1")
+  zoom_note=$(jq -r 'if .extent_wgs84 == null then "no extent in EPSG:4326 (no CRS?): check" else "from the extent: lower it for a large or dense layer" end' <<<"$1")
+  ID_NOTE=$id_note PROFILE_NOTE=$profile_note ZOOM_NOTE=$zoom_note \
+    yq -p json -o yaml '
+      ... style = ""
+      | .source.id line_comment = strenv(ID_NOTE)
+      | .processing.profile line_comment = strenv(PROFILE_NOTE)
+      | .processing.maxzoom line_comment = strenv(ZOOM_NOTE)
+      | .display.layers head_comment = "One colour: colour by an attribute with a MapLibre expression."
+      | (.display.legend.items[], .display.popup.sections[0].blocks[0].items[],
+         (.display.layers[] | select(has("filter")) | .filter)) style = "flow"
+      | (.. | select(tag == "!!str" and test("^#"))) style = "double"
+    ' <<<"$layer_file"
 }
 
 # human JSON: the summary as text.
@@ -308,9 +382,6 @@ human() {
   jq -r '
     def num: if type == "number" and . != floor then (. * 1000 | round / 1000) else . end;
     def v: if . == null then "-" else (num | tostring) end;
-    (if .config then
-      "Config:     layer \(.config.layer), as built (LAYER_FIELDS, calculated fields, rules) from \(.config.input)"
-     else empty end),
     "Input:      \(.input) (\(.driver))",
     (if (.layers | length) > 1 then "Layers:     \(.layers | join(", ")) (showing \(.layer))" else empty end),
     "Layer:      \(.layer)",
@@ -324,14 +395,7 @@ human() {
     "",
     "Fields:",
     (.fields[] | "  \(.name) \(.type)\(if .width then "(\(.width))" else "" end): non-null \(.non_null | v), distinct \(.distinct | v), min \(.min | v), max \(.max | v)"
-      + (if .calculated then "\n    calculated: \(.calculated)" else "" end)
       + (if .values then "\n    values: " + ([.values[] | "\(.value | v) (\(.count))"] | join(", ")) else "" end)),
-    (if .config.rules then
-      "",
-      "Rules:      \(.config.rules.file)",
-      (.config.rules.actions[] | "  \(.id) (\(.type)): \(.condition)\n    recommended for \(.recommended) feature(s): \(.attribute), \(.reason_attribute)"),
-      (.config.rules.types[] | "  type \(.id): \(.features) feature(s) with an action (\(.attribute))")
-     else empty end),
     (if .checks then
       "",
       "Checks:",
@@ -339,14 +403,14 @@ human() {
       "  union:                   \(.checks.union_parts) part(s), \(.checks.union_holes) hole(s)",
       "  overlap:                 \(.checks.overlap_pct | v)% of summed area",
       "  coverage invalid edges:  \(.checks.coverage_invalid_edges) (gaps under \(.checks.gap_width_m) m)",
-      "  coverage-like:           \(if .coverage_like then "yes (touching, no overlaps): consider LAYER_PROFILE=coverage" else "no" end)"
+      "  coverage-like:           \(if .coverage_like then "yes (touching, no overlaps): consider processing.profile: coverage" else "no" end)"
      else empty end),
     (if (.warnings | length) > 0 then "", "Warnings:", (.warnings[] | "  - \(.)") else empty end)
   '
 }
 
 main() {
-  local json=0 layer="" checks=1 gap=100 input="" config=""
+  local json=0 starter=0 layer="" checks=1 gap=100 input=""
   while (($# > 0)); do
     case $1 in
       -h | --help)
@@ -354,15 +418,15 @@ main() {
         return 0
         ;;
       --json) json=1 ;;
+      --starter) starter=1 ;;
       --no-checks) checks=0 ;;
-      --layer | --gap-width | --config)
+      --layer | --gap-width)
         if (($# < 2)); then
           log_error "$1 needs a value"
           return 2
         fi
         case $1 in
           --layer) layer=$2 ;;
-          --config) config=$2 ;;
           *) gap=$2 ;;
         esac
         shift
@@ -382,11 +446,11 @@ main() {
     esac
     shift
   done
-  if [[ -n $config && ( -n $input || -n $layer ) ]]; then
-    log_error "--config takes the input and layer from the layer's config: give no INPUT or --layer"
+  if ((json && starter)); then
+    log_error "--json and --starter: give one"
     return 2
   fi
-  if [[ -z $input && -z $config ]]; then
+  if [[ -z $input ]]; then
     log_error "no input given"
     usage >&2
     return 2
@@ -397,21 +461,12 @@ main() {
   fi
 
   local dataset summary
-  if [[ -n $config ]]; then
-    local scratch
-    scratch=$(mktemp -d "${TMPDIR:-/tmp}/inspect.XXXXXX")
-    # shellcheck disable=SC2064 # expand now: scratch is local to main.
-    trap "rm -rf '${scratch}'" EXIT
-    resolve_layers "${scratch}/resolved" || return 2
-    input=$(config_data "$config" "$scratch") || return 1
-    summary=$(inspect "${scratch}/${config}.geojsonl" "$input" "" "$checks" "$gap")
-    summary=$(with_config "$summary" "$scratch" "$config" "${input#"${PIPELINE_INPUT_DIR}"/}")
-  else
-    [[ $input == /* ]] || input="${PIPELINE_INPUT_DIR}/${input}"
-    dataset=$(gdal_input_path "$input") || return 1
-    summary=$(inspect "$dataset" "$input" "$layer" "$checks" "$gap")
-  fi
-  if ((json)); then
+  [[ $input == /* ]] || input="${PIPELINE_INPUT_DIR}/${input}"
+  dataset=$(gdal_input_path "$input") || return 1
+  summary=$(inspect "$dataset" "$input" "$layer" "$checks" "$gap")
+  if ((starter)); then
+    starter "$summary"
+  elif ((json)); then
     printf '%s\n' "$summary"
   else
     human <<<"$summary"

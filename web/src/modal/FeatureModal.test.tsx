@@ -8,12 +8,11 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ModalDefinition } from '../layers';
-import type { PopupFeature } from '../popup/content';
+import type { PopupDefinition } from '../layers';
+import { buildPopupContent, type PopupContent, type PopupFeature } from '../popup/content';
 import { sampleModal } from '../test/fixtures';
 import { FeatureModal } from './FeatureModal';
 import { focusableIn, trapTarget } from './focus';
-import { buildModalContent, type ModalContent } from './template';
 
 vi.mock('../chart/FeatureChart', () => ({
   FeatureChart: ({ view }: { view: { title: string; summary: string } }) => (
@@ -26,13 +25,13 @@ vi.mock('../chart/FeatureChart', () => ({
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-const modal = sampleModal.modal as ModalDefinition;
+const modal = sampleModal.popup as PopupDefinition;
 const cedar = {
   id: 7,
   properties: { name: 'Cedar', area_ha: 12345.67, score: 57, v2020: 120, v2021: 180, v2023: 300, v2024: 360 },
 };
-const contentOf = (feature: PopupFeature, layout?: ModalDefinition['layout']) =>
-  buildModalContent(layout ? { ...modal, layout } : modal, feature, sampleModal.title);
+const contentOf = (feature: PopupFeature, layout?: PopupDefinition['layout']) =>
+  buildPopupContent(layout ? { ...modal, layout } : modal, feature, sampleModal.title);
 const content = contentOf(cedar);
 
 let host: HTMLDivElement;
@@ -54,7 +53,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-function render(onClose = vi.fn(), shown: ModalContent = content) {
+function render(onClose = vi.fn(), shown: PopupContent = content) {
   act(() => root.render(<FeatureModal content={shown} onClose={onClose} />));
   return onClose;
 }
@@ -109,6 +108,7 @@ describe('FeatureModal', () => {
     expect([...d.querySelectorAll('figcaption')].map((f) => f.textContent)).toEqual([
       'Values, early and late',
       'Share by year',
+      'Value by year',
     ]);
     expect(d.textContent).toContain('Scored 57 out of 100.');
     expect([...d.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['Has a score of 57']);
@@ -208,6 +208,7 @@ describe('FeatureModal tabs', () => {
     expect([...p.querySelectorAll('figcaption')].map((f) => f.textContent)).toEqual([
       'Values, early and late',
       'Share by year',
+      'Value by year',
     ]);
     expect(p.querySelector('dt')).toBeNull();
   });

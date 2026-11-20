@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted. Amended by 0007-data-driven-layer-styles.md: layers are no longer
-defined in the app's code but read from the pipeline's manifest.json.
+Accepted. Amended by 0007-data-driven-layer-styles.md and then
+0015-one-layer-file-and-a-maplibre-style.md: layers are not defined in
+the app's code but read from the pipeline's `style.json`.
 
 ## Context
 

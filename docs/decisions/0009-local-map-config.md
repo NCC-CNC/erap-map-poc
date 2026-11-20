@@ -2,9 +2,9 @@
 
 ## Status
 
-Accepted. Extends 0007-data-driven-layer-styles.md: the committed layer
-configs stay the shared defaults, and a local file can change them for one
-user's map.
+Superseded by 0015-one-layer-file-and-a-maplibre-style.md: the map
+config is `map.config.yaml` (and `map.pages.yaml`), overriding only
+`source` and `processing`; personal layers go in `pipeline/layers.local/`.
 
 ## Context
 
@@ -55,14 +55,14 @@ shared files in `pipeline/layers/` or opening a pull request (issue #59).
   scratch dir; the committed files are never written.
 - Tiles versus display: `input` and `env` changes need a rebuild;
   everything else, and `enabled`, `disabled` and `map`, is applied by
-  `run.sh --style-only`. `--status` tells them apart through hashes of the
-  effective settings and display config, stored in the manifest entry's
-  `provenance` at build (and display update) time: `stale` versus
-  `restyle`, as for the committed files' modification times.
+  `run.sh --style-only`. `--status` tells them apart through a hash of the
+  effective settings, stored in the manifest entry's `provenance` at
+  build time: `stale` (since #135 the display needs no hash: every run
+  writes `style.json` afresh).
 - **Missing sources**: a full build skips a layer whose source data is
   not found, with a warning and a summary, and fails only if nothing could
   be built; a layer named on the command line still fails. `--status`
-  shows the new state `source missing`, and `disabled` for a layer the
+  shows the new state `source missing`, and a note for a layer the
   config leaves out.
 - **Manifest** (the runtime contract of 0007): top-level `map` (the opening
   view and basemap); per entry `enabled` (false for a layer built before

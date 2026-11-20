@@ -1,8 +1,11 @@
 #!/usr/bin/env bats
-# Full detail at a vector layer's max zoom (LAYER_SIMPLIFY_MAX_ZOOM, ADR
-# 0013): tippecanoe's --simplify-only-low-zooms by default, on the synthetic
-# island coverage from fixtures/make_islands.sh (generated here, not
-# committed). Run in the test image with the other bats files.
+# The max zoom of a vector layer (ADR 0013): every processing preset passes
+# tippecanoe's --simplify-only-low-zooms, so the pipeline alone generalises
+# polygons there (lib/generalise.sh), on the synthetic island coverage from
+# fixtures/make_islands.sh (generated here, not committed). Run in the test
+# image with the other bats files.
+
+load helpers
 
 setup_file() {
   PIPELINE_ROOT=$(cd "${BATS_TEST_DIRNAME}/.." && pwd)
@@ -19,18 +22,28 @@ setup() {
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
   mkdir -p "$PIPELINE_LAYERS_DIR"
   ARCHIVE="${PIPELINE_OUTPUT_DIR}/islands.pmtiles"
-  MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
+  BUILD="${PIPELINE_OUTPUT_DIR}/build.json"
 }
 
-# write_config [LINE...]: the islands layer, z0 to z4 with the coverage
-# profile, plus any extra lines, and a minimal display config. At z4 the
-# zigzag shared border (0.005 degrees either side of -99) is under a tile
-# unit, so tippecanoe's simplification takes it out.
+# write_config [EXPR...]: the islands layer, z0 to z4 with the coverage
+# profile, changed by any yq EXPRs. At z4 the zigzag shared border (0.005
+# degrees either side of -99) is under a tile unit, so tippecanoe's
+# simplification takes it out.
 write_config() {
-  printf '%s\n' 'LAYER_INPUT=islands.geojson' 'LAYER_FIELDS=(id name)' \
-    'LAYER_FEATURE_ID=id' 'LAYER_MIN_ZOOM=0' 'LAYER_MAX_ZOOM=4' \
-    'LAYER_PROFILE=coverage' "$@" >"${PIPELINE_LAYERS_DIR}/islands.env"
-  cp "${PIPELINE_ROOT}/tests/fixtures/minimal.style.json" "${PIPELINE_LAYERS_DIR}/islands.style.json"
+  layer_file "${PIPELINE_LAYERS_DIR}/islands.yaml" '.source.path = "islands.geojson"' \
+    '.fields.keep = ["name"]' '.processing.maxzoom = 4' '.processing.profile = "coverage"' "$@"
+}
+
+# without_full_detail: put a tippecanoe on the PATH that runs the real one
+# without --simplify-only-low-zooms, for this test.
+without_full_detail() {
+  mkdir -p "${BATS_TEST_TMPDIR}/bin"
+  # shellcheck disable=SC2016 # the stub's own $@ and $a, as text.
+  printf '%s\n' '#!/usr/bin/env bash' 'args=()' \
+    'for a in "$@"; do [[ $a == --simplify-only-low-zooms ]] || args+=("$a"); done' \
+    "exec $(command -v tippecanoe) \"\${args[@]}\"" >"${BATS_TEST_TMPDIR}/bin/tippecanoe"
+  chmod +x "${BATS_TEST_TMPDIR}/bin/tippecanoe"
+  export PATH="${BATS_TEST_TMPDIR}/bin:${PATH}"
 }
 
 # generator_options: the tippecanoe options recorded in the archive.
@@ -45,69 +58,50 @@ vertices_at_zoom() {
     -sql "SELECT SUM(ST_NPoints(geometry)) AS n FROM islands WHERE mvt_id = $2" | tail -n 1
 }
 
-@test "by default the max zoom is not simplified: --simplify-only-low-zooms" {
-  write_config
-  run "$RUN" islands
-  echo "$output"
-  [ "$status" -eq 0 ]
-  run generator_options
-  [[ $output == *"--simplify-only-low-zooms"* ]]
-  # With the coverage profile's flags.
-  [[ $output == *"--no-simplification-of-shared-nodes"* ]]
-  [[ $output == *"--drop-smallest-as-needed"* ]]
-  run jq -r '.layers[0].simplify_max_zoom' "$MANIFEST"
-  [ "$output" = false ]
+@test "every preset passes --simplify-only-low-zooms" {
+  local profile
+  for profile in coverage default points; do
+    write_config ".processing.profile = \"${profile}\""
+    run "$RUN" islands
+    echo "$output"
+    [ "$status" -eq 0 ]
+    run generator_options
+    [[ $output == *"--simplify-only-low-zooms"* ]]
+    run jq -r '.layers[0].profile' "$BUILD"
+    [ "$output" = "$profile" ]
+  done
 }
 
-@test "full detail keeps more vertices at the max zoom; lower zooms are simplified either way" {
+@test "the max zoom is simplified gently by the pipeline; 0 keeps full detail" {
+  # Defaults: the pipeline simplifies z4 at 0.5 px.
   write_config
+  run "$RUN" islands
+  [ "$status" -eq 0 ]
+  local gen_max gen_low
+  gen_max=$(vertices_at_zoom 4 1)
+  gen_low=$(vertices_at_zoom 3 1)
+
+  # 0: z4 at full detail, as tippecanoe leaves it (--simplify-only-low-zooms).
+  write_config '.processing.maxzoom_min_part_px = 0' '.processing.maxzoom_simplify_px = 0'
   run "$RUN" islands
   [ "$status" -eq 0 ]
   local full_max full_low
   full_max=$(vertices_at_zoom 4 1)
   full_low=$(vertices_at_zoom 3 1)
 
-  write_config 'LAYER_SIMPLIFY_MAX_ZOOM=true'
-  run "$RUN" islands
-  [ "$status" -eq 0 ]
-  local simple_max simple_low
-  simple_max=$(vertices_at_zoom 4 1)
-  simple_low=$(vertices_at_zoom 3 1)
-
-  echo "z4: full $full_max, simplified $simple_max; z3: $full_low, $simple_low"
-  # The zigzag border (101 vertices) stays at z4 only without simplification.
-  ((full_max > simple_max + 50))
-  ((full_low == simple_low))
-}
-
-@test "LAYER_SIMPLIFY_MAX_ZOOM=true omits the flag and is recorded" {
-  write_config 'LAYER_SIMPLIFY_MAX_ZOOM=true'
+  # Without the flag tippecanoe would simplify z4 itself.
+  without_full_detail
   run "$RUN" islands
   [ "$status" -eq 0 ]
   run generator_options
   [[ $output != *"--simplify-only-low-zooms"* ]]
-  [[ $output == *"--no-simplification-of-shared-nodes"* ]]
-  run jq -r '.layers[0].simplify_max_zoom' "$MANIFEST"
-  [ "$output" = true ]
-}
+  local simple_max
+  simple_max=$(vertices_at_zoom 4 1)
 
-@test "full detail at the max zoom works with low-zoom generalisation" {
-  write_config 'LAYER_GENERALISE_MAX_ZOOM=2'
-  run "$RUN" islands
-  echo "$output"
-  [ "$status" -eq 0 ]
-  [[ $output == *"generalising z0-z2"* ]]
-  run generator_options
-  [[ $output == *"--simplify-only-low-zooms"* ]]
-}
-
-@test "LAYER_SIMPLIFY_MAX_ZOOM other than true or false is rejected" {
-  local value
-  for value in yes TRUE 1 ''; do
-    write_config "LAYER_SIMPLIFY_MAX_ZOOM='$value'"
-    run "$RUN" islands
-    [ "$status" -eq 1 ]
-    [[ $output == *"LAYER_SIMPLIFY_MAX_ZOOM must be true or false"* ]]
-  done
-  [ ! -e "$ARCHIVE" ]
+  echo "z4: generalised $gen_max, full $full_max, tippecanoe $simple_max; z3: $gen_low, $full_low"
+  # The zigzag border (101 vertices) stays at z4 only at full detail.
+  ((full_max > gen_max + 50))
+  ((full_max > simple_max + 50))
+  # Lower zooms are generalised with their own settings either way.
+  ((gen_low < 20 && full_low < 20))
 }

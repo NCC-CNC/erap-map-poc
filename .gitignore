@@ -50,10 +50,10 @@ data/pages/*
 data/work/*
 !data/work/.gitkeep
 
-# Local map config and local-only layer configs (ADR 0009): yours, not
-# shared. map.config.example.json is the committed starting point, and
-# map.config.pages.json the GitHub Pages copy's config (ADR 0014).
+# Your map config (design note 04): yours, not shared.
+# map.config.example.yaml is the committed starting point; map.pages.yaml
+# (the GitHub Pages copy's config, ADR 0014) does not match these.
 /map.config*.json
-!/map.config.example.json
-!/map.config.pages.json
+/map.config*.yaml
+!/map.config.example.yaml
 pipeline/layers.local/

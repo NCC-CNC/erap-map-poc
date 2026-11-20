@@ -4,7 +4,9 @@
 
 Accepted. Extends 0004-docker-compose-and-static-pmtiles.md (another static
 host for the same files) and 0009-local-map-config.md (a committed map
-config, and a `requiredInputs` guard in the schema).
+config, and a `requiredInputs` guard in the schema). Since ADR 0015 the
+config is `map.pages.yaml`, `LAYER_*` settings are `processing` keys and
+`requiredInputs` is `require`.
 
 ## Context
 
@@ -38,7 +40,12 @@ shape the copy:
   grey levels forest was 757 MB and agriculture 143 MB, close to the
   limit, so the raster layers also use `LAYER_GREY_LEVELS` 8 (ADR 0010,
   #92), which about halves them (agriculture's z10 level: 94 MB to
-  49 MB).
+  49 MB). Amended (#140): the grey levels setting is gone. The z10 level
+  is now the majority (mode) and the overviews are averaged from it, so
+  they hold few grey levels anyway: on a 1,200 x 800 km test clip the
+  z10 forest COG was 11.1 MB, against 11.3 MB with 8 grey levels and
+  19.3 MB with 256 before. Roads and field edges thinner than half a
+  z10 pixel now go from the lower zooms too.
 - **Its own output folder.** The compose service `pipeline-pages` is the
   pipeline with that config and `data/pages/` (git-ignored) mounted as its
   output: `docker compose run --rm pipeline-pages`. It never writes

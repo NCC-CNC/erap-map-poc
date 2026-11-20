@@ -22,22 +22,22 @@
 #   -h, --help      this help.
 #
 # Checks before anything is uploaded, each one fatal:
-#   - DIR holds manifest.json and style.json, and every archive the
-#     manifest names (<layer>.pmtiles, <layer>.cog.tif);
+#   - DIR holds build.json and style.json, and every archive the
+#     build.json names (<layer>.pmtiles, <layer>.cog.tif);
 #   - every layer is a committed one (provenance origin `committed`): no
-#     local-only layer from a map config;
+#     personal layer from layers.local/ (origin `local`);
 #   - each layer in REQUIRED_SOURCES below was built from that source
 #     (provenance.source.path), so a non-public source is never published;
 #   - the files total at most 1 GB, the Pages site limit (a warning over
 #     800 MB).
-# Only manifest.json, style.json and those archives are uploaded (with
+# Only build.json, style.json and those archives are uploaded (with
 # --clobber); release assets not among them are removed. Exit status: 0 on
 # success, 1 when a check or step failed, 2 for a usage error.
 set -euo pipefail
 
-# Layers that must come from a given source, as the manifest records it
-# (provenance.source.path, relative to RAW_DIR). Keep in step with
-# `requiredInputs` in map.config.pages.json (scripts/tests checks this).
+# Layers that must come from a given source, as build.json records it
+# (provenance.source.path, relative to RAW_DIR). Keep in step with the
+# source overrides and `require` in map.pages.yaml (scripts/tests checks this).
 REQUIRED_SOURCES=(
   protected_areas=ProtectedConservedArea_2025.gdb
 )
@@ -60,12 +60,12 @@ fail() {
 # mb BYTES: BYTES in MB, one decimal.
 mb() { awk -v b="$1" 'BEGIN { printf "%.1f MB", b / 1000000 }'; }
 
-# manifest_layers MANIFEST: one line per layer entry,
-# NAME|FILE|ORIGIN|SOURCE_PATH, from the pipeline's manifest.json. It is
-# written by jq (two-space indent, one key per line; pipeline/lib/manifest.sh),
+# build_layers BUILD_JSON: one line per layer entry,
+# NAME|FILE|ORIGIN|SOURCE_PATH, from the pipeline's build.json. It is
+# written by jq (two-space indent, one key per line; pipeline/lib/build.sh),
 # so the layer keys are at six spaces, the provenance keys at eight and the
 # source keys at ten. A field not found is empty, which the checks refuse.
-manifest_layers() {
+build_layers() {
   awk '
     function val(s) { sub(/^[^:]*: "/, "", s); sub(/",?[[:space:]]*$/, "", s); return s }
     /^    \{[[:space:]]*$/ { name = ""; file = ""; origin = ""; path = ""; prov = 0; src = 0; inl = 1; next }
@@ -145,15 +145,15 @@ main() {
     fi
   done
 
-  local manifest="${dir}/manifest.json"
-  [[ -s $manifest ]] || fail "no manifest.json in ${dir}: build it first with docker compose run --rm pipeline-pages"
+  local report="${dir}/build.json"
+  [[ -s $report ]] || fail "no build.json in ${dir}: build it first with docker compose run --rm pipeline-pages"
   [[ -s ${dir}/style.json ]] || fail "no style.json in ${dir}: build it first with docker compose run --rm pipeline-pages"
 
   # The layers: committed ones only, each archive present.
-  local files=(manifest.json style.json) problems=() name file origin path
+  local files=(build.json style.json) problems=() name file origin path
   local -A source_of=()
   while IFS='|' read -r name file origin path; do
-    [[ -n $name ]] || { problems+=("a manifest entry with no name"); continue; }
+    [[ -n $name ]] || { problems+=("a build.json entry with no name"); continue; }
     source_of[$name]=$path
     if [[ $origin != committed ]]; then
       problems+=("${name}: not a committed layer (origin '${origin}'): the Pages copy has committed layers only")
@@ -165,8 +165,8 @@ main() {
     else
       files+=("$file")
     fi
-  done < <(manifest_layers "$manifest")
-  ((${#source_of[@]} > 0)) || problems+=("no layers in ${manifest}")
+  done < <(build_layers "$report")
+  ((${#source_of[@]} > 0)) || problems+=("no layers in ${report}")
 
   # The sources that must be used (and nothing else for those layers).
   local required want
@@ -174,7 +174,7 @@ main() {
     name=${required%%=*}
     want=${required#*=}
     if [[ -z ${source_of[$name]+set} ]]; then
-      problems+=("${name}: not in the manifest; the Pages copy needs it, built from ${want}")
+      problems+=("${name}: not in build.json; the Pages copy needs it, built from ${want}")
     elif [[ ${source_of[$name]} != "$want" ]]; then
       problems+=("${name}: built from '${source_of[$name]}', not ${want}: rebuild with docker compose run --rm pipeline-pages")
     fi
@@ -193,7 +193,7 @@ main() {
     total=$((total + bytes))
   done
   if ((total > MAX_BYTES)); then
-    fail "the files total $(mb "$total"), over the 1 GB GitHub Pages limit: lower a layer's max zoom in map.config.pages.json (ADR 0014)"
+    fail "the files total $(mb "$total"), over the 1 GB GitHub Pages limit: lower a layer's max zoom in map.pages.yaml (ADR 0014)"
   fi
   if ((total > WARN_BYTES)); then
     log "warning: the files total $(mb "$total"), close to the 1 GB GitHub Pages limit"

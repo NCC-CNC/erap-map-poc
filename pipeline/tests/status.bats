@@ -1,10 +1,12 @@
 #!/usr/bin/env bats
 # Tests for `run.sh --status` (lib/status.sh) and `run.sh --remove`
-# (manifest_remove in lib/manifest.sh), on copies of the sample layer and a
+# (build_remove in lib/build.sh), on copies of the sample layer and a
 # synthetic raster layer.
 # Run in the test image with the other bats files:
 #   docker build --target test -t erap-pipeline-test pipeline
 #   docker run --rm erap-pipeline-test
+
+load helpers
 
 setup() {
   PIPELINE_ROOT=$(cd "${BATS_TEST_DIRNAME}/.." && pwd)
@@ -13,19 +15,18 @@ setup() {
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
   export PIPELINE_WORK_DIR="${BATS_TEST_TMPDIR}/work"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
-  MANIFEST="${PIPELINE_OUTPUT_DIR}/manifest.json"
+  BUILD="${PIPELINE_OUTPUT_DIR}/build.json"
   mkdir -p "$PIPELINE_INPUT_DIR" "$PIPELINE_LAYERS_DIR"
   # The fixture as source data in the input dir, so tests can touch it.
   cp "${PIPELINE_ROOT}/tests/fixtures/sample.geojson" "${PIPELINE_INPUT_DIR}/"
 }
 
-# add_layer NAME...: copies of the sample layer, reading data/raw.
+# add_layer NAME...: copies of the sample layer, reading the input dir.
 add_layer() {
   local name
   for name in "$@"; do
-    sed 's|^LAYER_INPUT=.*|LAYER_INPUT=sample.geojson|' \
-      "${PIPELINE_ROOT}/tests/layers/sample.env" >"${PIPELINE_LAYERS_DIR}/${name}.env"
-    cp "${PIPELINE_ROOT}/tests/layers/sample.style.json" "${PIPELINE_LAYERS_DIR}/${name}.style.json"
+    cp "${PIPELINE_ROOT}/tests/layers/sample.yaml" "${PIPELINE_LAYERS_DIR}/${name}.yaml"
+    set_layer "${PIPELINE_LAYERS_DIR}/${name}.yaml" '.source.path = "sample.geojson"'
   done
 }
 
@@ -52,7 +53,7 @@ touch_later() {
     == [["alpha", "not built", true, false, "sample.geojson"],
         ["beta", "not built", true, false, "sample.geojson"]]' <<<"$output"
   [ "$status" -eq 0 ]
-  [ ! -e "$MANIFEST" ]
+  [ ! -e "$BUILD" ]
 
   run "$RUN" --status
   [ "$status" -eq 0 ]
@@ -83,54 +84,69 @@ touch_later() {
   [ "${#lines[@]}" -eq 2 ]
 }
 
-@test "--status flags a build older than its configs or source data" {
-  add_layer alpha beta gamma delta
+@test "--status flags a build whose layer file or source data changed since" {
+  add_layer alpha beta gamma delta epsilon
   run "$RUN"
   [ "$status" -eq 0 ]
 
-  touch_later "${PIPELINE_LAYERS_DIR}/alpha.env"
-  touch_later "${PIPELINE_LAYERS_DIR}/beta.style.json"
+  set_layer "${PIPELINE_LAYERS_DIR}/alpha.yaml" '.processing.maxzoom = 7'
+  set_layer "${PIPELINE_LAYERS_DIR}/beta.yaml" '.display.layers[0].paint["fill-opacity"] = 0.5'
   rm "${PIPELINE_OUTPUT_DIR}/gamma.pmtiles"
+  set_layer "${PIPELINE_LAYERS_DIR}/epsilon.yaml" '.fields.keep += ["notes"]'
   [ "$(state_of alpha)" = stale ]
-  [ "$(notes_of alpha)" = "alpha.env changed since the build" ]
-  [ "$(state_of beta)" = restyle ]
-  [ "$(notes_of beta)" = "beta.style.json changed since the display was last updated (--style-only updates it)" ]
+  [ "$(notes_of alpha)" = "source, fields or processing changed since the build (alpha.yaml or the map config's overrides)" ]
+  # The display needs no rebuild: every run writes style.json afresh.
+  [ "$(state_of beta)" = current ]
   [ "$(state_of gamma)" = stale ]
   [ "$(notes_of gamma)" = "archive missing" ]
   [ "$(state_of delta)" = current ]
+  [ "$(state_of epsilon)" = stale ]
+
+  # Only the hashes count: touching a layer file, or a comment, changes
+  # nothing.
+  touch_later "${PIPELINE_LAYERS_DIR}/delta.yaml"
+  echo '# a comment' >>"${PIPELINE_LAYERS_DIR}/delta.yaml"
+  [ "$(state_of delta)" = current ]
 
   touch_later "${PIPELINE_INPUT_DIR}/sample.geojson"
-  [ "$(state_of delta)" = stale ]
-  [ "$(notes_of delta)" = "source data changed since the build" ]
+  [ "$(state_of gamma)" = stale ]
+  [ "$(notes_of epsilon)" = "source, fields or processing changed since the build (epsilon.yaml or the map config's overrides);source data changed since the build" ]
 
   # The table lists the notes under the layer.
   run "$RUN" --status beta
   [ "$status" -eq 0 ]
   [[ ${lines[1]} == "beta "*stale* ]]
   [ "${lines[2]}" = "  - source data changed since the build" ]
-  [ "${lines[3]}" = "  - beta.style.json changed since the display was last updated (--style-only updates it)" ]
+}
+
+@test "--status: a build without a build hash is stale" {
+  add_layer alpha
+  run "$RUN" alpha
+  [ "$status" -eq 0 ]
+  jq '.layers[0].provenance |= (del(.build_sha256) | .env_sha256 = "x")' \
+    "$BUILD" >"${BUILD}.new"
+  mv "${BUILD}.new" "$BUILD"
+  [ "$(state_of alpha)" = stale ]
+  [[ "$(notes_of alpha)" == "source, fields or processing changed since the build"* ]]
 }
 
 @test "--status checks every file of a shapefile and the zip of a zipped input" {
   add_layer shp zipped
   ogr2ogr -f "ESRI Shapefile" "${PIPELINE_INPUT_DIR}/shp.shp" "${PIPELINE_INPUT_DIR}/sample.geojson"
-  sed -i 's|^LAYER_INPUT=.*|LAYER_INPUT=shp.shp|' "${PIPELINE_LAYERS_DIR}/shp.env"
+  set_layer "${PIPELINE_LAYERS_DIR}/shp.yaml" '.source.path = "shp.shp"'
   ogr2ogr -f GeoJSON "/vsizip/${PIPELINE_INPUT_DIR}/z.zip/z/sample.geojson" \
     "${PIPELINE_INPUT_DIR}/sample.geojson"
   [ -s "${PIPELINE_INPUT_DIR}/z.zip" ]
-  sed -i 's|^LAYER_INPUT=.*|LAYER_INPUT=z.zip/z/sample.geojson|' "${PIPELINE_LAYERS_DIR}/zipped.env"
+  set_layer "${PIPELINE_LAYERS_DIR}/zipped.yaml" '.source.path = "z.zip/z/sample.geojson"'
 
   run "$RUN" --status --json
   [ "$status" -eq 0 ]
   run jq -r '[.layers[] | "\(.name):\(.input)"] | join(",")' <<<"$output"
   [ "$output" = "shp:shp.shp,zipped:z.zip/z/sample.geojson" ]
 
-  # Fake builds: a manifest entry built now.
-  mkdir -p "$PIPELINE_OUTPUT_DIR"
-  jq -n --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    '{layers: [{name: "shp", built_at: $now}, {name: "zipped", built_at: $now}]}' >"$MANIFEST"
-  touch "${PIPELINE_OUTPUT_DIR}/shp.pmtiles" "${PIPELINE_OUTPUT_DIR}/zipped.pmtiles"
-  touch -d @0 "${PIPELINE_LAYERS_DIR}"/* "${PIPELINE_INPUT_DIR}"/shp.* "${PIPELINE_INPUT_DIR}/z.zip"
+  run "$RUN"
+  [ "$status" -eq 0 ]
+  touch -d @0 "${PIPELINE_INPUT_DIR}"/shp.* "${PIPELINE_INPUT_DIR}/z.zip"
   [ "$(state_of shp)" = current ]
   [ "$(state_of zipped)" = current ]
 
@@ -139,22 +155,22 @@ touch_later() {
   [ "$(notes_of zipped)" = "source data changed since the build" ]
 }
 
-@test "--status reports invalid configs, missing source data and orphaned builds" {
-  add_layer alpha broken nostyle nodata
+@test "--status reports invalid layer files, missing source data and orphaned builds" {
+  add_layer alpha broken dupid nodata
   run "$RUN" alpha
   [ "$status" -eq 0 ]
-  rm "${PIPELINE_LAYERS_DIR}/alpha.env" "${PIPELINE_LAYERS_DIR}/alpha.style.json"
-  echo 'LAYER_MIN_ZOOM=x' >>"${PIPELINE_LAYERS_DIR}/broken.env"
-  rm "${PIPELINE_LAYERS_DIR}/nostyle.style.json"
-  sed -i 's|^LAYER_INPUT=.*|LAYER_INPUT=missing.gpkg|' "${PIPELINE_LAYERS_DIR}/nodata.env"
+  rm "${PIPELINE_LAYERS_DIR}/alpha.yaml"
+  set_layer "${PIPELINE_LAYERS_DIR}/broken.yaml" '.processing.minzoom = "x"'
+  set_layer "${PIPELINE_LAYERS_DIR}/dupid.yaml" '.display.layers[1].id = "fill"'
+  set_layer "${PIPELINE_LAYERS_DIR}/nodata.yaml" '.source.path = "missing.gpkg"'
 
   run "$RUN" --status --json
   [ "$status" -eq 0 ]
   run jq -r '.layers[] | "\(.name)|\(.state)|\(.notes | join(";"))"' <<<"$output"
-  [ "${lines[0]}" = "alpha|orphan|no alpha.env: remove the build with --remove" ]
-  [[ ${lines[1]} == "broken|invalid|LAYER_MIN_ZOOM must be an integer in "* ]]
-  [ "${lines[2]}" = "nodata|source missing|source data not found: missing.gpkg" ]
-  [ "${lines[3]}" = "nostyle|invalid|no nostyle.style.json" ]
+  [ "${lines[0]}" = "alpha|invalid|no alpha.yaml: run.sh --remove removes the build" ]
+  [[ ${lines[1]} == "broken|invalid|broken.yaml: at '/processing/minzoom': "* ]]
+  [ "${lines[3]}" = "nodata|source missing|source data not found: missing.gpkg" ]
+  [ "${lines[2]}" = "dupid|invalid|dupid.yaml: display.layers: id fill is used twice" ]
   [ "${#lines[@]}" -eq 4 ]
 }
 
@@ -162,7 +178,7 @@ touch_later() {
   add_layer alpha
   run "$RUN" --status nope
   [ "$status" -eq 2 ]
-  [[ $output == *"no config or build for layer 'nope'"* ]]
+  [[ $output == *"no layer file or build for layer 'nope'"* ]]
 
   run "$RUN" --status ../x
   [ "$status" -eq 2 ]
@@ -190,7 +206,7 @@ touch_later() {
   [[ $output == *"needs at least one layer name"* ]]
 }
 
-@test "--remove drops the archive and manifest entry and rewrites style.json" {
+@test "--remove drops the archive and build.json entry and rewrites style.json" {
   add_layer alpha beta
   run "$RUN"
   [ "$status" -eq 0 ]
@@ -201,7 +217,7 @@ touch_later() {
   [[ $output != *"is still in"* ]]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles" ]
   [ -s "${PIPELINE_OUTPUT_DIR}/beta.pmtiles" ]
-  run jq -r '[.layers[].name] | join(",")' "$MANIFEST"
+  run jq -r '[.layers[].name] | join(",")' "$BUILD"
   [ "$output" = beta ]
   run jq -r '[.sources | keys[]] | join(",")' "${PIPELINE_OUTPUT_DIR}/style.json"
   [ "$output" = beta ]
@@ -210,17 +226,17 @@ touch_later() {
   [ "$(state_of beta)" = current ]
 }
 
-@test "--remove warns when the config is still there" {
+@test "--remove warns when the layer file is still there" {
   add_layer alpha
   run "$RUN" alpha
   [ "$status" -eq 0 ]
   run "$RUN" --remove alpha
   [ "$status" -eq 0 ]
-  [[ $output == *"alpha.env is still in"* ]]
+  [[ $output == *"alpha.yaml is still in"* ]]
   [ "$(state_of alpha)" = "not built" ]
 
-  # The last layer gone: an empty manifest and a style with no layers.
-  run jq -c '.layers' "$MANIFEST"
+  # The last layer gone: an empty build.json and a style with no layers.
+  run jq -c '.layers' "$BUILD"
   [ "$output" = "[]" ]
   run jq -c '[.layers, .sources]' "${PIPELINE_OUTPUT_DIR}/style.json"
   [ "$output" = "[[],{}]" ]
@@ -231,22 +247,25 @@ touch_later() {
   run "$RUN" alpha
   [ "$status" -eq 0 ]
   local before
-  before=$(sha256sum "$MANIFEST")
+  before=$(sha256sum "$BUILD")
 
   run "$RUN" --remove alpha nope
   [ "$status" -eq 2 ]
   [[ $output == *"nothing built for layer 'nope'"* ]]
   [ -s "${PIPELINE_OUTPUT_DIR}/alpha.pmtiles" ]
-  [ "$(sha256sum "$MANIFEST")" = "$before" ]
+  [ "$(sha256sum "$BUILD")" = "$before" ]
 }
 
-# add_raster NAME: a raster layer on a synthetic binary GeoTIFF made now in
-# the input dir (fixtures/make_raster.sh), z3 to z6.
+# add_raster NAME [EXPR...]: a raster layer on a synthetic binary GeoTIFF
+# made now in the input dir (fixtures/make_raster.sh), z3 to z6, changed by
+# any yq EXPRs.
 add_raster() {
-  "${PIPELINE_ROOT}/tests/fixtures/make_raster.sh" byte "${PIPELINE_INPUT_DIR}/$1.tif" 2>/dev/null
-  printf '%s\n' 'LAYER_TYPE=raster' "LAYER_INPUT=$1.tif" 'LAYER_MIN_ZOOM=3' 'LAYER_MAX_ZOOM=6' \
-    >"${PIPELINE_LAYERS_DIR}/$1.env"
-  cp "${PIPELINE_ROOT}/tests/fixtures/raster.style.json" "${PIPELINE_LAYERS_DIR}/$1.style.json"
+  local name=$1
+  shift
+  "${PIPELINE_ROOT}/tests/fixtures/make_raster.sh" byte "${PIPELINE_INPUT_DIR}/${name}.tif" 2>/dev/null
+  cp "${PIPELINE_ROOT}/tests/fixtures/raster.yaml" "${PIPELINE_LAYERS_DIR}/${name}.yaml"
+  set_layer "${PIPELINE_LAYERS_DIR}/${name}.yaml" ".source.path = \"${name}.tif\"" \
+    '.processing.maxzoom = 6' "$@"
 }
 
 @test "--status and --remove handle a raster layer next to a vector one" {
@@ -266,11 +285,11 @@ add_raster() {
     (.layers[] | select(.name == "cover")
       | .state == "current" and .type == "raster" and .format == "cog"
         and .archive_bytes > 0 and .width > 0 and .height > 0
-        and .tile_count == null and .feature_count == null
+        and .feature_count == null
         and .minzoom == 3 and .maxzoom == 6)
     and (.layers[] | select(.name == "alpha")
       | .type == "vector" and .format == "mvt" and .feature_count == 15
-        and .tile_count == null and .width == null)' <<<"$output"
+        and .width == null)' <<<"$output"
   [ "$status" -eq 0 ]
   run "$RUN" --status
   [ "$status" -eq 0 ]
@@ -288,75 +307,26 @@ add_raster() {
   run "$RUN" --remove cover
   [ "$status" -eq 0 ]
   [ ! -e "${PIPELINE_OUTPUT_DIR}/cover.cog.tif" ]
-  run jq -r '[.layers[].name] | join(",")' "$MANIFEST"
+  run jq -r '[.layers[].name] | join(",")' "$BUILD"
   [ "$output" = alpha ]
   run jq -r '[.sources | keys[]] | join(",")' "${PIPELINE_OUTPUT_DIR}/style.json"
   [ "$output" = alpha ]
 }
 
-@test "--status: a raster built before averaging is stale only if its max zoom is coarser than its source" {
+@test "--status: a raster is stale when its max zoom changes in the map config" {
+  export PIPELINE_MAP_CONFIG="${BATS_TEST_TMPDIR}/map.config.yaml"
   add_raster cover
+  echo 'overrides: { cover: { processing: { maxzoom: 7 } } }' >"$PIPELINE_MAP_CONFIG"
   run "$RUN" cover
   [ "$status" -eq 0 ]
+  [ "$(jq '.layers[0].maxzoom' "$BUILD")" -eq 7 ]
   [ "$(state_of cover)" = current ]
 
-  # An entry from before the resampling was recorded was warped with near;
-  # z6 (about 1500 m on the ground) over the 1 km source now averages.
-  jq '.layers |= map(del(.resampling))' "$MANIFEST" >"${MANIFEST}.new"
-  mv "${MANIFEST}.new" "$MANIFEST"
+  echo 'overrides: { cover: { processing: { maxzoom: 5 } } }' >"$PIPELINE_MAP_CONFIG"
   [ "$(state_of cover)" = stale ]
-  [[ "$(notes_of cover)" == *"rebuild it to average"* ]]
-
-  # z8 (about 375 m) is finer than the source: near either way.
-  sed -i 's/^LAYER_MAX_ZOOM=6$/LAYER_MAX_ZOOM=8/' "${PIPELINE_LAYERS_DIR}/cover.env"
+  [[ "$(notes_of cover)" == *"source, fields or processing changed since the build"* ]]
   run "$RUN" cover
   [ "$status" -eq 0 ]
-  jq '.layers |= map(del(.resampling))' "$MANIFEST" >"${MANIFEST}.new"
-  mv "${MANIFEST}.new" "$MANIFEST"
-  [ "$(state_of cover)" = current ]
-}
-
-@test "--status: a raster averaged at its max zoom before the majority is stale" {
-  add_raster cover
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  [ "$(jq -r '.layers[0] | "\(.resampling) \(.max_zoom_values)"' "$MANIFEST")" = "average majority" ]
-  [ "$(state_of cover)" = current ]
-
-  # An entry from before max_zoom_values was recorded, averaged at z6:
-  # grey levels at its max zoom, now binary by majority.
-  jq '.layers |= map(del(.max_zoom_values))' "$MANIFEST" >"${MANIFEST}.new"
-  mv "${MANIFEST}.new" "$MANIFEST"
-  [ "$(state_of cover)" = stale ]
-  [[ "$(notes_of cover)" == *"rebuild it for a binary max zoom by majority"* ]]
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  [ "$(state_of cover)" = current ]
-
-  # Warped with near (z8, finer than the source): unchanged, so current.
-  sed -i 's/^LAYER_MAX_ZOOM=6$/LAYER_MAX_ZOOM=8/' "${PIPELINE_LAYERS_DIR}/cover.env"
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  [ "$(jq -r '.layers[0].max_zoom_values' "$MANIFEST")" = near ]
-  jq '.layers |= map(del(.max_zoom_values))' "$MANIFEST" >"${MANIFEST}.new"
-  mv "${MANIFEST}.new" "$MANIFEST"
-  [ "$(state_of cover)" = current ]
-}
-
-@test "--status: a raster is stale when LAYER_GREY_LEVELS changes in the map config" {
-  export PIPELINE_MAP_CONFIG="${BATS_TEST_TMPDIR}/map.config.json"
-  add_raster cover
-  echo '{"overrides": {"cover": {"env": {"LAYER_GREY_LEVELS": 8}}}}' >"$PIPELINE_MAP_CONFIG"
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  [ "$(jq '.layers[0].grey_levels' "$MANIFEST")" -eq 8 ]
-  [ "$(state_of cover)" = current ]
-
-  echo '{"overrides": {"cover": {"env": {"LAYER_GREY_LEVELS": 16}}}}' >"$PIPELINE_MAP_CONFIG"
-  [ "$(state_of cover)" = stale ]
-  [[ "$(notes_of cover)" == *"settings changed since the build"* ]]
-  run "$RUN" cover
-  [ "$status" -eq 0 ]
-  [ "$(jq '.layers[0].grey_levels' "$MANIFEST")" -eq 16 ]
+  [ "$(jq '.layers[0].maxzoom' "$BUILD")" -eq 5 ]
   [ "$(state_of cover)" = current ]
 }

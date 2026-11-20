@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=../schema/layer.schema.json
+#
+# Agricultural land, a binary 30 m raster over Canada (2022). Float32,
+# 1 = agriculture, nodata NaN (declared in the file).
+
+title: Agriculture
+visible: false
+order: 2
+
+source:
+  path: HM_CA_ag2022_r90_merged_prj_30_binary.tif
+
+processing:
+  profile: raster
+  minzoom: 2
+  maxzoom: 12
+
+# The COG holds the share of each pixel that is agriculture, 0 to 255; the
+# map colours it, from transparent to the full colour.
+display:
+  layers:
+    - id: raster
+      type: color-relief
+      paint:
+        color-relief-color:
+          [interpolate, [linear], [elevation], 0, "rgba(217, 95, 2, 0)", 255, "rgba(217, 95, 2, 1)"]
+        color-relief-opacity: 0.7
+        resampling: nearest
+  legend:
+    kind: single
+    shape: square
+    border: transparent
+    opacity: 0.7
+    items:
+      - { color: "#d95f02", label: Agricultural land (2022) }

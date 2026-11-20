@@ -2,72 +2,53 @@
 # Layer status, for `run.sh --status`: which layers are configured, which are
 # built, and which builds are out of date. Read only: nothing is written.
 #
-# Every layer in the layer set (lib/mapconfig.sh: the layers dir plus the
-# local map config, if any), with a manifest.json entry or with an archive
-# (<layer>.pmtiles for a vector layer, <layer>.cog.tif for a raster one) is
-# listed, in one of these states:
+# Every layer with a layer file (lib/layerfile.sh), a build.json entry
+# or an archive (<layer>.pmtiles for a vector layer, <layer>.cog.tif for a
+# raster one) is listed, in one of these states:
 #
-#   current    built after its .env and source data last changed, and its
-#              display updated after its .style.json last changed.
-#   stale      built, but its .env or its source data has changed since
-#              (file modification time against the manifest's built_at),
-#              the settings it is built from differ (the map config's
-#              `input`, `env`, `calculated` or `rules`: the hash in the
-#              entry's provenance), its rules table changed (ADR 0011: the
-#              table's hash), or its archive is missing. Rebuild it.
-#   restyle    built and not stale, but its .style.json has changed since
-#              the display was last updated (the manifest's
-#              display_updated_at, set by a build or by `run.sh
-#              --style-only`), or the map config's display overrides have.
-#              `run.sh --style-only` updates it, no tiling.
+#   current    built from the layer file's source, fields and processing
+#              as they are now, after its source data last changed.
+#   stale      built, but the layer file's `source`, `fields` or
+#              `processing` (or the map config's overrides of them) differ
+#              from the build's (the hash in the entry's provenance), its
+#              source data or a join table has changed since (file
+#              modification time against build.json's built_at), or its
+#              archive is missing. Rebuild it.
 #   not built  configured, but not built yet (or every build failed).
 #   source missing
-#              configured, but its source data is not found (for example
-#              RAW_DIR not set). A full build skips it. A previous build, if
-#              any, is still served.
-#   invalid    the config cannot be built as it is: the .env does not load,
-#              the .style.json is missing or the rules table it names is
-#              not found. A previous build, if any, is still served.
-#   disabled   configured, but not enabled in the map config: not built,
-#              and hidden from the map if built before.
-#   orphan     built, but its config is gone. `run.sh --remove` removes it.
+#              configured, but its source data or a join table is not
+#              found (for example RAW_DIR not set). A full build skips it.
+#              A previous build, if any, is still served.
+#   invalid    the layer file has problems (its schema, or the checks in
+#              lib/layerfile.sh), or is gone (`run.sh --remove` removes
+#              the build). A previous build, if any, is still served.
 #
-# `notes` says why. A change to the pipeline itself does not make a layer
-# stale, with two exceptions for rasters (ADR 0010, lib/raster.sh): one
-# built before its manifest entry recorded `resampling` was warped with -r
-# near, and is stale if its max zoom is coarser on the ground than its
-# source pixel, which is now averaged (the source's header is read to
-# tell); and one with `resampling` average but no `max_zoom_values` kept
-# the averaged grey levels at its max zoom, which is now binary by
-# majority, so it is stale. The JSON (layer_status_json) is:
+# `notes` says why. A layer the map config's `layers` leaves out gets a
+# note: it is hidden from the map, and a full build skips it. A change
+# to the pipeline itself does not make a layer stale.
+# The JSON (layer_status_json) is:
 #
 #   { "layers": [ { "name": "sample", "state": "current", "notes": [],
 #       "configured": true, "enabled": true, "origin": "committed",
 #       "built": true, "type": "vector", "format": "mvt",
 #       "input": "...",
-#       "built_at": "2026-01-01T00:00:00Z",
-#       "display_updated_at": "2026-01-01T00:00:00Z", "archive_bytes": 12345,
+#       "built_at": "2026-01-01T00:00:00Z", "archive_bytes": 12345,
 #       "minzoom": 0, "maxzoom": 8, "feature_count": 15, "width": null,
-#       "height": null, "tile_count": null,
+#       "height": null,
 #       "max_tile_bytes": 1234,
-#       "calculated_fields": ["x"],
-#       "rules": { "file": "...", "actions": 1, "types": { "t": 4 } } },
+#       "calculated_fields": ["x"] },
 #     ... ] }
 #
-# `calculated_fields` and `rules` are from the build (ADR 0011): the
-# calculated field names, and the rules table with its number of actions
-# and, per action type, the features with at least one of its actions;
-# null when the build had none, or the layer is not built.
+# `calculated_fields` are the names of the build's calculated fields; null
+# when it had none, or the layer is not built.
 #
-# Fields from the manifest are null when the layer is not built. `type` is
-# the manifest's (vector when an older entry has none), or the config's
-# LAYER_TYPE when not built. A raster layer (ADR 0010) has `width` and
+# Fields from build.json are null when the layer is not built. `type` is
+# build.json's (vector when an older entry has none), or the layer
+# file's when not built. A raster layer (ADR 0010) has `width` and
 # `height` (of its COG, in pixels) and no `feature_count`; a vector layer
-# the other way round. A raster built as PNG tiles before COGs has
-# `tile_count` instead and is stale. A raster's
-# LAYER_INPUT is relative to RAW_DIR (/data/raw) like any input, so its
-# source data is checked the same way. `origin` (committed, local or
-# config) and `enabled` are from the layer set, null when not configured.
+# the other way round. `origin` (committed, or local for a
+# layer in layers.local/) and `enabled`
+# are from the layer files, null when not configured.
 
 # _newest_mtime FILE...: the newest modification time (epoch seconds) of the
 # FILEs that exist; nothing if none does.
@@ -81,7 +62,7 @@ _newest_mtime() {
 }
 
 # source_mtime INPUT: the newest modification time of a layer's source data
-# (LAYER_INPUT, resolved): a file with its sidecars (a shapefile's .dbf,
+# (its source path, resolved): a file with its sidecars (a shapefile's .dbf,
 # .prj, ...), every file in a directory (a FileGDB), or the zip for a path
 # inside one. Prints nothing for a /vsi path; returns 1 if the data is not
 # found.
@@ -90,16 +71,6 @@ source_mtime() {
   files=$(_source_files "$1") || return 1
   [[ -n $files ]] || return 0
   xargs -d '\n' stat -c %Y <<<"$files" | sort -n | tail -n 1
-}
-
-# source_bytes INPUT: the total size in bytes of a layer's source data, the
-# same files as source_mtime. Prints nothing for a /vsi path; returns 1 if
-# the data is not found.
-source_bytes() {
-  local files
-  files=$(_source_files "$1") || return 1
-  [[ -n $files ]] || return 0
-  xargs -d '\n' stat -c %s <<<"$files" | awk '{ s += $1 } END { printf "%d\n", s }'
 }
 
 # _source_files INPUT: the files of a layer's source data, one per line (see
@@ -128,240 +99,100 @@ _source_files() {
   fi
 }
 
-# _config_input CONFIG: load CONFIG in a subshell and print
-# `ok<TAB>TYPE<TAB>INPUT` (LAYER_TYPE and LAYER_INPUT, resolved), or
-# `invalid<TAB>REASON` if it does not load.
-_config_input() {
-  local result
-  result=$(
-    # Report a config error instead of exiting with it. Called by
-    # load_layer_config.
-    # shellcheck disable=SC2329
-    die() {
-      printf 'invalid\t%s\n' "$*"
-      exit 0
-    }
-    load_layer_config "$1" 2>/dev/null
-    printf 'ok\t%s\t%s\n' "$LAYER_TYPE" "$LAYER_INPUT"
-  ) || true
-  printf '%s\n' "${result:-$(printf 'invalid\t%s does not load' "${1##*/}")}"
-}
-
-# _config_rules CONFIG DIR: load CONFIG in a subshell and print the rules
-# table its LAYER_RULES names, relative to DIR (lib/derive.sh); nothing for
-# none or if CONFIG does not load.
-_config_rules() {
-  (
-    # Report nothing for a config error (_config_input reports it). Called
-    # by load_layer_config.
-    # shellcheck disable=SC2329
-    die() {
-      exit 0
-    }
-    load_layer_config "$1" 2>/dev/null
-    rules_file "$LAYER_RULES" "$2"
-  ) || true
-}
-
-# _config_source_srs CONFIG: load CONFIG in a subshell and print its
-# LAYER_SOURCE_SRS; nothing for none or if CONFIG does not load.
-_config_source_srs() {
-  (
-    # Report nothing for a config error (_config_input reports it). Called
-    # by load_layer_config.
-    # shellcheck disable=SC2329
-    die() {
-      exit 0
-    }
-    load_layer_config "$1" 2>/dev/null
-    printf '%s\n' "$LAYER_SOURCE_SRS"
-  ) || true
-}
-
-# _raster_needs_average ENTRY INPUT SOURCE_SRS: succeed if ENTRY, a raster
-# built before the warp's resampling was recorded (so with -r near), would
-# now be warped with -r average: its max zoom is coarser on the ground than
-# the INPUT's pixel (lib/raster.sh, raster_resampling). Reads only INPUT's
-# header; fails for any other entry or if INPUT cannot be read.
-_raster_needs_average() {
-  local entry=$1 input=$2 src_srs=$3 maxzoom dataset pixel lat
-  maxzoom=$(jq -er 'select(.type == "raster" and .format == "cog"
-    and (has("resampling") | not)) | .maxzoom' <<<"$entry" 2>/dev/null) || return 1
-  dataset=$(gdal_input_path "$input" 2>/dev/null) || return 1
-  read -r pixel lat < <(raster_ground_pixel "$dataset" "$src_srs" 2>/dev/null) || return 1
-  [[ -n $lat && $(raster_resampling "$pixel" "$lat" "$maxzoom") == average ]]
-}
-
-# _raster_needs_majority ENTRY: succeed if ENTRY is a raster whose max zoom
-# was averaged (`resampling` average) before `max_zoom_values` was
-# recorded: it holds grey levels where it is now binary by majority
-# (lib/raster.sh, raster_majority_vrt).
-_raster_needs_majority() {
-  jq -e '.type == "raster" and .format == "cog" and .resampling == "average"
-    and (has("max_zoom_values") | not)' <<<"$1" >/dev/null 2>&1
-}
-
 # _layer_status NAME OUT_DIR ENTRIES: one layer's status object. ENTRIES is
-# the manifest's layers array; the layer set is LAYERS_JSON.
+# build.json's layers array; the layer set is LAYERS_JSON.
 _layer_status() {
   local name=$1 out_dir=$2 entries=$3
-  local archive="" legacy=false
-  local entry layer built_at=0 display_at=0 configured=false built=false state input="" type=""
-  local notes=() restyle="" enabled=true
+  local entry layer archive built_at state input="" type="" notes=()
 
+  # The archive the build.json entry names, or the one found.
   entry=$(jq -c --arg n "$name" 'first(.[] | select(.name == $n)) // null' <<<"$entries")
-  if [[ $entry != null ]]; then
-    built=true
-    # The archive the entry names (an entry from before COGs names its
-    # .pmtiles); a raster built as PNG tiles needs a rebuild (ADR 0010).
-    archive=$(jq -r '.file // ""' <<<"$entry")
-    if [[ -n $archive ]]; then
-      archive="${out_dir}/${archive}"
-    else
-      archive=$(layer_archives "$out_dir" "$name" | head -n 1) || archive=""
-    fi
-    if jq -e '.type == "raster" and .format != "cog"' <<<"$entry" >/dev/null; then
-      legacy=true
-    fi
-    # An entry from before display_updated_at: the display is the build's.
-    read -r built_at display_at < <(jq -r '((.built_at | fromdateiso8601?) // 0) as $b
-      | "\($b) \((.display_updated_at | fromdateiso8601?) // $b)"' <<<"$entry")
+  archive=$(jq -r '.file // ""' <<<"$entry")
+  if [[ -n $archive ]]; then
+    archive="${out_dir}/${archive}"
   else
     archive=$(layer_archives "$out_dir" "$name" | head -n 1) || archive=""
   fi
+  built_at=$(jq -r '(.built_at | fromdateiso8601?) // 0' <<<"$entry")
   layer=$(jq -c --arg n "$name" 'first(.layers[] | select(.name == $n)) // null' "$LAYERS_JSON")
   if [[ $layer != null ]]; then
-    configured=true
-    enabled=$(jq -r '.enabled' <<<"$layer")
+    input=$(jq -r '.input // ""' <<<"$layer")
+    type=$(jq -r '.type // ""' <<<"$layer")
   fi
 
-  if [[ $configured == false ]]; then
-    state=orphan
-    notes+=("no ${name}.env: remove the build with --remove")
-    if [[ $built == false ]]; then notes+=("archive with no manifest entry"); fi
-  elif [[ $enabled == false ]]; then
-    state=disabled
-    notes+=("not enabled in the map config")
-    if [[ $built == true ]]; then notes+=("built before: hidden from the map, --remove removes it"); fi
+  if [[ $layer == null ]]; then
+    state=invalid
+    notes+=("no ${name}.yaml: run.sh --remove removes the build")
   else
-    local env style env_source style_source env_sha style_sha
-    {
-      IFS= read -r env
-      IFS= read -r style
-      IFS= read -r env_source
-      IFS= read -r style_source
-      IFS= read -r env_sha
-      IFS= read -r style_sha
-    } < <(jq -r '.env, (.style // ""), (.envSource // ""), (.styleSource // ""),
-      .envSha256, (.styleSha256 // "")' <<<"$layer")
+    local problems=()
+    mapfile -t problems < <(jq -r '.problems[]' <<<"$layer")
 
-    local cfg problems=()
-    cfg=$(_config_input "$env")
-    if [[ ${cfg%%$'\t'*} == ok ]]; then
-      cfg=${cfg#*$'\t'}
-      type=${cfg%%$'\t'*}
-      input=${cfg#*$'\t'}
-    else
-      problems+=("${cfg#*$'\t'}")
-    fi
-    [[ -f $style ]] || problems+=("no ${name}.style.json")
-    local rules rules_sha=""
-    rules=$(_config_rules "$env" "$(layer_config_dir "$name")")
-    if [[ -n $rules && -f $rules ]]; then
-      rules_sha=$(file_sha256 "$rules")
-    elif [[ -n $rules ]]; then
-      problems+=("rules table not found: $rules")
-    fi
-
-    local src="" missing=""
+    # The modification times of the source data and of its newest join table.
+    local src="" joined="" missing="" join join_mtime
     if [[ -n $input ]] && ! src=$(source_mtime "$input"); then
       missing="source data not found: ${input#"${PIPELINE_INPUT_DIR}"/}"
     fi
+    while IFS= read -r join; do
+      [[ -z $missing && -n $join ]] || continue
+      if ! join_mtime=$(source_mtime "$join"); then
+        missing="join table not found: ${join#"${PIPELINE_INPUT_DIR}"/}"
+      elif ((${join_mtime:-0} > ${joined:-0})); then
+        joined=$join_mtime
+      fi
+    done < <(jq -r '(.joins // [])[]' <<<"$layer")
 
     if ((${#problems[@]} > 0)); then
       state=invalid
-      notes=("${problems[@]}")
-      if [[ -n $missing ]]; then notes+=("$missing"); fi
+      notes=("${problems[@]/#/${name}.yaml: }")
     elif [[ -n $missing ]]; then
       state="source missing"
       notes=("$missing")
-    elif [[ $built == false ]]; then
+    elif [[ $entry == null ]]; then
       state="not built"
-      if [[ -n $archive && -f $archive ]]; then notes+=("archive with no manifest entry"); fi
     else
-      local recorded_env recorded_style recorded_rules
-      read -r recorded_env recorded_style recorded_rules < <(jq -r \
-        '"\(.provenance.env_sha256 // "-") \(.provenance.style_sha256 // "-") \(.provenance.rules_sha256 // "-")"' \
-        <<<"$entry")
+      local recorded_build current_build
+      recorded_build=$(jq -r '.provenance.build_sha256 // "-"' <<<"$entry")
+      current_build=$(jq -r '.build_sha256' <<<"$layer")
       [[ -f $archive ]] || notes+=("archive missing")
-      if [[ $legacy == true ]]; then
-        notes+=("built as PNG tiles in ${name}.pmtiles: rebuild it as a COG (ADR 0010)")
-      elif _raster_needs_average "$entry" "$input" "$(_config_source_srs "$env")"; then
-        notes+=("warped with -r near, but its max zoom is coarser than the source: rebuild it to average (ADR 0010)")
-      elif _raster_needs_majority "$entry"; then
-        notes+=("grey levels at its max zoom: rebuild it for a binary max zoom by majority (ADR 0010)")
-      fi
-      local mtime
-      mtime=$(_newest_mtime "$env_source")
-      if ((${mtime:-0} > built_at)); then
-        notes+=("${name}.env changed since the build")
-      elif [[ $recorded_env != - && $recorded_env != "$env_sha" ]]; then
-        notes+=("settings changed since the build (${name}.env or the map config's input, env, calculated or rules)")
-      elif [[ ${rules_sha:--} != "$recorded_rules" ]]; then
-        # An entry from before rules tables has no hash: stale only if the
-        # layer now has one, which its .env or map config change shows too.
-        notes+=("rules table changed since the build (${rules:-none now})")
+      if [[ $recorded_build != "$current_build" ]]; then
+        notes+=("source, fields or processing changed since the build (${name}.yaml or the map config's overrides)")
       fi
       if ((${src:-0} > built_at)); then notes+=("source data changed since the build"); fi
-      # The display config against the last display update, so a
-      # style-only update neither hides nor fakes a stale build.
-      mtime=$(_newest_mtime "$style_source")
-      if ((${mtime:-0} > display_at)); then
-        restyle="${name}.style.json changed since the display was last updated (--style-only updates it)"
-      elif [[ $recorded_style != - && $recorded_style != "$style_sha" ]]; then
-        restyle="display config changed since the display was last updated (${name}.style.json or the map config; --style-only updates it)"
-      fi
-      if ((${#notes[@]} > 0)); then
-        state=stale
-      elif [[ -n $restyle ]]; then
-        state=restyle
-      else
-        state=current
-      fi
-      if [[ -n $restyle ]]; then notes+=("$restyle"); fi
+      if ((${joined:-0} > built_at)); then notes+=("join table changed since the build"); fi
+      if ((${#notes[@]} > 0)); then state=stale; else state=current; fi
+    fi
+    if [[ $(jq -r '.enabled' <<<"$layer") == false ]]; then
+      notes+=("not in the map config's layers: hidden from the map, and a full build skips it")
     fi
   fi
 
   local bytes=""
-  if [[ -n $archive && -f $archive ]]; then bytes=$(stat -c %s "$archive"); fi
+  if [[ -n $archive && -f $archive ]]; then
+    bytes=$(stat -c %s "$archive")
+    if [[ $entry == null ]]; then notes+=("archive with no build.json entry"); fi
+  fi
   if [[ -n $input ]]; then input=${input#"${PIPELINE_INPUT_DIR}"/}; fi
 
   jq -n -c \
     --arg name "$name" --arg state "$state" \
-    --argjson configured "$configured" --argjson built "$built" \
     --arg input "$input" --arg bytes "$bytes" --argjson entry "$entry" \
     --arg type "$type" --argjson layer "$layer" \
     '{name: $name, state: $state, notes: $ARGS.positional,
-      configured: $configured, enabled: $layer.enabled, origin: $layer.origin,
-      built: $built,
+      configured: ($layer != null), enabled: $layer.enabled,
+      origin: (if $layer == null then null else ($layer.origin // "committed") end),
+      built: ($entry != null),
       type: (if $entry != null then ($entry.type // "vector")
              elif $type != "" then $type else null end),
       format: $entry.format,
       input: (if $input == "" then null else $input end),
       built_at: $entry.built_at,
-      display_updated_at: ($entry.display_updated_at // $entry.built_at),
       archive_bytes: (if $bytes == "" then null else ($bytes | tonumber) end),
       minzoom: $entry.minzoom, maxzoom: $entry.maxzoom,
       feature_count: $entry.feature_count,
       width: $entry.width, height: $entry.height,
-      tile_count: $entry.tile_count,
       max_tile_bytes: $entry.max_tile_bytes,
       calculated_fields: (if $entry.calculated_fields == null then null
-                          else [$entry.calculated_fields[].name] end),
-      rules: (if $entry.rules == null then null
-              else {file: $entry.rules.file, actions: ($entry.rules.actions | length),
-                    types: ($entry.rules.types | map({key: .id, value: .features})
-                            | from_entries)} end)}' \
+                          else [$entry.calculated_fields[].name] end)}' \
     --args "${notes[@]}"
 }
 
@@ -370,10 +201,8 @@ _layer_status() {
 layer_status_json() {
   local out_dir=$1
   shift
-  local manifest="${out_dir}/manifest.json" entries='[]'
-  if [[ -s $manifest ]]; then
-    entries=$(jq -c '.layers // []' "$manifest") || die "cannot read $manifest"
-  fi
+  local entries
+  entries=$(build_entries "$out_dir")
 
   local names=("$@")
   if ((${#names[@]} == 0)); then
@@ -407,8 +236,8 @@ layer_status_json() {
 }
 
 # print_layer_status: the JSON from layer_status_json, on stdin, as a table
-# with each layer's calculated fields and rules (from its build) and its
-# notes under it.
+# with each layer's calculated fields (from its build) and its notes under
+# it.
 print_layer_status() {
   jq -r '
     def size: if . == null then "-"
@@ -420,13 +249,10 @@ print_layer_status() {
        (if .minzoom == null then "-" else "\(.minzoom)-\(.maxzoom)" end),
        (if .feature_count != null then (.feature_count | tostring)
         elif .width != null then "\(.width)x\(.height) px"
-        elif .tile_count != null then "\(.tile_count) tiles" else "-" end),
+        else "-" end),
        (.max_tile_bytes | size),
        (.notes | join("\u001f")),
-       ([(if .calculated_fields then "calculated: \(.calculated_fields | join(", "))" else empty end),
-         (if .rules then "rules \(.rules.file | split("/") | last), \(.rules.actions) action(s); features with an action: "
-            + (.rules.types | to_entries | map("\(.key) \(.value)") | join(", ")) else empty end)]
-        | join("\u001f"))]
+       (if .calculated_fields then "calculated: \(.calculated_fields | join(", "))" else "" end)]
     | @tsv' | awk -F'\t' '
     # cell(i, s): column i padded to its width, or ending the line.
     function cell(i, s) { if (i < 7) printf("%-" w[i] "s  ", s); else printf("%s\n", s) }

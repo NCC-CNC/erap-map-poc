@@ -1,30 +1,40 @@
 #!/usr/bin/env bash
-# Low-zoom generalisation of a polygon layer (LAYER_GENERALISE_MAX_ZOOM; see
-# lib/config.sh and docs/design/02_data_layers_and_popups.md).
+# Per-zoom generalisation of a polygon layer (the coverage and default
+# processing profiles, lib/layerfile.sh; ADR 0016).
 #
-# For each zoom z from the layer's min zoom up to LAYER_GENERALISE_MAX_ZOOM,
-# a generalised copy of the normalised input is made with GDAL, in EPSG:3857
-# (the tiles' own projection, as the drop guard measures):
+# For each zoom z from the layer's min zoom up to its max, a generalised
+# copy of the normalised input is made with GDAL, in EPSG:3857 (the tiles'
+# own projection, as the drop guard measures):
 #
 #   1. Explode multipolygons into parts and drop every part smaller than
 #      MIN_PART_PX screen pixels at z, except each feature's largest part, so
 #      every feature keeps its id, attributes and the part the drop guard
 #      measures.
 #   2. Collect the parts left back into one multipolygon per feature.
-#   3. Simplify the result as a coverage (`gdal vector simplify-coverage`,
-#      GEOS CoverageSimplifier) with a tolerance of SIMPLIFY_PX screen pixels
-#      at z: each shared border is simplified once, the same in both
-#      neighbours, so no gaps or slivers open. 0 skips this step (for
-#      polygons that overlap, which are not a coverage).
+#   3. Simplify with a tolerance of SIMPLIFY_PX screen pixels at z; 0 skips
+#      this step. `coverage`: as a coverage (`gdal vector
+#      simplify-coverage`, GEOS CoverageSimplifier), so each shared border is
+#      simplified once, the same in both neighbours, and no gaps or slivers
+#      open. `feature`: each feature on its own (`gdal vector simplify`,
+#      topology preserving), for polygons that may overlap.
 #
-# Zooms are done from the highest down, each from the one above it, so only
-# the first pass reads the full input. Each zoom's features are tagged for
-# tippecanoe with {"tippecanoe": {"minzoom": z, "maxzoom": z}}, and the full
-# input follows from LAYER_GENERALISE_MAX_ZOOM + 1, so one tippecanoe run
-# builds the whole archive: no tile-join, and the drop guard and the shared
-# node handling of the coverage profile work as before.
+# The max zoom uses its own, gentler settings (processing.maxzoom_min_part_px
+# and maxzoom_simplify_px); both 0 keep it at full detail. Zooms are done
+# from the highest down, each from the one above it, so only the first pass
+# reads the full input. Each zoom's features are tagged for tippecanoe with
+# {"tippecanoe": {"minzoom": z, "maxzoom": z}}, so one tippecanoe run builds
+# the whole archive: no tile-join, and the drop guard and the shared node
+# handling of the coverage profile work as before. The drop guard measures
+# the normalised input, not this one: each feature keeps a part at every
+# zoom, though simplification can still thin a narrow one away (the
+# protected_areas border slivers), which the guard then reports.
 #
-# Pixels are at 256 px tiles, as for LAYER_MIN_VISIBLE_PX: at zoom z one
+# Why GDAL and not tippecanoe's own options: tippecanoe has no part
+# threshold that keeps each feature's largest part, and simplifying in
+# tippecanoe instead leaves every zoom's copy at full detail, several times
+# slower to tile. Measured in ADR 0016 (#141).
+#
+# Pixels are at 256 px tiles, as for min_visible_px: at zoom z one
 # pixel is 40075016.686 / (256 * 2^z) m wide in EPSG:3857.
 
 # _generalise_px_m Z: the width of one screen pixel at zoom Z in EPSG:3857 m.
@@ -32,13 +42,20 @@ _generalise_px_m() {
   awk -v z="$1" -v world="$GUARD_WORLD_M" 'BEGIN { printf "%.6f", world / (256 * 2 ^ z) }'
 }
 
-# generalise_zoom INPUT OUTPUT Z FEATURE_ID MIN_PART_PX SIMPLIFY_PX FIELD...
+# _positive N: succeed if the number N is above 0.
+_positive() {
+  awk -v n="$1" 'BEGIN { exit !(n > 0) }'
+}
+
+# generalise_zoom INPUT OUTPUT Z FEATURE_ID MIN_PART_PX SIMPLIFY_PX SIMPLIFIER
+#   FIELD...
 # Write OUTPUT (GeoJSONSeq, EPSG:4326): INPUT generalised for zoom Z as
-# described above. FIELD is a `src` or `src:dest` from LAYER_FIELDS; the
-# dest names are the attributes kept.
+# described above, SIMPLIFIER being `coverage` or `feature`. FIELD is an
+# attribute name or a `src:dest` pair; the dest names are the attributes
+# kept.
 generalise_zoom() {
-  local input=$1 output=$2 z=$3 id=$4 min_part_px=$5 simplify_px=$6
-  shift 6
+  local input=$1 output=$2 z=$3 id=$4 min_part_px=$5 simplify_px=$6 simplifier=$7
+  shift 7
 
   local layer
   layer=$(source_layer_name "$input") || die "cannot read layers from $input"
@@ -65,8 +82,12 @@ generalise_zoom() {
   sql+=" WHERE _part_area >= ${min_area} OR _part_area = _max_area GROUP BY ${qid}"
 
   local simplify=()
-  if awk -v t="$tolerance" 'BEGIN { exit !(t > 0) }'; then
-    simplify=(! simplify-coverage --tolerance "$tolerance")
+  if _positive "$tolerance"; then
+    case $simplifier in
+      coverage) simplify=(! simplify-coverage --tolerance "$tolerance") ;;
+      feature) simplify=(! simplify --tolerance "$tolerance") ;;
+      *) die "unknown simplifier: $simplifier" ;;
+    esac
   fi
 
   gdal vector pipeline --quiet \
@@ -80,34 +101,41 @@ generalise_zoom() {
     || die "cannot generalise $input for z${z}"
 }
 
-# _tag_zooms INPUT MIN_ZOOM [MAX_ZOOM]: print INPUT (GeoJSONSeq, one feature
+# _tag_zooms INPUT MIN_ZOOM MAX_ZOOM: print INPUT (GeoJSONSeq, one feature
 # per line) with each feature limited to MIN_ZOOM..MAX_ZOOM for tippecanoe.
 _tag_zooms() {
-  local input=$1 minzoom=$2 maxzoom=${3:-} range
-  range="\"minzoom\": ${minzoom}${maxzoom:+, \"maxzoom\": ${maxzoom}}"
-  sed "s/^{/{ \"tippecanoe\": { ${range} }, /" "$input"
+  sed "s/^{/{ \"tippecanoe\": { \"minzoom\": $2, \"maxzoom\": $3 }, /" "$1"
 }
 
-# generalised_input INPUT OUTPUT MIN_ZOOM GEN_MAX_ZOOM FEATURE_ID MIN_PART_PX
-#   SIMPLIFY_PX TMP_DIR FIELD...
+# generalised_input INPUT OUTPUT MIN_ZOOM MAX_ZOOM FEATURE_ID SIMPLIFIER
+#   MIN_PART_PX SIMPLIFY_PX MAX_MIN_PART_PX MAX_SIMPLIFY_PX TMP_DIR FIELD...
 # Write OUTPUT, the tippecanoe input for a generalised layer: INPUT
-# generalised for each zoom MIN_ZOOM..GEN_MAX_ZOOM (that zoom only), then
-# INPUT itself from GEN_MAX_ZOOM + 1.
+# generalised for each zoom MIN_ZOOM..MAX_ZOOM (that zoom only), with
+# MIN_PART_PX and SIMPLIFY_PX below MAX_ZOOM and MAX_MIN_PART_PX and
+# MAX_SIMPLIFY_PX at it. A zoom whose two settings are 0 is its input as is.
 generalised_input() {
-  local input=$1 output=$2 minzoom=$3 gen_max=$4 id=$5 min_part_px=$6 simplify_px=$7 tmp=$8
-  shift 8
+  local input=$1 output=$2 minzoom=$3 maxzoom=$4 id=$5 simplifier=$6
+  local low_part=$7 low_simplify=$8 max_part=$9 max_simplify=${10} tmp=${11}
+  shift 11
 
-  log_info "generalising z${minzoom}-z${gen_max}: parts under ${min_part_px} px dropped (each feature keeps its largest), coverage simplified at ${simplify_px} px"
-  local z from=$input zoom_file started=$SECONDS
+  local below=""
+  ((minzoom == maxzoom)) \
+    || below="below z${maxzoom} parts under ${low_part} px dropped, simplified at ${low_simplify} px; "
+  log_info "generalising z${minzoom}-z${maxzoom} (${simplifier}): ${below}at z${maxzoom} parts under ${max_part} px dropped, simplified at ${max_simplify} px; each feature keeps its largest part"
+
+  local z part simplify from=$input zoom_file started=$SECONDS
   : >"$output"
-  for ((z = gen_max; z >= minzoom; z--)); do
-    zoom_file="${tmp}/generalised_z${z}.geojsonl"
-    generalise_zoom "$from" "$zoom_file" "$z" "$id" "$min_part_px" "$simplify_px" "$@"
-    _tag_zooms "$zoom_file" "$z" "$z" >>"$output" || die "cannot write $output"
-    [[ $from == "$input" ]] || rm -f "$from"
-    from=$zoom_file
+  for ((z = maxzoom; z >= minzoom; z--)); do
+    part=$low_part simplify=$low_simplify
+    ((z < maxzoom)) || part=$max_part simplify=$max_simplify
+    if _positive "$part" || _positive "$simplify"; then
+      zoom_file="${tmp}/generalised_z${z}.geojsonl"
+      generalise_zoom "$from" "$zoom_file" "$z" "$id" "$part" "$simplify" "$simplifier" "$@"
+      [[ $from == "$input" ]] || rm -f "$from"
+      from=$zoom_file
+    fi
+    _tag_zooms "$from" "$z" "$z" >>"$output" || die "cannot write $output"
   done
-  rm -f "$from"
-  _tag_zooms "$input" "$((gen_max + 1))" >>"$output" || die "cannot write $output"
+  [[ $from == "$input" ]] || rm -f "$from"
   log_info "generalised in $((SECONDS - started)) s"
 }

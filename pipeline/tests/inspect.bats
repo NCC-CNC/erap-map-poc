@@ -69,7 +69,7 @@ json_of() {
   [ "$status" -eq 0 ]
   [[ $output == *"CRS:        NAD83 / Statistics Canada Lambert (EPSG:3347)"* ]]
   [[ $output == *"Encoding:   ISO-8859-1 (from cpg)"* ]]
-  [[ $output == *"consider LAYER_PROFILE=coverage"* ]]
+  [[ $output == *"consider processing.profile: coverage"* ]]
 }
 
 @test "overlapping polygons are flagged and not coverage-like" {
@@ -117,7 +117,7 @@ json_of() {
   done
 }
 
-@test "a shapefile without .prj: no CRS, no WGS84 extent, a LAYER_SOURCE_SRS hint" {
+@test "a shapefile without .prj: no CRS, no WGS84 extent, a source.srs hint" {
   mkdir -p "${PIPELINE_INPUT_DIR}/noprj"
   ogr2ogr -f "ESRI Shapefile" -t_srs EPSG:3347 "${PIPELINE_INPUT_DIR}/noprj/sample.shp" \
     "${FIXTURES}/sample.geojson"
@@ -127,7 +127,7 @@ json_of() {
   run jq -c '[.crs, .extent_wgs84]' <<<"$JSON"
   [ "$output" = '[null,null]' ]
   run jq -r '.warnings[]' <<<"$JSON"
-  [[ $output == *"set LAYER_SOURCE_SRS"* ]]
+  [[ $output == *"set source.srs in the layer file"* ]]
 }
 
 @test "reads a zipped shapefile in place and picks a layer with --layer" {
@@ -164,4 +164,86 @@ json_of() {
   run "$INSPECT" missing.shp
   [ "$status" -eq 1 ]
   [[ $output == *"input not found: ${PIPELINE_INPUT_DIR}/missing.shp"* ]]
+}
+
+# starter_of NAME ARGS...: run inspect.sh --starter ARGS and save the
+# starter as NAME.yaml in a layers dir of its own; then check it the way the
+# pipeline reads layer files (jv against the schema, then its own checks,
+# through run.sh --status): its state must not be `invalid`.
+starter_of() {
+  local name=$1
+  shift
+  export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
+  export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
+  export PIPELINE_WORK_DIR="${BATS_TEST_TMPDIR}/work"
+  mkdir -p "$PIPELINE_LAYERS_DIR"
+  STARTER="${PIPELINE_LAYERS_DIR}/${name}.yaml"
+  "$INSPECT" --starter "$@" >"$STARTER"
+  STATUS=$("${PIPELINE_ROOT}/bin/run.sh" --status --json)
+  jq -e --arg n "$name" '.layers[] | select(.name == $n) | .state != "invalid"' <<<"$STATUS" \
+    || { echo "$STATUS" >&2; cat "$STARTER" >&2; return 1; }
+}
+
+# set_starter EXPR: apply the yq EXPR to the starter in place.
+set_starter() {
+  yq -i "$1" "$STARTER"
+}
+
+@test "--starter: polygons, renamed fields, a pop-up; valid and builds" {
+  starter_of sample "${FIXTURES}/sample.geojson"
+  run yq -o json -I0 '[.source, .fields.keep[0], .processing.profile,
+    [.display.layers[] | .type], .display.legend.items[0].label,
+    .display.popup.title, .display.popup.sections[0].blocks[0].items[1]]' "$STARTER"
+  [ "$output" = "[{\"path\":\"${FIXTURES}/sample.geojson\",\"layer\":\"sample\",\"id\":\"id\"},{\"NAME_EN\":\"name_en\"},\"default\",[\"fill\",\"line\"],\"Sample\",\"{name_en}\",{\"label\":\"Name en\",\"value\":{\"attribute\":\"name_en\"}}]" ]
+  # Every field but the id, numbers with a number format.
+  run yq -o json -I0 '[.fields.keep | length, (.display.popup.sections[0].blocks[0].items[] | select(.value.attribute == "score") | .format)]' "$STARTER"
+  [ "$output" = '[9,"integer"]' ]
+  # The warnings and notes are comments.
+  run cat "$STARTER"
+  [[ ${lines[0]} == "# yaml-language-server: \$schema=../schema/layer.schema.json" ]]
+  [[ $output == *"# - 1 invalid geometry location(s)"* ]]
+  [[ $output == *"maxzoom: 12 # from the extent"* ]]
+
+  # It builds (at a lower max zoom, to be quick), with the renamed field.
+  set_starter '.processing.maxzoom = 4'
+  run "${PIPELINE_ROOT}/bin/run.sh" sample
+  echo "$output"
+  [ "$status" -eq 0 ]
+  run bash -c "pmtiles show --metadata '${PIPELINE_OUTPUT_DIR}/sample.pmtiles' | jq -c '.vector_layers[0].fields | keys'"
+  [ "$output" = '["area_ha","name_en","notes","score","v2020","v2021","v2022","v2023","v2024"]' ]
+}
+
+@test "--starter: points and a coverage get their profiles and zooms" {
+  starter_of points "${FIXTURES}/sample_points.geojson"
+  run yq -o json -I0 '[.processing, [.display.layers[] | .type], .display.legend.shape]' "$STARTER"
+  [ "$output" = '[{"profile":"points","minzoom":0,"maxzoom":12},["circle"],"circle"]' ]
+
+  # The coverage fixture is coverage-like, 20 degrees wide: z4 fits it in a
+  # tile, so z14.
+  starter_of coverage shp/coverage.shp
+  run yq -o json -I0 '[.source.path, .source.id, .processing.profile, .processing.maxzoom]' "$STARTER"
+  [ "$output" = '["shp/coverage.shp","id","coverage",14]' ]
+  # Without the checks, coverage is not known: default, with a note.
+  starter_of nochecks --no-checks shp/coverage.shp
+  run yq -r '.processing.profile' "$STARTER"
+  [ "$output" = default ]
+  run cat "$STARTER"
+  [[ $output == *"profile: default # coverage not checked (--no-checks)"* ]]
+}
+
+@test "--starter: lower case names, without clashes; no unique id is a note" {
+  # Mixed case and odd names, a clash once lower cased, no unique integer.
+  ogr2ogr -f GeoJSON "${PIPELINE_INPUT_DIR}/names.geojson" "${FIXTURES}/sample_points.geojson" \
+    -dialect SQLite -sql "SELECT geometry, id % 3 AS code, name AS OwnerType,
+      category AS owner_type, count % 7 AS \"2020 Value\", name AS HTMLName FROM sample_points"
+  starter_of names names.geojson
+  run yq -o json -I0 '[.source.id, .fields.keep]' "$STARTER"
+  [ "$output" = '["code",[{"OwnerType":"owner_type"},{"owner_type":"owner_type_2"},{"2020 Value":"f_2020_value"},{"HTMLName":"html_name"}]]' ]
+  run cat "$STARTER"
+  [[ $output == *"id: code # not unique and non-null in every feature"* ]]
+}
+
+@test "--starter usage errors" {
+  run "$INSPECT" --starter --json "${FIXTURES}/sample.geojson"
+  [ "$status" -eq 2 ]
 }

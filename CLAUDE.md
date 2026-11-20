@@ -1,180 +1,76 @@
 # CLAUDE.md
 
-Working rules and durable context for this project. This file is loaded into
-context automatically, so keep it to direction and rules, not a task list.
+Rules and pointers for this project. Keep it to direction, not a task
+list; open GitHub issues are the task tracker.
 
-## Project name
+## Project
 
-ERAP Map PoC
+ERAP Map PoC: a bash pipeline turns spatial data into vector tiles
+(PMTiles) and binary rasters into COGs, and a read-only web map shows
+them, with pop-ups of stats and Chart.js charts on click. Internal for
+now; the brief is `docs/design/00_project_brief.md`, the plan
+`docs/design/03_milestones.md`, how it fits together `docs/how-it-works.md`.
 
-## Project purpose
-
-A proof of concept that turns input spatial data into vector tiles (PMTiles)
-and binary rasters into Cloud Optimized GeoTIFFs (COGs) with a bash
-pipeline, and displays them in a web map where clicking a feature
-opens a pop-up with summary stats and plots. The aim is to prove the pattern
-end to end so a decision can be made on building it out. Internal use for
-now; conservation planning staff more widely if it continues. See
-`docs/design/00_project_brief.md` for the full brief.
-
-## Project status
-
-M1 (skeleton end to end) is essentially done: the pipeline, web app,
-OpenFreeMap basemaps, pop-ups, docker-compose and CI are merged, plus the
-layer selector with legends (#38), the coverage-safe tippecanoe profile and
-shapefile options (#40), and data-driven per-layer styles (#42, ADR 0007).
-The synthetic `sample` and `sample_points` layers go from raw file to
-clickable feature; a headless browser check passed (features drawn, pop-up
-with chart). They are test layers in `pipeline/tests/layers/`, not built by
-a default run (#17). Left: Dependabot for base images (#28) and a hands-on browser
-check. M2 is real data: first play data arrived in November
-2026 (two binary 30 m Canada-wide GeoTIFFs, forest and agriculture, plus
-ecoregion and protected-area polygons in file geodatabases). Raster layers
-are binary only and display only (no pop-ups): one Web Mercator COG per
-layer, coloured in the browser (ADR 0008, 0010; about 10 minutes per
-Canada-wide 30 m raster, less once its source is cached in `data/work/`).
-Categorical, continuous and multiband rasters are not supported yet.
-All four are committed layers (`ecoregions` on top with colour themes and
-a click modal, `protected_areas`, `forest`, `agriculture`; #58), styled
-as decided in #14 (design note 02). Licences, provenance and stable ids
-are deferred for the PoC (#13); `OBJECTID` is the feature id of both
-vector layers. Open GitHub issues are the live
-task tracker; `docs/design/03_milestones.md` is the shape of the plan.
+Status: the refactor (`docs/design/04_refactor.md`, ADR 0015) is done on
+`dev`: one `pipeline/layers/<layer>.yaml` per layer, `data/tiles/style.json`
+and `build.json`, `map.config.yaml`. Still to do before `dev` merges into
+`main`: a full build from the real data and a check in the browser. The
+four committed layers are `ecoregions` (themes, a dialog), `protected_areas`,
+`forest` and `agriculture` (binary rasters, display only). Licences,
+provenance and stable ids are deferred (#13); `OBJECTID` is the feature id.
 
 ## Scope
 
-In scope: an on-demand pipeline that builds a `.pmtiles` per vector layer and
-a `.cog.tif` per raster layer, a read-only
-web map with pop-ups (stats and Chart.js charts), and a docker-compose setup to
-run both locally.
-Also a slimmed-down, public demo copy on GitHub Pages, published by hand
-(ADR 0014): `map.config.pages.json` into `data/pages/`, data in a release.
+In scope: the on-demand pipeline, the read-only map, docker-compose to run
+both, and the hand-published GitHub Pages copy (ADR 0014). Not in scope:
+production hosting, authentication, a tile server or database, editing,
+scheduled runs. Do not expand scope without a design note in `docs/design/`
+or an ADR in `docs/decisions/`.
 
-Not in scope: production hosting, authentication, a tile server or database,
-in-browser editing, scheduled pipeline runs. Do not expand scope without a
-design note in `docs/design/` or an ADR in `docs/decisions/`.
+## Hard constraints
 
-## Stack
-
-- Pipeline (`pipeline/`): bash, GDAL/OGR, tippecanoe, `pmtiles` CLI, in a
-  custom image on a pinned `ghcr.io/osgeo/gdal` base. shellcheck and bats.
-  See ADR 0002; raster layers are GDAL only (warp, overviews, COG; ADR
-  0010). Node in the same image runs the display config tool
-  (`pipeline/style/`, ajv and the MapLibre style spec; ADR 0007).
-- Web app (`web/`): React, TypeScript, Vite, MapLibre GL JS, `pmtiles`,
-  `@geomatico/maplibre-cog-protocol` (raster COGs, ADR 0010), Chart.js,
-  OpenFreeMap basemaps (ADR 0006); served by nginx. ESLint, `tsc`,
-  vitest. See ADR 0003.
-- Runtime: one Dockerfile per component and a root `docker-compose.yml`; the
-  pipeline writes `data/tiles/`, nginx serves it as static files with range
-  requests. See ADR 0004.
-- Hard constraints: pin every tool and base image version; the web app reads
-  only `data/tiles/` and the data contract in
-  `docs/design/02_data_layers_and_popups.md`, never `data/raw/`; any secrets
-  come from `.env` at runtime, never committed or baked into images;
-  pipeline writes are atomic (temp file then move); no layer is defined in
-  `web/`: each is `pipeline/layers/<layer>.env` plus `<layer>.style.json`
-  (schema `pipeline/schema/layer-style.schema.json`), and the app reads
-  them from `data/tiles/manifest.json` at runtime (ADR 0007). A user's
-  own changes (layer selection, overrides, local-only layers, map view) go
-  in the git-ignored `map.config.json` (schema
-  `pipeline/schema/map-config.schema.json`, ADR 0009), never into the
-  committed layer files. Derived values and action recommendations are
-  calculated by the pipeline (`LAYER_CALCULATED`, `LAYER_RULES` and a
-  `pipeline/layers/<table>.rules.json`, ADR 0011), never in the app.
+- Pin every tool and base image version.
+- The web app reads only `data/tiles/` (`style.json` and the archives),
+  never `data/raw/`. No layer is defined in `web/`: each is one layer file
+  (schema `pipeline/schema/layer.schema.json`).
+- A user's own changes go in the git-ignored `map.config.yaml` (schema
+  `pipeline/schema/map.schema.json`) or `pipeline/layers.local/`, never in
+  committed layer files.
+- Derived values and action recommendations are `fields.calculated` in
+  the pipeline, never calculated in the app.
+- Pipeline writes are atomic (temp file, then move). Secrets come from
+  `.env` at runtime, never committed or baked into images.
+- Real data, `.pmtiles`, `.cog.tif` and screenshots never go in git.
 
 ## Commands
 
-Only Docker with Compose is needed on the host. On Windows use Git Bash (the
-`bash` in PowerShell may be WSL without `gh`); there, `docker run` with
-container paths needs `MSYS_NO_PATHCONV=1` and host paths from `pwd -W` or
-`cygpath -w`. `CONTRIBUTING.md` (Setup, Checks) has the full copy-paste
-block; keep it in step with this section.
+Plain commands are in `docs/guide.md` (tasks) and `CONTRIBUTING.md`
+(setup, checks); `pipeline/bin/run.sh --help` and `inspect.sh --help` have
+the options. Only Docker is needed. On Windows use Git Bash; container paths
+need `MSYS_NO_PATHCONV=1`. Key ones: `docker compose run --rm pipeline
+[layer ...]`, `--status`, `--style-only`, `--remove`; `docker compose up -d
+--build web` (:8080); `scripts/setup.sh`, `scripts/screenshot.sh`,
+`scripts/publish-pages.sh` (run a real publish only when the maintainer
+asks).
 
-- First-time setup on Windows: `scripts/setup.sh --init` (checks, `.env`,
-  images, layers, map); `scripts/setup.sh` alone checks only, read only.
-- Pipeline: `docker compose run --rm pipeline [layer ...]` (no names builds
-  every enabled layer into `data/tiles/`, plus `manifest.json` and
-  `style.json`, skipping layers whose source data is missing). The map
-  config is `map.config.json` at the repo root (`MAP_CONFIG` in `.env`),
-  read from the repo mounted read-only at `/repo`.
-  Source data comes from `RAW_DIR` (`.env`; default `./data/raw`), mounted
-  read-only at `/data/raw`; the play data lives outside the repo.
-  `--status [--json]` lists built, stale and `restyle` layers (read only);
-  `--style-only [layer ...]` applies `.style.json` changes to built layers
-  (vector or raster) without re-tiling; `--remove <layer>` deletes a
-  layer's build. Check display configs only: `docker compose run --rm
-  --entrypoint sh pipeline -c 'node /opt/pipeline/style/cli.mjs check
-  /opt/pipeline/layers/*.json'` (`.style.json` and `.rules.json`).
-- Web map: `docker compose up -d --build web` (<http://localhost:8080>,
-  `WEB_PORT`). Dev server: `docker compose --profile dev up web-dev` (Vite
-  on :5173, `VITE_USE_POLLING`). Optional ports and UIDs come from `.env`.
-- GitHub Pages copy (ADR 0014): `docker compose run --rm pipeline-pages`
-  builds `data/pages/` with `map.config.pages.json` (never `data/tiles/`
-  or `map.config.json`; `requiredInputs` stops a build from the wrong
-  protected areas source), `docker compose --profile pages up -d
-  web-pages` serves it on :8081 (`WEB_PAGES_PORT`), then
-  `scripts/publish-pages.sh [--dry-run]` (`gh` signed in) checks it,
-  uploads it to the `pages-data` release and runs
-  `.github/workflows/pages.yml`. Run the real publish only when the
-  maintainer asks.
+Gates: the CI jobs `pipeline`, `web`, `compose` and `repo-hygiene` feed the
+one required status `checks`; a PR touching only `docs/` and `*.md` runs
+just `repo-hygiene`.
 
-Gates: every CI job below feeds the one required status `checks`; a PR that
-touches only `docs/` and `*.md` runs just `repo-hygiene`.
+## Skills
 
-- `pipeline`: shellcheck 0.11.0 and hadolint 2.15.1 (file list in
-  `ci.yml`), then `docker build --target test pipeline` and run it (bats),
-  then the `runtime` image. Locally the first build takes about 4 minutes
-  (tippecanoe compile), then seconds from cache. CI: about 4 min cold, under
-  1 min warm.
-- `web` (Node 26.13.1, in `web/`): `npm ci`, `npm run lint`,
-  `npm run typecheck`, `npm test`, `npm run build`,
-  `npm audit --omit=dev --audit-level=high`, hadolint, then the image and a
-  smoke test. Locally without Node:
-  `docker compose --profile dev run --rm --no-deps web-dev sh -c 'npm ci && npm run lint && npm run typecheck && npm test && npm run build'`
-  (about 15 s). CI: about 2.5 min cold, under 1 min warm.
-- `compose`: `docker compose config -q`, and again with
-  `--profile pipeline --profile dev`.
-- `repo-hygiene`: actionlint, markdownlint (`.markdownlint.json`), no em
-  dashes. Run markdownlint locally in the Node image with
-  `npx --yes markdownlint-cli '**/*.md' --ignore node_modules --ignore LICENSE`.
-
-Ready PRs from branches in this repo merge themselves when `checks` passes
-(auto-merge via the NCC ConsTech Automation app). Open PRs ready, not as
-drafts, so they merge on green; use a draft only when asked to hold one
-for review.
-
-## Repo structure
-
-Planned layout is in `docs/design/01_architecture.md`. In short: `pipeline/`
-and `web/` are independent components; `data/raw/` and `data/tiles/` are not
-committed; real data, `.pmtiles` and `.cog.tif` never go in git. CI uses a synthetic
-test case in `pipeline/tests/fixtures/`. `web/` never reads `data/raw/`.
-
-## Adding or restyling a layer
-
-Use the project skills in `.claude/skills/`: `add-layer`, `restyle-layer`,
-`edit-popup`, `build-layers`, `layer-status`, `update-layer-data`,
-`remove-layer`, `inspect-data`, `run-map`, `run-checks` and `setup`. The
-README table (Using Claude Code) maps each to its plain command. Skills
-hold procedure only: they call documented commands (`pipeline/bin/run.sh` with `--status`
-and `--remove`, `pipeline/bin/inspect.sh`, `scripts/setup.sh` with
-`--check` and `--init`, `scripts/screenshot.sh` writing
-`tmp/screenshots/`, the `CONTRIBUTING.md` checks); new logic goes into the
-pipeline or `scripts/` with tests first. Claude Code stays optional.
-`remove-layer` always confirms with the user. Data is never committed: a
-layer PR holds the two config files only, never anything from `data/`,
-`.pmtiles`, `.cog.tif` or screenshots. Skills that change a layer ask whether the
-change is just for the user (their `map.config.json`, no PR) or for
-everyone (the committed files and a draft PR).
+`.claude/skills/` has 9 skills, each a thin wrapper that links to its
+`docs/guide.md` section and runs the same commands. Claude Code stays
+optional: new logic goes in the pipeline or `scripts/` with tests, never in
+a skill. `remove-layer` always confirms with the user. Skills that change a
+layer ask whether it is for the user only (no PR) or for everyone (the
+layer file only, in a draft PR).
 
 ## Working rules
 
-- Branch from `main`; one short-lived branch per change. Open a pull request
-  into `main`; CI must pass before merge.
-- Conventional Commits (for example `feat: ...`, `fix: ...`, `chore: ...`,
-  `docs: ...`).
-- No em dashes in code, comments, docs, commit messages, or user-facing text.
-- Significant technical or design decisions get an ADR in `docs/decisions/`.
-- Design notes live in `docs/design/`; session handoffs in `docs/handoffs/`.
-- Keep changes small and focused; update docs when behaviour or design changes.
+- Branch from `main` (from `dev` for refactor work); one short-lived branch
+  per change; PR with CI passing. Open PRs ready, not draft, unless asked.
+- Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`).
+- No em dashes in code, comments, docs, commit messages or user-facing text.
+- Significant decisions get an ADR; design notes go in `docs/design/`.
+- Keep changes small; update docs when behaviour or design changes.

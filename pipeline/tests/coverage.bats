@@ -6,6 +6,8 @@
 #   docker build --target test -t erap-pipeline-test pipeline
 #   docker run --rm erap-pipeline-test
 
+load helpers
+
 # Build the coverage layer once, with the coverage profile, for the read-only
 # tests. Tests that change the config build their own copy.
 setup_file() {
@@ -14,7 +16,7 @@ setup_file() {
   export COVERAGE_DIR="${BATS_FILE_TMPDIR}/coverage"
   mkdir -p "${COVERAGE_DIR}/raw" "${COVERAGE_DIR}/layers"
   "${PIPELINE_ROOT}/tests/fixtures/make_coverage.sh" >"${COVERAGE_DIR}/raw/coverage.geojson"
-  write_coverage_config "${COVERAGE_DIR}/layers/coverage.env" 'LAYER_PROFILE=coverage'
+  write_coverage_config "${COVERAGE_DIR}/layers/coverage.yaml" '.processing.profile = "coverage"'
 
   PIPELINE_INPUT_DIR="${COVERAGE_DIR}/raw" \
     PIPELINE_OUTPUT_DIR="${COVERAGE_DIR}/tiles" \
@@ -36,21 +38,29 @@ setup_file() {
 setup() {
   RUN="${PIPELINE_ROOT}/bin/run.sh"
   ARCHIVE="${COVERAGE_DIR}/tiles/coverage.pmtiles"
-  MANIFEST="${COVERAGE_DIR}/tiles/manifest.json"
+  BUILD="${COVERAGE_DIR}/tiles/build.json"
   export PIPELINE_INPUT_DIR="${COVERAGE_DIR}/raw"
   export PIPELINE_OUTPUT_DIR="${BATS_TEST_TMPDIR}/tiles"
   export PIPELINE_LAYERS_DIR="${BATS_TEST_TMPDIR}/layers"
   mkdir -p "$PIPELINE_LAYERS_DIR"
 }
 
-# write_coverage_config FILE [LINE...]: the coverage layer config, z0 to z6,
-# plus any extra lines, and a minimal display config next to it.
+# write_coverage_config FILE [EXPR...]: the coverage layer file, z0 to z6,
+# changed by any yq EXPRs.
 write_coverage_config() {
   local file=$1
   shift
-  printf '%s\n' 'LAYER_INPUT=coverage.geojson' 'LAYER_FIELDS=(id kind)' \
-    'LAYER_FEATURE_ID=id' 'LAYER_MIN_ZOOM=0' 'LAYER_MAX_ZOOM=6' "$@" >"$file"
-  cp "${PIPELINE_ROOT}/tests/fixtures/minimal.style.json" "${file%.env}.style.json"
+  layer_file "$file" '.source.path = "coverage.geojson"' '.fields.keep = ["kind"]' \
+    '.processing.maxzoom = 6' "$@"
+}
+
+# tippecanoe_adds FLAG...: put a tippecanoe on the PATH that runs the real
+# one with FLAGs added, for this test.
+tippecanoe_adds() {
+  mkdir -p "${BATS_TEST_TMPDIR}/bin"
+  printf '#!/bin/sh\nexec %s %s "$@"\n' "$(command -v tippecanoe)" "$*" >"${BATS_TEST_TMPDIR}/bin/tippecanoe"
+  chmod +x "${BATS_TEST_TMPDIR}/bin/tippecanoe"
+  export PATH="${BATS_TEST_TMPDIR}/bin:${PATH}"
 }
 
 # Distinct feature ids of one kind at zoom Z of ARCHIVE, one per line.
@@ -145,8 +155,10 @@ coverage_gaps() {
   [[ $output == *"--simplify-only-low-zooms"* ]]
   [[ $output != *"--detect-shared-borders"* ]]
   [[ $output != *"--coalesce"* ]]
+  # Built in the scratch dir, not in the output dir (a bind mount; #141).
+  [[ $output == *"--output="* && $output != *"--output=${COVERAGE_DIR}/tiles"* ]]
 
-  run jq -r '.layers[0] | "\(.profile) \(.min_visible_px)"' "$MANIFEST"
+  run jq -r '.layers[0] | "\(.profile) \(.min_visible_px)"' "$BUILD"
   [ "$output" = "coverage 1" ]
 }
 
@@ -157,9 +169,8 @@ coverage_gaps() {
   [ "${#lines[@]}" -eq 7 ]
 }
 
-@test "without --no-simplification-of-shared-nodes the gap check fails" {
-  write_coverage_config "${PIPELINE_LAYERS_DIR}/coverage.env" \
-    'LAYER_TIPPECANOE_FLAGS=(--drop-smallest-as-needed)'
+@test "without --no-simplification-of-shared-nodes (the default profile) the gap check fails" {
+  write_coverage_config "${PIPELINE_LAYERS_DIR}/coverage.yaml" '.processing.profile = "default"'
   run "$RUN" coverage
   [ "$status" -eq 0 ]
 
@@ -190,7 +201,7 @@ coverage_gaps() {
   done
 }
 
-@test "manifest records per-zoom stats from the drop guard" {
+@test "build.json records per-zoom stats from the drop guard" {
   run jq -e '.layers[0] as $l
     | ($l.zooms | length == 7)
     and ([$l.zooms[].zoom] == [0, 1, 2, 3, 4, 5, 6])
@@ -200,41 +211,41 @@ coverage_gaps() {
     and all($l.zooms[2:][]; .present == 1058)
     and all($l.zooms[5:][]; .required == 1058)
     and ($l.max_tile_bytes == ([$l.zooms[].max_tile_bytes] | max))
-    and ($l.feature_count == 1058)' "$MANIFEST"
+    and ($l.feature_count == 1058)' "$BUILD"
   [ "$status" -eq 0 ]
 }
 
 @test "drop guard fails the build when a large feature is dropped, keeping the old archive" {
-  write_coverage_config "${PIPELINE_LAYERS_DIR}/coverage.env" 'LAYER_PROFILE=coverage'
+  write_coverage_config "${PIPELINE_LAYERS_DIR}/coverage.yaml" '.processing.profile = "coverage"'
   run "$RUN" coverage
   [ "$status" -eq 0 ]
   local before
-  before=$(sha256sum "${PIPELINE_OUTPUT_DIR}/coverage.pmtiles" "${PIPELINE_OUTPUT_DIR}/manifest.json")
+  before=$(sha256sum "${PIPELINE_OUTPUT_DIR}/coverage.pmtiles" "${PIPELINE_OUTPUT_DIR}/build.json")
 
   # A tile limit this small makes --drop-smallest-as-needed drop large
   # polygons too.
-  echo 'LAYER_TIPPECANOE_FLAGS=(--maximum-tile-bytes=1500)' >>"${PIPELINE_LAYERS_DIR}/coverage.env"
+  tippecanoe_adds --maximum-tile-bytes=1500
   run "$RUN" coverage
   [ "$status" -eq 1 ]
   [[ $output == *"required feature(s) missing"* ]]
   [[ $output == *"drop guard: required features missing"* ]]
-  [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}/coverage.pmtiles" "${PIPELINE_OUTPUT_DIR}/manifest.json")" = "$before" ]
-  run find "$PIPELINE_OUTPUT_DIR" -name '*.tmp*'
-  [ -z "$output" ]
+  [ "$(sha256sum "${PIPELINE_OUTPUT_DIR}/coverage.pmtiles" "${PIPELINE_OUTPUT_DIR}/build.json")" = "$before" ]
+  assert_no_temp_files
 }
 
-@test "LAYER_MIN_VISIBLE_PX=0 requires every polygon at every zoom" {
+@test "min_visible_px 0 requires every polygon at every zoom" {
   # Tiny polygon reduction at z0 then trips the guard.
-  write_coverage_config "${PIPELINE_LAYERS_DIR}/coverage.env" 'LAYER_PROFILE=coverage' \
-    'LAYER_MIN_VISIBLE_PX=0'
+  write_coverage_config "${PIPELINE_LAYERS_DIR}/coverage.yaml" '.processing.profile = "coverage"' \
+    '.processing.min_visible_px = 0'
   run "$RUN" coverage
   [ "$status" -eq 1 ]
   [[ $output == *"z0: "*" of 1058 required feature(s) missing"* ]]
 }
 
-@test "unknown LAYER_PROFILE is rejected" {
-  write_coverage_config "${PIPELINE_LAYERS_DIR}/coverage.env" 'LAYER_PROFILE=nope'
+@test "an unknown profile is rejected before the data is read" {
+  write_coverage_config "${PIPELINE_LAYERS_DIR}/coverage.yaml" '.processing.profile = "nope"'
   run "$RUN" coverage
   [ "$status" -eq 1 ]
-  [[ $output == *"unknown LAYER_PROFILE 'nope'"* ]]
+  [[ $output == *"coverage.yaml: at '/processing/profile'"* ]]
+  [[ $output != *normalising* ]]
 }

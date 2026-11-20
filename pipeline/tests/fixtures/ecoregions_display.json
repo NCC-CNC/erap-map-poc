@@ -1,0 +1,553 @@
+{
+  "themes": [
+    {
+      "id": "protected",
+      "label": "Protected (%)",
+      "legend": {
+        "kind": "ramp",
+        "shape": "square",
+        "border": "#08306b",
+        "opacity": 0.6,
+        "items": [
+          {
+            "color": "#deebf7",
+            "label": "0 to 10"
+          },
+          {
+            "color": "#9ecae1",
+            "label": "10 to 17"
+          },
+          {
+            "color": "#4292c6",
+            "label": "17 to 30"
+          },
+          {
+            "color": "#08519c",
+            "label": "30 to 100"
+          },
+          {
+            "color": "#bdbdbd",
+            "label": "No data"
+          }
+        ]
+      }
+    },
+    {
+      "id": "wtw",
+      "label": "Where To Work (%)",
+      "paint": {
+        "fill": {
+          "fill-color": [
+            "case",
+            [
+              "==",
+              [
+                "typeof",
+                [
+                  "get",
+                  "wtw_percent"
+                ]
+              ],
+              "number"
+            ],
+            [
+              "step",
+              [
+                "get",
+                "wtw_percent"
+              ],
+              "#deebf7",
+              5,
+              "#9ecae1",
+              20,
+              "#4292c6",
+              40,
+              "#08519c"
+            ],
+            "#bdbdbd"
+          ]
+        }
+      },
+      "legend": {
+        "kind": "ramp",
+        "shape": "square",
+        "border": "#08306b",
+        "opacity": 0.6,
+        "items": [
+          {
+            "color": "#deebf7",
+            "label": "0 to 5"
+          },
+          {
+            "color": "#9ecae1",
+            "label": "5 to 20"
+          },
+          {
+            "color": "#4292c6",
+            "label": "20 to 40"
+          },
+          {
+            "color": "#08519c",
+            "label": "40 to 100"
+          },
+          {
+            "color": "#bdbdbd",
+            "label": "No data"
+          }
+        ]
+      }
+    },
+    {
+      "id": "wtw_area",
+      "label": "Where To Work (total area, ha)",
+      "paint": {
+        "fill": {
+          "fill-color": [
+            "case",
+            [
+              "==",
+              [
+                "typeof",
+                [
+                  "get",
+                  "wtw_area_ha"
+                ]
+              ],
+              "number"
+            ],
+            [
+              "step",
+              [
+                "get",
+                "wtw_area_ha"
+              ],
+              "#deebf7",
+              100000,
+              "#9ecae1",
+              500000,
+              "#4292c6",
+              1000000,
+              "#08519c"
+            ],
+            "#bdbdbd"
+          ]
+        }
+      },
+      "legend": {
+        "kind": "ramp",
+        "shape": "square",
+        "border": "#08306b",
+        "opacity": 0.6,
+        "items": [
+          {
+            "color": "#deebf7",
+            "label": "0 to 100,000"
+          },
+          {
+            "color": "#9ecae1",
+            "label": "100,000 to 500,000"
+          },
+          {
+            "color": "#4292c6",
+            "label": "500,000 to 1,000,000"
+          },
+          {
+            "color": "#08519c",
+            "label": "1,000,000 to 2,500,000"
+          },
+          {
+            "color": "#bdbdbd",
+            "label": "No data"
+          }
+        ]
+      }
+    },
+    {
+      "id": "area_based_actions",
+      "label": "Action recommendations: area-based conservation",
+      "paint": {
+        "fill": {
+          "fill-color": [
+            "case",
+            [
+              "==",
+              [
+                "typeof",
+                [
+                  "get",
+                  "actions_area_based_conservation_count"
+                ]
+              ],
+              "number"
+            ],
+            [
+              "step",
+              [
+                "get",
+                "actions_area_based_conservation_count"
+              ],
+              "#deebf7",
+              1,
+              "#6baed6",
+              2,
+              "#08519c"
+            ],
+            "#bdbdbd"
+          ]
+        }
+      },
+      "legend": {
+        "kind": "ramp",
+        "shape": "square",
+        "border": "#08306b",
+        "opacity": 0.6,
+        "items": [
+          {
+            "color": "#deebf7",
+            "label": "None recommended"
+          },
+          {
+            "color": "#6baed6",
+            "label": "1 recommended"
+          },
+          {
+            "color": "#08519c",
+            "label": "2 or more recommended"
+          },
+          {
+            "color": "#bdbdbd",
+            "label": "No data"
+          }
+        ]
+      }
+    }
+  ],
+  "popup": {
+    "title": "{name}",
+    "subtitle": "{ecozone} ecozone",
+    "size": "dialog",
+    "sections": [
+      {
+        "heading": "Summary",
+        "blocks": [
+          {
+            "type": "attributes",
+            "items": [
+              {
+                "label": "Ecoregion ID",
+                "value": {
+                  "attribute": "ecoregion_id"
+                }
+              },
+              {
+                "label": "Ecozone",
+                "value": {
+                  "attribute": "ecozone"
+                }
+              },
+              {
+                "label": "Ecozone ID",
+                "value": {
+                  "attribute": "ecozone_id"
+                }
+              },
+              {
+                "label": "Area",
+                "value": {
+                  "attribute": "landscape_ha"
+                },
+                "format": {
+                  "preset": "integer",
+                  "suffix": "ha"
+                }
+              },
+              {
+                "label": "Protected",
+                "value": {
+                  "attribute": "protected_pcnt"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Where To Work",
+                "value": {
+                  "attribute": "wtw_percent"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Where To Work area",
+                "value": {
+                  "attribute": "wtw_area_ha"
+                },
+                "format": {
+                  "preset": "integer",
+                  "suffix": "ha"
+                }
+              },
+              {
+                "label": "Intact",
+                "value": {
+                  "attribute": "intact_pcnt"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Modified",
+                "value": {
+                  "attribute": "modified_pcnt"
+                },
+                "format": "percent"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "heading": "Habitat",
+        "description": "How much of the ecoregion each habitat covers, how much of that habitat is protected, and how much overlaps NCC's Where To Work areas. Habitats can overlap and do not include every kind of land, so their cover need not add up to 100%.",
+        "blocks": [
+          {
+            "type": "table",
+            "caption": "Habitats",
+            "rowHeader": "Habitat",
+            "columns": [
+              {
+                "label": "Cover in ecoregion",
+                "format": "percent"
+              },
+              {
+                "label": "Protected",
+                "format": "percent"
+              },
+              {
+                "label": "In Where To Work",
+                "format": "percent"
+              }
+            ],
+            "rows": [
+              {
+                "label": "Forest",
+                "values": [
+                  "pcnt_landscape_forest_cover",
+                  "pcnt_forest_protected",
+                  "pcnt_forest_wtw"
+                ]
+              },
+              {
+                "label": "Grassland",
+                "values": [
+                  "pcnt_landscape_grassland_cover",
+                  "pcnt_grassland_protected",
+                  "pcnt_grassland_wtw"
+                ]
+              },
+              {
+                "label": "Wetland",
+                "values": [
+                  "pcnt_landscape_wetland_cover",
+                  "pcnt_wetland_protected",
+                  "pcnt_wetland_wtw"
+                ]
+              },
+              {
+                "label": "Lakes",
+                "values": [
+                  "pcnt_landscape_lakes_cover",
+                  "pcnt_lakes_protected",
+                  "pcnt_lakes_wtw"
+                ]
+              }
+            ]
+          },
+          {
+            "type": "chart",
+            "chart": "bar",
+            "title": "Habitat cover, protection and Where To Work (%)",
+            "valueLabel": "Percent",
+            "format": "percent",
+            "categories": [
+              "Forest",
+              "Grassland",
+              "Wetland",
+              "Lakes"
+            ],
+            "series": [
+              {
+                "label": "Cover in ecoregion",
+                "attributes": [
+                  "pcnt_landscape_forest_cover",
+                  "pcnt_landscape_grassland_cover",
+                  "pcnt_landscape_wetland_cover",
+                  "pcnt_landscape_lakes_cover"
+                ]
+              },
+              {
+                "label": "Protected",
+                "attributes": [
+                  "pcnt_forest_protected",
+                  "pcnt_grassland_protected",
+                  "pcnt_wetland_protected",
+                  "pcnt_lakes_protected"
+                ]
+              },
+              {
+                "label": "In Where To Work",
+                "attributes": [
+                  "pcnt_forest_wtw",
+                  "pcnt_grassland_wtw",
+                  "pcnt_wetland_wtw",
+                  "pcnt_lakes_wtw"
+                ]
+              }
+            ]
+          },
+          {
+            "type": "table",
+            "caption": "Rivers and shoreline",
+            "rowHeader": "Feature",
+            "columns": [
+              {
+                "label": "Total length",
+                "format": {
+                  "decimals": 1,
+                  "suffix": "km"
+                }
+              },
+              {
+                "label": "Protected",
+                "format": "percent"
+              },
+              {
+                "label": "In Where To Work",
+                "format": "percent"
+              }
+            ],
+            "rows": [
+              {
+                "label": "Rivers",
+                "values": [
+                  "rivers_km",
+                  "pcnt_rivers_protected",
+                  "pcnt_rivers_wtw"
+                ]
+              },
+              {
+                "label": "Shoreline",
+                "values": [
+                  "coastline_km",
+                  "pcnt_coastline_protected",
+                  "pcnt_coastline_wtw"
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "heading": "Direct threats",
+        "tab": "Threats",
+        "description": "Share of the ecoregion under the footprint of each direct threat. Footprints can overlap, so together they can add up to more than 100%.",
+        "blocks": [
+          {
+            "type": "attributes",
+            "items": [
+              {
+                "label": "Forestry",
+                "value": {
+                  "attribute": "forestry_pcnt"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Agriculture",
+                "value": {
+                  "attribute": "agriculture_pcnt"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Transport (high)",
+                "value": {
+                  "attribute": "transport_high_pcnt"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Transport (low)",
+                "value": {
+                  "attribute": "transport_low_pcnt"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Energy and mining",
+                "value": {
+                  "attribute": "energy_pcnt"
+                },
+                "format": "percent"
+              },
+              {
+                "label": "Urban and built-up",
+                "value": {
+                  "attribute": "builtup_pcnt"
+                },
+                "format": "percent"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "heading": "Opportunities",
+        "description": "The whole ecoregion: protected land, and land outside protected areas that is intact or modified.",
+        "blocks": [
+          {
+            "type": "chart",
+            "chart": "pie",
+            "title": "Protected and unprotected land",
+            "valueLabel": "Percent of the ecoregion",
+            "format": "percent",
+            "categories": [
+              "Protected",
+              "Unprotected intact",
+              "Unprotected modified"
+            ],
+            "series": [
+              {
+                "label": "Land in the ecoregion",
+                "attributes": [
+                  "protected_pcnt",
+                  "unprotected_intact_pcnt",
+                  "unprotected_modified_pcnt"
+                ]
+              }
+            ],
+            "colors": [
+              "#bdbdbd",
+              "#08519c",
+              "#fdae6b"
+            ]
+          }
+        ]
+      },
+      {
+        "heading": "Action recommendations",
+        "tab": "Actions",
+        "description": "Actions recommended for this ecoregion by the ERAP rules, with the reason for each.",
+        "blocks": [
+          {
+            "type": "list",
+            "items": [
+              {
+                "text": "Area-based conservation - 30x30 goals: recommended because current protection is less than 30%",
+                "when": "action_area_based_30x30"
+              }
+            ],
+            "empty": "No actions recommended by the rules so far."
+          }
+        ]
+      }
+    ]
+  }
+}

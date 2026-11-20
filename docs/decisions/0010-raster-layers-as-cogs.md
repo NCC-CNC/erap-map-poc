@@ -8,7 +8,11 @@ Accepted. Supersedes the storage and build steps of
 `.pmtiles` archive. The rest of 0008 stands: binary rasters only, the share
 of each pixel covered as a grey level, coloured in the map by a
 `color-relief` layer on a `raster-dem` source, display only. Vector layers
-stay PMTiles (0002).
+stay PMTiles (0002). The `LAYER_*` settings named below are now layer
+file keys (`processing.minzoom`, `maxzoom` and `grey_levels`,
+`source.srs` and `nodata`; ADR 0015). The build steps were simplified to
+plain GDAL in #140 (the last amendment below), which drops
+`grey_levels` and the majority VRT of #92 and #94.
 
 ## Context
 
@@ -120,6 +124,7 @@ as `image/tiff` with range requests. The manifest entry has `format`
 A raster built before this (`.pmtiles`, `format` `png`) still shows (its
 red channel read as the grey level), is `stale` in `--status`, and is
 replaced, `.pmtiles` deleted, by its next build. `--remove` deletes both.
+Support for such builds was dropped in #134: rebuild them.
 
 ### Amendment: average when the max zoom is coarser than the source (#83)
 
@@ -145,7 +150,7 @@ The method is logged and recorded in the manifest entry (`resampling`).
 A raster built before that has no `resampling`, was warped with `near`,
 and is `stale` in `--status` if its max zoom would now average (the
 source's header is read to tell); a z12 build of 30 m data stays
-`current`.
+`current`. This check was dropped in #134.
 
 ### Amendment: optional fewer grey levels (#92)
 
@@ -199,7 +204,65 @@ overviews.
 The manifest entry records `max_zoom_values`: `majority` with
 `resampling` `average`, `near` with `near`. A build with `resampling`
 `average` and no `max_zoom_values` (built between #83 and this) has grey
-levels at its max zoom and is `stale` in `--status`.
+levels at its max zoom and is `stale` in `--status`. This check was
+dropped in #134.
+
+### Amendment: plain GDAL (#140)
+
+`lib/raster.sh` had grown to 521 lines: a coarse snapping grid, ground
+pixel sizes from the latitude and the CRS's units, hand-written VRTs with
+`<LUT>`s for the majority and the grey levels, and a COG check. It is now
+three GDAL steps, about 300 lines with comments:
+
+1. Prepare, as before (one read of a strip-layout source; GDAL alone
+   re-decodes it for every warp window). Cached as
+   `data/work/raster/<layer>.tif` with its key in `<layer>.json`, reused
+   while the key matches (no hashed names, no clean-up of older files).
+2. `gdalwarp` to EPSG:3857 at the max zoom's resolution, ZSTD level 1,
+   over GDAL's suggested extent (`gdalwarp -of VRT`) widened to whole
+   tiles. The method compares the max zoom's resolution with GDAL's
+   suggested resolution (the source pixel in EPSG:3857 metres) instead of
+   ground sizes: `near` when it is no coarser (a z12 build of 30 m data,
+   as before), else `mode`, the majority, which replaces `-r average` and
+   the threshold VRT of #94.
+3. `gdal_translate -of COG -co TILING_SCHEME=GoogleMapsCompatible -co
+   ZOOM_LEVEL=<maxzoom> -co OVERVIEW_RESAMPLING=AVERAGE -co
+   OVERVIEW_COUNT=<maxzoom - minzoom>`, ZSTD, `SPARSE_OK`, no predictor.
+   On whole tiles the COG driver skips its own warp. Letting it warp
+   (TILING_SCHEME on the prepared source, or `gdalwarp -of COG`) was
+   tried and dropped: it writes its temporary warped file with ZSTD
+   level 9, hard-coded, and the warp took about twice as long (16 s
+   against 7 s on a 2.2 gigapixel clip). Its temporary overviews are
+   LZW (`COG_TMP_COMPRESSION`), faster than its ZSTD default.
+
+What changed in the output:
+
+- A z12 build of 30 m data has the same values at every level (0.07% of
+  z12 pixels differ, at the edges of cells, from the sample grid).
+- No predictor: `PREDICTOR=2` made these COGs larger, not smaller. On a
+  1,200 x 800 km forest clip the z12 COG went from 124 MB to 107 MB
+  (14%), every level smaller, and the copy was a little faster.
+- A coarser max zoom (the Pages copy, z10) takes the majority at the max
+  zoom, as #94 did (0.09% of z10 pixels differ), but the overviews are
+  now averaged from that binary level, not from the full shares, so
+  roads and field edges thinner than half a z10 pixel leave the lower
+  zooms too (still faint lines where wider). The overviews then hold few
+  grey levels, so `grey_levels` (#92) is dropped: the z10 forest clip
+  was 9.8 MB, against 11.4 MB with 8 grey levels and 19.3 MB with 256
+  before. Lower zooms read about 1% more cover (the majority favours the
+  larger class).
+- The COG's extent is whole tiles around GDAL's suggested extent, not a
+  snapping grid 14 zooms below the max: the old snapping (`gdalwarp
+  -tap` at that coarse resolution) could cut off the edge of a source,
+  as it did on small test clips (on the Canada-wide sources only empty
+  Arctic and Atlantic edges). The overviews below z4 are no longer
+  exactly on their zoom's tile grid; the map reads them the same way.
+- The build report keeps `resampling` (`near` or `mode`) and drops
+  `max_zoom_values` and `grey_levels`.
+
+On the same clips, from the prepared source: forest z12 19 s (6 s warp,
+13 s COG) against 20 s before. The Canada-wide comparison is left to the
+real-data build.
 
 ## Results
 

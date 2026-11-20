@@ -2,11 +2,10 @@
 
 ## Status
 
-Accepted. Extends 0007-data-driven-layer-styles.md: the display config
-gains a click modal, switchable colour themes, a gradient colour rule and
-number format presets; the app stays a generic renderer of the manifest.
-Amended by #75: the modal's sections are tabs by default (Decision,
-Tabs).
+Superseded by 0015-one-layer-file-and-a-maplibre-style.md: colour
+themes are alternative MapLibre `paint` blocks in the layer file, and the
+modal and the pop-up are one `display.popup` (a small pop-up or a
+dialog, sections of blocks).
 
 ## Context
 

@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Build a layer's .pmtiles with tippecanoe.
 #
-# tippecanoe writes to a hidden temp file in the output dir (same filesystem,
-# so the final `mv` is an atomic rename). The new archive is verified and then
-# checked (the drop guard, lib/guard.sh) before the `mv`. A failed build or
-# check removes the temp file and leaves any existing <layer>.pmtiles
-# untouched, so the web app never serves a half-written or failed archive.
+# tippecanoe writes the new archive in the layer's scratch dir, on the
+# container's own disk, where it is verified and then checked (the drop
+# guard, lib/guard.sh). Written to and read from a Docker Desktop bind
+# mount (data/tiles/), the same steps take several times as long (#141).
+# Only then is it copied to a hidden temp file in the output dir (same
+# filesystem, so the final `mv` is an atomic rename). A failed build or
+# check leaves any existing <layer>.pmtiles untouched, so the web app never
+# serves a half-written or failed archive.
 
 # build_tiles LAYER INPUT OUT_DIR MIN_ZOOM MAX_ZOOM FEATURE_ID TMP_DIR CHECK [FLAG...]
 # CHECK, if not empty, is a command run as `CHECK ARCHIVE` on the new archive;
@@ -16,16 +19,17 @@ build_tiles() {
 
   local final="${out_dir}/${layer}.pmtiles"
   # Must end in .pmtiles: tippecanoe picks the output format by extension.
+  local built="${tmp_dir}/${layer}.pmtiles"
   _BUILD_TILES_TMP="${out_dir}/.${layer}.$$.tmp.pmtiles"
   trap 'rm -f "${_BUILD_TILES_TMP:-}"' EXIT
-  rm -f "$_BUILD_TILES_TMP"
+  rm -f "$built" "$_BUILD_TILES_TMP"
 
   # --read-parallel: the input is line-delimited GeoJSONSeq, so tippecanoe
   # can split it between threads. It only pays off for large inputs but
   # costs nothing for small ones.
   log_info "building tiles z${minzoom}-z${maxzoom}${*:+ with $*}"
   tippecanoe --quiet \
-    --output="$_BUILD_TILES_TMP" \
+    --output="$built" \
     --layer="$layer" --name="$layer" \
     --minimum-zoom="$minzoom" --maximum-zoom="$maxzoom" \
     --use-attribute-for-id="$feature_id" \
@@ -34,14 +38,16 @@ build_tiles() {
     "$@" "$input" \
     || die "tippecanoe failed"
 
-  pmtiles verify "$_BUILD_TILES_TMP" >/dev/null 2>&1 \
+  pmtiles verify "$built" >/dev/null 2>&1 \
     || die "pmtiles verify failed for the new archive"
 
   if [[ -n $check ]]; then
-    "$check" "$_BUILD_TILES_TMP"
+    "$check" "$built"
   fi
 
+  cp "$built" "$_BUILD_TILES_TMP" || die "cannot write $final"
   mv -f "$_BUILD_TILES_TMP" "$final"
   _BUILD_TILES_TMP=""
+  rm -f "$built"
   log_info "wrote $final"
 }

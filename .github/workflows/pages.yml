@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release holding manifest.json, style.json and the archives
+        description: Release holding build.json, style.json and the archives
         required: false
         default: pages-data
         type: string
@@ -64,7 +64,6 @@ jobs:
         run: |
           mkdir -p web/dist/tiles
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir web/dist/tiles
-          test -s web/dist/tiles/manifest.json
           test -s web/dist/tiles/style.json
           ls -l web/dist/tiles
           bytes=$(du -sb web/dist | cut -f1)

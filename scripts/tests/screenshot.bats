@@ -18,7 +18,7 @@ setup() {
   REPO=$T/repo
   mkdir -p "$REPO/scripts" "$REPO/data/tiles" "$REPO/web"
   cp "$SRC/scripts/screenshot.sh" "$SRC/scripts/screenshot.cjs" "$REPO/scripts/"
-  printf '{"layers": []}\n' >"$REPO/data/tiles/manifest.json"
+  printf '{"layers": []}\n' >"$REPO/data/tiles/style.json"
   SHOT=$REPO/scripts/screenshot.sh
 
   export STUB_LOG=$T/calls.log
@@ -93,6 +93,8 @@ playwright_run() {
 }
 
 @test "screenshot.cjs is valid JavaScript" {
+  # The pipeline image has no Node; CI's web job runs this check too.
+  command -v node >/dev/null || skip "no node here"
   run node --check "$REPO/scripts/screenshot.cjs"
   [ "$status" -eq 0 ]
 }

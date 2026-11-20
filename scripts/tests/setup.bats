@@ -462,7 +462,7 @@ load_setup() {
   grep -qx "docker compose run --rm pipeline roads parks" "$STUB_LOG"
   [[ $output == *"Already built and up to date: lakes."* ]]
   [[ $output == *"Skipped, cannot be built yet: forest and wetlands."* ]]
-  [[ $output == *"Left out by your map config (map.config.json): dunes."* ]]
+  [[ $output == *"Left out by your map config (map.config.yaml): dunes."* ]]
   [[ $output == *"Building roads and parks"* ]]
 }
 

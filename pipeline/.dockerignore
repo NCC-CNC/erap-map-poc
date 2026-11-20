@@ -2,4 +2,3 @@
 **/*.pmtiles
 **/*.mbtiles
 tests/output/
-style/node_modules/
